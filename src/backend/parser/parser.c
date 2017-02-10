@@ -24,7 +24,6 @@
 #include "parser/gramparse.h"
 #include "parser/parser.h"
 
-
 /*
  * raw_parser
  *		Given a query in string form, do lexical and grammatical analysis.
@@ -117,6 +116,9 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 		case WITH:
 			cur_token_length = 4;
 			break;
+		case WITHOUT:
+			cur_token_length = 7;
+			break;
 		default:
 			return cur_token;
 	}
@@ -188,8 +190,22 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				case ORDINALITY:
 					cur_token = WITH_LA;
 					break;
+				case UNIQUE:
+					cur_token = WITH_LA_UNIQUE;
+					break;
 			}
 			break;
+
+		case WITHOUT:
+			/* Replace WITHOUT by WITHOUT_LA if it's followed by TIME */
+			switch (next_token)
+			{
+				case TIME:
+					cur_token = WITHOUT_LA;
+					break;
+			}
+			break;
+
 	}
 
 	return cur_token;

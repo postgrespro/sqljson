@@ -1463,6 +1463,207 @@ typedef struct TriggerTransition
 	bool		isTable;
 } TriggerTransition;
 
+/* Nodes for SQL/JSON support */
+
+/*
+ * JsonQuotes -
+ *		representation of [KEEP|OMIT] QUOTES clause for JSON_QUERY()
+ */
+typedef enum JsonQuotes
+{
+	JS_QUOTES_UNSPEC,			/* unspecified */
+	JS_QUOTES_KEEP,				/* KEEP QUOTES */
+	JS_QUOTES_OMIT				/* OMIT QUOTES */
+} JsonQuotes;
+
+/*
+ * JsonPathSpec -
+ *		representation of JSON path constant
+ */
+typedef char *JsonPathSpec;
+
+/*
+ * JsonOutput -
+ *		representation of JSON output clause (RETURNING type [FORMAT format])
+ */
+typedef struct JsonOutput
+{
+	NodeTag		type;
+	TypeName   *typeName;		/* RETURNING type name, if specified */
+	JsonReturning returning;	/* RETURNING FORMAT clause and type Oids */
+} JsonOutput;
+
+/*
+ * JsonValueExpr -
+ *		representation of JSON value expression (expr [FORMAT json_format])
+ */
+typedef struct JsonValueExpr
+{
+	NodeTag		type;
+	Expr	   *expr;			/* raw expression */
+	JsonFormat  format;			/* FORMAT clause, if specified */
+} JsonValueExpr;
+
+/*
+ * JsonArgument -
+ *		representation of argument from JSON PASSING clause
+ */
+typedef struct JsonArgument
+{
+	NodeTag		type;
+	JsonValueExpr *val;			/* argument value expression */
+	char	   *name;			/* argument name */
+} JsonArgument;
+
+/*
+ * JsonCommon -
+ *		representation of common syntax of functions using JSON path
+ */
+typedef struct JsonCommon
+{
+	NodeTag		type;
+	JsonValueExpr *expr;		/* context item expression */
+	JsonPathSpec pathspec;		/* JSON path specification */
+	char	   *pathname;		/* path name, if any */
+	List	   *passing;		/* list of PASSING clause arguments, if any */
+	int			location;		/* token location, or -1 if unknown */
+} JsonCommon;
+
+/*
+ * JsonFuncExpr -
+ *		untransformed representation of JSON function expressions
+ */
+typedef struct JsonFuncExpr
+{
+	NodeTag		type;
+	JsonExprOp	op;				/* expression type */
+	JsonCommon *common;			/* common syntax */
+	JsonOutput *output;			/* output clause, if specified */
+	JsonBehavior *on_empty;		/* ON EMPTY behavior, if specified */
+	JsonBehavior *on_error;		/* ON ERROR behavior, if specified */
+	JsonWrapper	wrapper;		/* array wrapper behavior (JSON_QUERY only) */
+	bool		omit_quotes;	/* omit or keep quotes? (JSON_QUERY only) */
+	int			location;		/* token location, or -1 if unknown */
+} JsonFuncExpr;
+
+/*
+ * JsonValueType -
+ *		representation of JSON item type in IS JSON predicate
+ */
+typedef enum JsonValueType
+{
+	JS_TYPE_ANY,				/* IS JSON [VALUE] */
+	JS_TYPE_OBJECT,				/* IS JSON OBJECT */
+	JS_TYPE_ARRAY,				/* IS JSON ARRAY*/
+	JS_TYPE_SCALAR				/* IS JSON SCALAR */
+} JsonValueType;
+
+/*
+ * JsonIsPredicate -
+ *		untransformed representation of IS JSON predicate
+ */
+typedef struct JsonIsPredicate
+{
+	NodeTag		type;
+	Node	   *expr;			/* untransformed expression */
+	JsonFormat	format;			/* FORMAT clause, if specified */
+	JsonValueType vtype;		/* JSON item type */
+	bool		unique_keys;	/* check key uniqueness? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonIsPredicate;
+
+/*
+ * JsonKeyValue -
+ *		untransformed representation of JSON object key-value pair for
+ *		JSON_OBJECT() and JSON_OBJECTAGG()
+ */
+typedef struct JsonKeyValue
+{
+	NodeTag		type;
+	Expr	   *key;			/* key expression */
+	JsonValueExpr *value;		/* JSON value expression */
+} JsonKeyValue;
+
+/*
+ * JsonObjectCtor -
+ *		untransformed representation of JSON_OBJECT() constructor
+ */
+typedef struct JsonObjectCtor
+{
+	NodeTag		type;
+	List	   *exprs;			/* list of JsonKeyValue pairs */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	bool		absent_on_null;	/* skip NULL values? */
+	bool		unique;			/* check key uniqueness? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonObjectCtor;
+
+/*
+ * JsonArrayCtor -
+ *		untransformed representation of JSON_ARRAY(element,...) constructor
+ */
+typedef struct JsonArrayCtor
+{
+	NodeTag		type;
+	List	   *exprs;			/* list of JsonValueExpr elements */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	bool		absent_on_null;	/* skip NULL elements? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonArrayCtor;
+
+/*
+ * JsonArrayQueryCtor -
+ *		untransformed representation of JSON_ARRAY(subquery) constructor
+ */
+typedef struct JsonArrayQueryCtor
+{
+	NodeTag		type;
+	Node	   *query;			/* subquery */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	JsonFormat	format;			/* FORMAT clause for subquery, if specified */
+	bool		absent_on_null;	/* skip NULL elements? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonArrayQueryCtor;
+
+/*
+ * JsonAggCtor -
+ *		common fields of untransformed representation of
+ *		JSON_ARRAYAGG() and JSON_OBJECTAGG()
+ */
+typedef struct JsonAggCtor
+{
+	NodeTag		type;
+	JsonOutput *output;			/* RETURNING clause, if any */
+	Node	   *agg_filter;		/* FILTER clause, if any */
+	List	   *agg_order;		/* ORDER BY clause, if any */
+	struct WindowDef *over;		/* OVER clause, if any */
+	int			location;		/* token location, or -1 if unknown */
+} JsonAggCtor;
+
+/*
+ * JsonObjectAgg -
+ *		untransformed representation of JSON_OBJECTAGG()
+ */
+typedef struct JsonObjectAgg
+{
+	JsonAggCtor	ctor;			/* common fields */
+	JsonKeyValue *arg;			/* object key-value pair */
+	bool		absent_on_null;	/* skip NULL values? */
+	bool		unique;			/* check key uniqueness? */
+} JsonObjectAgg;
+
+/*
+ * JsonArrayAgg -
+ *		untransformed representation of JSON_ARRRAYAGG()
+ */
+typedef struct JsonArrayAgg
+{
+	JsonAggCtor	ctor;			/* common fields */
+	JsonValueExpr *arg;			/* array element expression */
+	bool		absent_on_null;	/* skip NULL elements? */
+} JsonArrayAgg;
+
+
 /*****************************************************************************
  *		Raw Grammar Output Statements
  *****************************************************************************/
