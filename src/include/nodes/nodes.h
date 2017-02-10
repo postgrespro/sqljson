@@ -468,6 +468,21 @@ typedef enum NodeTag
 	T_PartitionBoundSpec,
 	T_PartitionRangeDatum,
 	T_PartitionCmd,
+	T_JsonValueExpr,
+	T_JsonObjectCtor,
+	T_JsonArrayCtor,
+	T_JsonArrayQueryCtor,
+	T_JsonObjectAgg,
+	T_JsonArrayAgg,
+	T_JsonValueFunc,
+	T_JsonQueryFunc,
+	T_JsonIsPredicate,
+	T_JsonExistsPredicate,
+	T_JsonCommon,
+	T_JsonArgument,
+	T_JsonKeyValue,
+	T_JsonBehavior,
+	T_JsonOutput,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)
