@@ -1169,6 +1169,111 @@ typedef struct XmlExpr
 	int			location;		/* token location, or -1 if unknown */
 } XmlExpr;
 
+/*
+ * JsonExprOp -
+ *		enumeration of JSON functions using JSON path
+ */
+typedef enum JsonExprOp
+{
+	IS_JSON_VALUE,				/* JSON_VALUE() */
+	IS_JSON_QUERY,				/* JSON_QUERY() */
+	IS_JSON_EXISTS				/* JSON_EXISTS() */
+} JsonExprOp;
+
+/*
+ * JsonEncoding -
+ *		representation of JSON ENCODING clause
+ */
+typedef enum JsonEncoding
+{
+	JS_ENC_DEFAULT,				/* unspecified */
+	JS_ENC_UTF8,
+	JS_ENC_UTF16,
+	JS_ENC_UTF32,
+} JsonEncoding;
+
+/*
+ * JsonFormatType -
+ *		enumeration of JSON formats used in JSON FORMAT clause
+ */
+typedef enum JsonFormatType
+{
+	JS_FORMAT_DEFAULT,			/* unspecified */
+	JS_FORMAT_JSON,				/* FORMAT JSON [ENCODING ...] */
+	JS_FORMAT_JSONB				/* implicit internal format for RETURNING jsonb */
+} JsonFormatType;
+
+/*
+ * JsonBehaviorType -
+ *		enumeration of behavior types used in JSON ON ... BEHAVIOR clause
+ */
+typedef enum
+{
+	JSON_BEHAVIOR_NULL,
+	JSON_BEHAVIOR_ERROR,
+	JSON_BEHAVIOR_EMPTY,
+	JSON_BEHAVIOR_TRUE,
+	JSON_BEHAVIOR_FALSE,
+	JSON_BEHAVIOR_UNKNOWN,
+	JSON_BEHAVIOR_EMPTY_ARRAY,
+	JSON_BEHAVIOR_EMPTY_OBJECT,
+	JSON_BEHAVIOR_DEFAULT,
+} JsonBehaviorType;
+
+/*
+ * JsonWrapper -
+ *		representation of WRAPPER clause for JSON_QUERY()
+ */
+typedef enum JsonWrapper
+{
+	JSW_NONE,
+	JSW_CONDITIONAL,
+	JSW_UNCONDITIONAL,
+} JsonWrapper;
+
+/*
+ * JsonFormat -
+ *		representation of JSON FORMAT clause
+ */
+typedef struct JsonFormat
+{
+	JsonFormatType	type;		/* format type */
+	JsonEncoding	encoding;	/* JSON encoding */
+	int				location;	/* token location, or -1 if unknown */
+} JsonFormat;
+
+/*
+ * JsonReturning -
+ *		transformed representation of JSON RETURNING clause
+ */
+typedef struct JsonReturning
+{
+	JsonFormat	format;			/* output JSON format */
+	Oid			typid;			/* target type Oid */
+	int32		typmod;			/* target type modifier */
+} JsonReturning;
+
+/*
+ * JsonBehavior -
+ *		representation of JSON ON ... BEHAVIOR clause
+ */
+typedef struct JsonBehavior
+{
+	NodeTag		type;
+	JsonBehaviorType btype;		/* behavior type */
+	Node	   *default_expr;	/* default expression, if any */
+} JsonBehavior;
+
+/*
+ * JsonPassing -
+ *		representation of JSON PASSING clause
+ */
+typedef struct JsonPassing
+{
+	List	   *values;			/* list of PASSING argument expressions */
+	List	   *names;			/* parallel list of Value strings */
+} JsonPassing;
+
 /* ----------------
  * NullTest
  *
