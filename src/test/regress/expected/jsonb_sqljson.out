@@ -237,7 +237,7 @@ SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING char(5));
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING char(2));
  ?column? 
 ----------
- 
+ aa
 (1 row)
 
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING json);
