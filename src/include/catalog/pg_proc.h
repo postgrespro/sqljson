@@ -4527,6 +4527,8 @@ DATA(insert OID = 3200 (  json_build_object    PGNSP PGUID 12 1 0 2276 0 f f f f
 DESCR("build a json object from pairwise key/value inputs");
 DATA(insert OID = 3201 (  json_build_object    PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 114  "" _null_ _null_ _null_ _null_ _null_ json_build_object_noargs _null_ _null_ _null_ ));
 DESCR("build an empty json object");
+DATA(insert OID = 6066 (  json_build_object_ext PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 3 0 114 "16 16 2276" "{16,16,2276}" "{i,i,v}" _null_ _null_ _null_ json_build_object_ext _null_ _null_ _null_ ));
+DESCR("build a json object from pairwise key/value inputs");
 DATA(insert OID = 3202 (  json_object	 PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 114 "1009" _null_ _null_ _null_ _null_ _null_ json_object _null_ _null_ _null_ ));
 DESCR("map text array of key value pairs to json object");
 DATA(insert OID = 3203 (  json_object	 PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 114 "1009 1009" _null_ _null_ _null_ _null_ _null_ json_object_two_arg _null_ _null_ _null_ ));
@@ -4987,6 +4989,8 @@ DATA(insert OID = 3273 (  jsonb_build_object	PGNSP PGUID 12 1 0 2276 0 f f f f f
 DESCR("build a jsonb object from pairwise key/value inputs");
 DATA(insert OID = 3274 (  jsonb_build_object	PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 3802  "" _null_ _null_ _null_ _null_ _null_ jsonb_build_object_noargs _null_ _null_ _null_ ));
 DESCR("build an empty jsonb object");
+DATA(insert OID = 6067 (  jsonb_build_object_ext PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 3 0 3802 "16 16 2276" "{16,16,2276}" "{i,i,v}" _null_ _null_ _null_ jsonb_build_object_ext _null_ _null_ _null_ ));
+DESCR("build a jsonb object from pairwise key/value inputs");
 DATA(insert OID = 3262 (  jsonb_strip_nulls    PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 3802 "3802" _null_ _null_ _null_ _null_ _null_ jsonb_strip_nulls _null_ _null_ _null_ ));
 DESCR("remove object fields with null values from jsonb");
 
