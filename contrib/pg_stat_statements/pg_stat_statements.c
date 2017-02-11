@@ -2890,6 +2890,27 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) conf->exclRelTlist);
 			}
 			break;
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *expr = (JsonValueExpr *) node;
+
+				JumbleExpr(jstate, (Node *) expr->expr);
+				APP_JUMB(expr->format.type);
+				APP_JUMB(expr->format.encoding);
+			}
+			break;
+		case T_JsonCtorOpts:
+			{
+				JsonCtorOpts *opts = (JsonCtorOpts *) node;
+
+				APP_JUMB(opts->returning.format.type);
+				APP_JUMB(opts->returning.format.encoding);
+				APP_JUMB(opts->returning.typid);
+				APP_JUMB(opts->returning.typmod);
+				APP_JUMB(opts->unique);
+				APP_JUMB(opts->absent_on_null);
+			}
+			break;
 		case T_List:
 			foreach(temp, (List *) node)
 			{

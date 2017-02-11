@@ -1663,6 +1663,13 @@ typedef struct JsonArrayAgg
 	bool		absent_on_null;	/* skip NULL elements? */
 } JsonArrayAgg;
 
+typedef struct JsonCtorOpts
+{
+	NodeTag		type;
+	JsonReturning returning;	/* RETURNING clause */
+	bool		absent_on_null;	/* skip NULL values? */
+	bool		unique;			/* check key uniqueness? */
+} JsonCtorOpts;
 
 /*****************************************************************************
  *		Raw Grammar Output Statements

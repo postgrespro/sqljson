@@ -1349,6 +1349,41 @@ _readOnConflictExpr(void)
 }
 
 /*
+ * _readJsonValueExpr
+ */
+static JsonValueExpr *
+_readJsonValueExpr(void)
+{
+	READ_LOCALS(JsonValueExpr);
+
+	READ_NODE_FIELD(expr);
+	READ_ENUM_FIELD(format.type, JsonFormatType);
+	READ_ENUM_FIELD(format.encoding, JsonEncoding);
+	READ_LOCATION_FIELD(format.location);
+
+	READ_DONE();
+}
+
+/*
+ * _readJsonCtorOpts
+ */
+static JsonCtorOpts *
+_readJsonCtorOpts(void)
+{
+	READ_LOCALS(JsonCtorOpts);
+
+	READ_ENUM_FIELD(returning.format.type, JsonFormatType);
+	READ_ENUM_FIELD(returning.format.encoding, JsonEncoding);
+	READ_LOCATION_FIELD(returning.format.location);
+	READ_OID_FIELD(returning.typid);
+	READ_INT_FIELD(returning.typmod);
+	READ_BOOL_FIELD(unique);
+	READ_BOOL_FIELD(absent_on_null);
+
+	READ_DONE();
+}
+
+/*
  *	Stuff from parsenodes.h.
  */
 
@@ -2811,6 +2846,10 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("JSONVALUEEXPR", 13))
+		return_value = _readJsonValueExpr();
+	else if (MATCH("JSONCTOROPTS", 12))
+		return_value = _readJsonCtorOpts();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

@@ -2106,6 +2106,11 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				break;
 			}
 
+		case T_JsonValueExpr:
+			ExecInitExprRec(((JsonValueExpr *) node)->expr, state, resv,
+							resnull);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

@@ -167,6 +167,7 @@ test: jsonpath
 test: jsonpath_encoding
 test: json_jsonpath
 test: jsonb_jsonpath
+test: sqljson
 test: plancache
 test: limit
 test: plpgsql

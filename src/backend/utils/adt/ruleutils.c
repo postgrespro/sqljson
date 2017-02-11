@@ -7817,6 +7817,48 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 		appendStringInfoChar(context->buf, ')');
 }
 
+/*
+ * get_json_format			- Parse back a JsonFormat structure
+ */
+static void
+get_json_format(JsonFormat *format, deparse_context *context)
+{
+	if (format->type == JS_FORMAT_DEFAULT)
+		return;
+
+	appendStringInfoString(context->buf,
+						   format->type == JS_FORMAT_JSONB ?
+						   " FORMAT JSONB" : " FORMAT JSON");
+
+	if (format->encoding != JS_ENC_DEFAULT)
+	{
+		const char *encoding =
+			format->encoding == JS_ENC_UTF16 ? "UTF16" :
+			format->encoding == JS_ENC_UTF32 ? "UTF32" : "UTF8";
+
+		appendStringInfo(context->buf, " ENCODING %s", encoding);
+	}
+}
+
+/*
+ * get_json_returning		- Parse back a JsonReturning structure
+ */
+static void
+get_json_returning(JsonReturning *returning, deparse_context *context,
+				   bool json_format_by_default)
+{
+	if (!OidIsValid(returning->typid))
+		return;
+
+	appendStringInfo(context->buf, " RETURNING %s",
+					 format_type_with_typemod(returning->typid,
+											  returning->typmod));
+
+	if (!json_format_by_default ||
+		returning->format.type !=
+			(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
+		get_json_format(&returning->format, context);
+}
 
 /*
  * get_coercion				- Parse back a coercion
@@ -8953,6 +8995,15 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+
+				get_rule_expr((Node *) jve->expr, context, false);
+				get_json_format(&jve->format, context);
+			}
+			break;
+
 		case T_List:
 			{
 				char	   *sep;
@@ -9124,6 +9175,35 @@ get_func_opts(FuncFormat aggformat, Node *aggformatopts, deparse_context *contex
 {
 	switch (aggformat)
 	{
+		case FUNCFMT_JSON_OBJECT:
+		case FUNCFMT_JSON_OBJECTAGG:
+		case FUNCFMT_JSON_ARRAY:
+		case FUNCFMT_JSON_ARRAYAGG:
+			{
+				JsonCtorOpts *opts = castNode(JsonCtorOpts, aggformatopts);
+
+				if (!opts)
+					break;
+
+				if (opts->absent_on_null)
+				{
+					if (aggformat == FUNCFMT_JSON_OBJECT ||
+						aggformat == FUNCFMT_JSON_OBJECTAGG)
+						appendStringInfoString(context->buf, " ABSENT ON NULL");
+				}
+				else
+				{
+					if (aggformat == FUNCFMT_JSON_ARRAY ||
+						aggformat == FUNCFMT_JSON_ARRAYAGG)
+						appendStringInfoString(context->buf, " NULL ON NULL");
+				}
+
+				if (opts->unique)
+					appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
+
+				get_json_returning(&opts->returning, context, true);
+			}
+			break;
 		default:
 			break;
 	}
@@ -9140,6 +9220,7 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	Oid			funcoid = expr->funcid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
+	int			firstarg;
 	List	   *argnames;
 	bool		use_variadic;
 	ListCell   *l;
@@ -9200,12 +9281,18 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 
 	switch (expr->funcformat2)
 	{
+		case FUNCFMT_JSON_OBJECT:
+			funcname = "JSON_OBJECT";
+			firstarg = 2;
+			use_variadic = false;
+			break;
 		default:
 			funcname = generate_function_name(funcoid, nargs,
 											  argnames, argtypes,
 											  expr->funcvariadic,
 											  &use_variadic,
 											  context->special_exprkind);
+			firstarg = 0;
 			break;
 	}
 
@@ -9214,8 +9301,17 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	nargs = 0;
 	foreach(l, expr->args)
 	{
-		if (nargs++ > 0)
-			appendStringInfoString(buf, ", ");
+		if (nargs++ < firstarg)
+			continue;
+
+		if (nargs > firstarg + 1)
+		{
+			const char *sep = expr->funcformat2 == FUNCFMT_JSON_OBJECT &&
+				!((nargs - firstarg) % 2) ? " : " : ", ";
+
+			appendStringInfoString(buf, sep);
+		}
+
 		if (use_variadic && lnext(l) == NULL)
 			appendStringInfoString(buf, "VARIADIC ");
 		get_rule_expr((Node *) lfirst(l), context, true);

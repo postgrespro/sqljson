@@ -490,6 +490,7 @@ typedef enum NodeTag
 	T_JsonKeyValue,
 	T_JsonBehavior,
 	T_JsonOutput,
+	T_JsonCtorOpts,
 
 	/*
 	 * TAGS FOR REPLICATION GRAMMAR PARSE NODES (replnodes.h)
