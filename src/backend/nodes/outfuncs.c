@@ -1739,6 +1739,22 @@ _outJsonValueExpr(StringInfo str, const JsonValueExpr *node)
 	WRITE_NODE_FIELD(format);
 }
 
+static void
+_outJsonCtorExpr(StringInfo str, const JsonCtorExpr *node)
+{
+	WRITE_NODE_TYPE("JSONCTOREXPR");
+
+	WRITE_NODE_FIELD(func);
+	WRITE_INT_FIELD(type);
+	WRITE_ENUM_FIELD(returning.format.type, JsonFormatType);
+	WRITE_ENUM_FIELD(returning.format.encoding, JsonEncoding);
+	WRITE_LOCATION_FIELD(returning.format.location);
+	WRITE_OID_FIELD(returning.typid);
+	WRITE_INT_FIELD(returning.typmod);
+	WRITE_BOOL_FIELD(unique);
+	WRITE_BOOL_FIELD(absent_on_null);
+}
+
 /*****************************************************************************
  *
  *	Stuff from pathnodes.h.
@@ -4375,6 +4391,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_JsonValueExpr:
 				_outJsonValueExpr(str, obj);
+				break;
+			case T_JsonCtorExpr:
+				_outJsonCtorExpr(str, obj);
 				break;
 
 			default:

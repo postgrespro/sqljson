@@ -1153,11 +1153,9 @@ to_jsonb(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
 }
 
-/*
- * SQL function jsonb_build_object(variadic "any")
- */
-Datum
-jsonb_build_object(PG_FUNCTION_ARGS)
+static Datum
+jsonb_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
+						  bool absent_on_null, bool unique_keys)
 {
 	int			nargs;
 	int			i;
@@ -1167,7 +1165,8 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 	Oid		   *types;
 
 	/* build argument values to build the object */
-	nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+	nargs = extract_variadic_args(fcinfo, first_vararg, true,
+								  &args, &types, &nulls);
 
 	if (nargs < 0)
 		PG_RETURN_NULL();
@@ -1183,14 +1182,26 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 	memset(&result, 0, sizeof(JsonbInState));
 
 	result.res = pushJsonbValue(&result.parseState, WJB_BEGIN_OBJECT, NULL);
+	result.parseState->unique_keys = unique_keys;
+	result.parseState->skip_nulls = absent_on_null;
 
 	for (i = 0; i < nargs; i += 2)
 	{
 		/* process key */
+		bool		skip;
+
 		if (nulls[i])
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument %d: key must not be null", i + 1)));
+					 errmsg("argument %d: key must not be null",
+							first_vararg + i + 1)));
+
+		/* skip null values if absent_on_null */
+		skip = absent_on_null && nulls[i + 1];
+
+		/* we need to save skipped keys for the key uniqueness check */
+		if (skip && !unique_keys)
+			continue;
 
 		add_jsonb(args[i], false, &result, types[i], true);
 
@@ -1201,6 +1212,25 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 	result.res = pushJsonbValue(&result.parseState, WJB_END_OBJECT, NULL);
 
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
+}
+
+/*
+ * SQL function jsonb_build_object(variadic "any")
+ */
+Datum
+jsonb_build_object(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_object_worker(fcinfo, 0, false, false);
+}
+
+/*
+ * SQL function jsonb_build_object_ext(absent_on_null bool, unique bool, variadic "any")
+ */
+Datum
+jsonb_build_object_ext(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_object_worker(fcinfo, 2,
+									 PG_GETARG_BOOL(0), PG_GETARG_BOOL(1));
 }
 
 /*
@@ -1490,6 +1520,8 @@ clone_parse_state(JsonbParseState *state)
 	{
 		ocursor->contVal = icursor->contVal;
 		ocursor->size = icursor->size;
+		ocursor->unique_keys = icursor->unique_keys;
+		ocursor->skip_nulls = icursor->skip_nulls;
 		icursor = icursor->next;
 		if (icursor == NULL)
 			break;

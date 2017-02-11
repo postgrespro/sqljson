@@ -1248,6 +1248,28 @@ typedef struct JsonValueExpr
 	JsonFormat *format;			/* FORMAT clause, if specified */
 } JsonValueExpr;
 
+typedef enum JsonCtorType
+{
+	JSCTOR_JSON_OBJECT = 1,
+	JSCTOR_JSON_ARRAY = 2,
+	JSCTOR_JSON_OBJECTAGG = 3,
+	JSCTOR_JSON_ARRAYAGG = 4
+} JsonCtorType;
+
+/*
+ * JsonCtorExpr -
+ *		wrapper over FuncExpr for SQL/JSON constructors
+ */
+typedef struct JsonCtorExpr
+{
+	Expr		xpr;
+	JsonCtorType type;			/* constructor type */
+	FuncExpr   *func;			/* underlying json[b]_xxx() function call */
+	JsonReturning returning;	/* RETURNING clause */
+	bool		absent_on_null;	/* ABSENT ON NULL? */
+	bool		unique;			/* WITH UNIQUE KEYS? (JSON_OBJECT[AGG] only) */
+} JsonCtorExpr;
+
 /* ----------------
  * NullTest
  *

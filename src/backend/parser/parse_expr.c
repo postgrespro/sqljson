@@ -121,6 +121,7 @@ static Node *transformWholeRowRef(ParseState *pstate,
 static Node *transformIndirection(ParseState *pstate, A_Indirection *ind);
 static Node *transformTypeCast(ParseState *pstate, TypeCast *tc);
 static Node *transformCollateClause(ParseState *pstate, CollateClause *c);
+static Node *transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
 									List *largs, List *rargs, int location);
 static Node *make_row_distinct_op(ParseState *pstate, List *opname,
@@ -368,6 +369,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 				result = (Node *) expr;
 				break;
 			}
+
+		case T_JsonObjectCtor:
+			result = transformJsonObjectCtor(pstate, (JsonObjectCtor *) expr);
+			break;
 
 		default:
 			/* should not reach here */
@@ -3749,3 +3754,212 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 	return expr;
 }
 
+/*
+ * Checks specified output format for its applicability to the target type.
+ */
+static void
+checkJsonOutputFormat(ParseState *pstate, const JsonFormat *format,
+					  Oid targettype, bool allow_format_for_non_strings)
+{
+	if (!allow_format_for_non_strings &&
+		format->type != JS_FORMAT_DEFAULT &&
+		(targettype != BYTEAOID &&
+		 targettype != JSONOID &&
+		 targettype != JSONBOID))
+	{
+		char		typcategory;
+		bool		typispreferred;
+
+		get_type_category_preferred(targettype, &typcategory, &typispreferred);
+
+		if (typcategory != TYPCATEGORY_STRING)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 parser_errposition(pstate, format->location),
+					 errmsg("cannot use JSON format with non-string output types")));
+	}
+
+	if (format->type == JS_FORMAT_JSON)
+	{
+		JsonEncoding enc = format->encoding != JS_ENC_DEFAULT ?
+						   format->encoding : JS_ENC_UTF8;
+
+		if (targettype != BYTEAOID &&
+			format->encoding != JS_ENC_DEFAULT)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 parser_errposition(pstate, format->location),
+					 errmsg("cannot set JSON encoding for non-bytea output types")));
+
+		if (enc != JS_ENC_UTF8)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported JSON encoding"),
+					 errhint("only UTF8 JSON encoding is supported"),
+					 parser_errposition(pstate, format->location)));
+	}
+}
+
+/*
+ * Transform JSON output clause.
+ *
+ * Assigns target type oid and modifier.
+ * Assigns default format or checks specified format for its applicability to
+ * the target type.
+ */
+static void
+transformJsonOutput(ParseState *pstate, const JsonOutput *output,
+					bool allow_format, JsonReturning *ret)
+{
+	/* if output clause is not specified, make default clause value */
+	if (!output)
+	{
+		ret->format.type = JS_FORMAT_DEFAULT;
+		ret->format.encoding = JS_ENC_DEFAULT;
+		ret->format.location = -1;
+		ret->typid = InvalidOid;
+		ret->typmod = -1;
+
+		return;
+	}
+
+	*ret = output->returning;
+
+	typenameTypeIdAndMod(pstate, output->typeName, &ret->typid, &ret->typmod);
+
+	if (output->typeName->setof)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("returning SETOF types is not supported in SQL/JSON functions")));
+
+	if (ret->format.type == JS_FORMAT_DEFAULT)
+		/* assign JSONB format when returning jsonb, or JSON format otherwise */
+		ret->format.type =
+			ret->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON;
+	else
+		checkJsonOutputFormat(pstate, &ret->format, ret->typid, allow_format);
+}
+
+/*
+ * Coerce json[b]-valued function expression to the output type.
+ */
+static Node *
+coerceJsonFuncExpr(ParseState *pstate, Node *expr, JsonReturning *returning,
+				   bool report_error)
+{
+	Node	   *res;
+	int			location;
+	Oid			exprtype = exprType(expr);
+
+	/* if output type is not specified or equals to function type, return */
+	if (!OidIsValid(returning->typid) || returning->typid == exprtype)
+		return expr;
+
+	location = exprLocation(expr);
+
+	if (location < 0)
+		location = returning ? returning->format.location : -1;
+
+	/* special case for RETURNING bytea FORMAT json */
+	if (returning->format.type == JS_FORMAT_JSON &&
+		returning->typid == BYTEAOID)
+	{
+		/* encode json text into bytea using pg_convert_to() */
+		Node	   *texpr = coerce_to_specific_type(pstate, expr, TEXTOID,
+													"JSON_FUNCTION");
+		Const	   *enc = getJsonEncodingConst(&returning->format);
+		FuncExpr   *fexpr = makeFuncExpr(F_PG_CONVERT_TO, BYTEAOID,
+										 list_make2(texpr, enc),
+										 InvalidOid, InvalidOid,
+										 COERCE_INTERNAL_CAST);
+		fexpr->location = location;
+
+		return (Node *) fexpr;
+	}
+
+	/* try to coerce expression to the output type */
+	res = coerce_to_target_type(pstate, expr, exprtype,
+								returning->typid, returning->typmod,
+								/* XXX throwing errors when casting to char(N) */
+								COERCION_EXPLICIT,
+								COERCE_INTERNAL_CAST,
+								location);
+
+	if (!res && report_error)
+		ereport(ERROR,
+				(errcode(ERRCODE_CANNOT_COERCE),
+				 errmsg("cannot cast type %s to %s",
+						format_type_be(exprtype),
+						format_type_be(returning->typid)),
+				 parser_coercion_errposition(pstate, location, expr)));
+
+	return res;
+}
+
+/*
+ * Transform JSON_OBJECT() constructor.
+ *
+ * JSON_OBJECT() is transformed into json[b]_build_object[_ext]() call
+ * depending on the output JSON format. The first two arguments of
+ * json[b]_build_object_ext() are absent_on_null and check_key_uniqueness.
+ *
+ * Then function call result is coerced to the target type.
+ */
+static Node *
+transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
+{
+	JsonReturning returning;
+	JsonCtorExpr *jsctor;
+	FuncExpr   *fexpr;
+	List	   *args = NIL;
+	Oid			funcid;
+	Oid			funcrettype;
+
+	/* transform key-value pairs, if any */
+	if (ctor->exprs)
+	{
+		ListCell   *lc;
+
+		/* append the first two arguments */
+		args = lappend(args, makeBoolConst(ctor->absent_on_null, false));
+		args = lappend(args, makeBoolConst(ctor->unique, false));
+
+		/* transform and append key-value arguments */
+		foreach(lc, ctor->exprs)
+		{
+			JsonKeyValue *kv = castNode(JsonKeyValue, lfirst(lc));
+			Node	   *key = transformExprRecurse(pstate, (Node *) kv->key);
+			Node	   *val = transformJsonValueExpr(pstate, kv->value,
+													 JS_FORMAT_DEFAULT);
+
+			args = lappend(args, key);
+			args = lappend(args, val);
+		}
+	}
+
+	transformJsonOutput(pstate, ctor->output, true, &returning);
+
+	if (returning.format.type == JS_FORMAT_JSONB)
+	{
+		funcid = args ? F_JSONB_BUILD_OBJECT_EXT : F_JSONB_BUILD_OBJECT_NOARGS;
+		funcrettype = JSONBOID;
+	}
+	else
+	{
+		funcid = args ? F_JSON_BUILD_OBJECT_EXT : F_JSON_BUILD_OBJECT_NOARGS;
+		funcrettype = JSONOID;
+	}
+
+	fexpr = makeFuncExpr(funcid, funcrettype, args,
+						 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	fexpr->location = ctor->location;
+
+	jsctor = makeNode(JsonCtorExpr);
+	jsctor->func = fexpr;
+	jsctor->type = JSCTOR_JSON_OBJECT;
+	jsctor->returning = returning;
+	jsctor->unique = ctor->unique;
+	jsctor->absent_on_null = ctor->absent_on_null;
+
+	return coerceJsonFuncExpr(pstate, (Node *) jsctor, &returning, true);
+}

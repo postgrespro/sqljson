@@ -265,6 +265,9 @@ exprType(const Node *expr)
 				type = exprType((Node *) (jve->formatted_expr ? jve->formatted_expr : jve->raw_expr));
 			}
 			break;
+		case T_JsonCtorExpr:
+			type = exprType((Node *) ((const JsonCtorExpr *) expr)->func);
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -500,6 +503,8 @@ exprTypmod(const Node *expr)
 			return exprTypmod((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 		case T_JsonValueExpr:
 			return exprTypmod((Node *) ((const JsonValueExpr *) expr)->formatted_expr);
+		case T_JsonCtorExpr:
+			return exprTypmod((Node *) ((const JsonCtorExpr *) expr)->func);
 		default:
 			break;
 	}
@@ -918,6 +923,9 @@ exprCollation(const Node *expr)
 		case T_JsonValueExpr:
 			coll = exprCollation((Node *) ((const JsonValueExpr *) expr)->formatted_expr);
 			break;
+		case T_JsonCtorExpr:
+			coll = exprCollation((Node *) ((const JsonCtorExpr *) expr)->func);
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			coll = InvalidOid;	/* keep compiler quiet */
@@ -1123,6 +1131,10 @@ exprSetCollation(Node *expr, Oid collation)
 			break;
 		case T_JsonValueExpr:
 			exprSetCollation((Node *) ((JsonValueExpr *) expr)->formatted_expr,
+							 collation);
+			break;
+		case T_JsonCtorExpr:
+			exprSetCollation((Node *) ((const JsonCtorExpr *) expr)->func,
 							 collation);
 			break;
 		default:
@@ -1567,6 +1579,9 @@ exprLocation(const Node *expr)
 			break;
 		case T_JsonValueExpr:
 			loc = exprLocation((Node *) ((const JsonValueExpr *) expr)->raw_expr);
+			break;
+		case T_JsonCtorExpr:
+			loc = exprLocation((Node *) ((const JsonCtorExpr *) expr)->func);
 			break;
 		default:
 			/* for any other node type it's just unknown... */
@@ -2275,6 +2290,8 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_JsonCtorExpr:
+			return walker(((JsonCtorExpr *) node)->func, context);
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3221,6 +3238,16 @@ expression_tree_mutator(Node *node,
 
 				return (Node *) newnode;
 			}
+		case T_JsonCtorExpr:
+			{
+				JsonCtorExpr *jve = (JsonCtorExpr *) node;
+				JsonCtorExpr *newnode;
+
+				FLATCOPY(newnode, jve, JsonCtorExpr);
+				MUTATE(newnode->func, jve->func, FuncExpr *);
+
+				return (Node *) newnode;
+			}
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3927,6 +3954,30 @@ raw_expression_tree_walker(Node *node,
 				if (walker(jve->formatted_expr, context))
 					return true;
 				if (walker(jve->format, context))
+					return true;
+			}
+			break;
+		case T_JsonCtorExpr:
+			return walker(((JsonCtorExpr *) node)->func, context);
+		case T_JsonOutput:
+			return walker(((JsonOutput *) node)->typeName, context);
+		case T_JsonKeyValue:
+			{
+				JsonKeyValue *jkv = (JsonKeyValue *) node;
+
+				if (walker(jkv->key, context))
+					return true;
+				if (walker(jkv->value, context))
+					return true;
+			}
+			break;
+		case T_JsonObjectCtor:
+			{
+				JsonObjectCtor *joc = (JsonObjectCtor *) node;
+
+				if (walker(joc->output, context))
+					return true;
+				if (walker(joc->exprs, context))
 					return true;
 			}
 			break;

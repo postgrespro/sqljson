@@ -329,6 +329,8 @@ typedef struct JsonbParseState
 	JsonbValue	contVal;
 	Size		size;
 	struct JsonbParseState *next;
+	bool		unique_keys;	/* Check object key uniqueness */
+	bool		skip_nulls;		/* Skip null object fields */
 } JsonbParseState;
 
 /*

@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -41,6 +42,42 @@ typedef enum					/* type categories for datum_to_json */
 	JSONTYPE_CAST,				/* something with an explicit cast to JSON */
 	JSONTYPE_OTHER				/* all else */
 } JsonTypeCategory;
+
+/* Common context for key uniqueness check */
+typedef struct HTAB *JsonUniqueCheckState;	/* hash table for key names */
+
+/* Hash entry for JsonUniqueCheckState */
+typedef struct JsonUniqueHashEntry
+{
+	const char *key;
+	int			key_len;
+	int			object_id;
+} JsonUniqueHashEntry;
+
+/* Context for key uniqueness check in builder functions */
+typedef struct JsonUniqueBuilderState
+{
+	JsonUniqueCheckState check;	/* unique check */
+	StringInfoData skipped_keys;	/* skipped keys with NULL values */
+	MemoryContext mcxt;				/* context for saving skipped keys */
+} JsonUniqueBuilderState;
+
+/* Element of object stack for key uniqueness check during json parsing */
+typedef struct JsonUniqueStackEntry
+{
+	struct JsonUniqueStackEntry *parent;
+	int			object_id;
+} JsonUniqueStackEntry;
+
+/* State for key uniqueness check during json parsing */
+typedef struct JsonUniqueParsingState
+{
+	JsonLexContext *lex;
+	JsonUniqueCheckState check;
+	JsonUniqueStackEntry *stack;
+	int			id_counter;
+	bool		unique;
+} JsonUniqueParsingState;
 
 typedef struct JsonAggState
 {
@@ -850,6 +887,106 @@ json_agg_finalfn(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(catenate_stringinfo_string(state->str, "]"));
 }
 
+/* Functions implementing hash table for key uniqueness check */
+static uint32
+json_unique_hash(const void *key, Size keysize)
+{
+	const JsonUniqueHashEntry *entry = (JsonUniqueHashEntry *) key;
+	uint32		hash =  hash_bytes_uint32(entry->object_id);
+
+	hash ^= hash_bytes((const unsigned char *) entry->key, entry->key_len);
+
+	return DatumGetUInt32(hash);
+}
+
+static int
+json_unique_hash_match(const void *key1, const void *key2, Size keysize)
+{
+	const JsonUniqueHashEntry *entry1 = (const JsonUniqueHashEntry *) key1;
+	const JsonUniqueHashEntry *entry2 = (const JsonUniqueHashEntry *) key2;
+
+	if (entry1->object_id != entry2->object_id)
+		return entry1->object_id > entry2->object_id ? 1 : -1;
+
+	if (entry1->key_len != entry2->key_len)
+		return entry1->key_len > entry2->key_len ? 1 : -1;
+
+	return strncmp(entry1->key, entry2->key, entry1->key_len);
+}
+
+/* Functions implementing object key uniqueness check */
+static void
+json_unique_check_init(JsonUniqueCheckState *cxt)
+{
+	HASHCTL		ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(JsonUniqueHashEntry);
+	ctl.entrysize = sizeof(JsonUniqueHashEntry);
+	ctl.hcxt = CurrentMemoryContext;
+	ctl.hash = json_unique_hash;
+	ctl.match = json_unique_hash_match;
+
+	*cxt = hash_create("json object hashtable",
+					   32,
+					   &ctl,
+					   HASH_ELEM | HASH_CONTEXT | HASH_FUNCTION | HASH_COMPARE);
+}
+
+static void
+json_unique_check_free(JsonUniqueCheckState *cxt)
+{
+	hash_destroy(*cxt);
+}
+
+static bool
+json_unique_check_key(JsonUniqueCheckState *cxt, const char *key, int object_id)
+{
+	JsonUniqueHashEntry entry;
+	bool		found;
+
+	entry.key = key;
+	entry.key_len = strlen(key);
+	entry.object_id = object_id;
+
+	(void) hash_search(*cxt, &entry, HASH_ENTER, &found);
+
+	return !found;
+}
+
+static void
+json_unique_builder_init(JsonUniqueBuilderState *cxt)
+{
+	json_unique_check_init(&cxt->check);
+	cxt->mcxt = CurrentMemoryContext;
+	cxt->skipped_keys.data = NULL;
+}
+
+static void
+json_unique_builder_free(JsonUniqueBuilderState *cxt)
+{
+	json_unique_check_free(&cxt->check);
+
+	if (cxt->skipped_keys.data)
+		pfree(cxt->skipped_keys.data);
+}
+
+/* On-demand initialization of skipped_keys StringInfo structure */
+static StringInfo
+json_unique_builder_get_skipped_keys(JsonUniqueBuilderState *cxt)
+{
+	StringInfo	out = &cxt->skipped_keys;
+
+	if (!out->data)
+	{
+		MemoryContext oldcxt = MemoryContextSwitchTo(cxt->mcxt);
+		initStringInfo(out);
+		MemoryContextSwitchTo(oldcxt);
+	}
+
+	return out;
+}
+
 /*
  * json_object_agg transition function.
  *
@@ -984,11 +1121,9 @@ catenate_stringinfo_string(StringInfo buffer, const char *addon)
 	return result;
 }
 
-/*
- * SQL function json_build_object(variadic "any")
- */
-Datum
-json_build_object(PG_FUNCTION_ARGS)
+static Datum
+json_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
+						 bool absent_on_null, bool unique_keys)
 {
 	int			nargs = PG_NARGS();
 	int			i;
@@ -997,9 +1132,11 @@ json_build_object(PG_FUNCTION_ARGS)
 	Datum	   *args;
 	bool	   *nulls;
 	Oid		   *types;
+	JsonUniqueBuilderState unique_check;
 
 	/* fetch argument values to build the object */
-	nargs = extract_variadic_args(fcinfo, 0, false, &args, &types, &nulls);
+	nargs = extract_variadic_args(fcinfo, first_vararg, false,
+								  &args, &types, &nulls);
 
 	if (nargs < 0)
 		PG_RETURN_NULL();
@@ -1016,19 +1153,58 @@ json_build_object(PG_FUNCTION_ARGS)
 
 	appendStringInfoChar(result, '{');
 
+	if (unique_keys)
+		json_unique_builder_init(&unique_check);
+
 	for (i = 0; i < nargs; i += 2)
 	{
-		appendStringInfoString(result, sep);
-		sep = ", ";
+		StringInfo	out;
+		bool		skip;
+		int			key_offset;
+
+		/* Skip null values if absent_on_null */
+		skip = absent_on_null && nulls[i + 1];
+
+		if (skip)
+		{
+			/* If key uniqueness check is needed we must save skipped keys */
+			if (!unique_keys)
+				continue;
+
+			out = json_unique_builder_get_skipped_keys(&unique_check);
+		}
+		else
+		{
+			appendStringInfoString(result, sep);
+			sep = ", ";
+			out = result;
+		}
 
 		/* process key */
 		if (nulls[i])
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument %d cannot be null", i + 1),
+					 errmsg("argument %d cannot be null", first_vararg + i + 1),
 					 errhint("Object keys should be text.")));
 
-		add_json(args[i], false, result, types[i], true);
+		/* save key offset before key appending */
+		key_offset = out->len;
+
+		add_json(args[i], false, out, types[i], true);
+
+		if (unique_keys)
+		{
+			/* check key uniqueness after key appending */
+			const char *key = &out->data[key_offset];
+
+			if (!json_unique_check_key(&unique_check.check, key, 0))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_JSON_OBJECT_KEY_VALUE),
+						 errmsg("duplicate JSON key %s", key)));
+
+			if (skip)
+				continue;
+		}
 
 		appendStringInfoString(result, " : ");
 
@@ -1038,7 +1214,29 @@ json_build_object(PG_FUNCTION_ARGS)
 
 	appendStringInfoChar(result, '}');
 
+	if (unique_keys)
+		json_unique_builder_free(&unique_check);
+
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+}
+
+/*
+ * SQL function json_build_object(variadic "any")
+ */
+Datum
+json_build_object(PG_FUNCTION_ARGS)
+{
+	return json_build_object_worker(fcinfo, 0, false, false);
+}
+
+/*
+ * SQL function json_build_object_ext(absent_on_null bool, unique bool, variadic "any")
+ */
+Datum
+json_build_object_ext(PG_FUNCTION_ARGS)
+{
+	return json_build_object_worker(fcinfo, 2,
+									PG_GETARG_BOOL(0), PG_GETARG_BOOL(1));
 }
 
 /*

@@ -201,6 +201,7 @@ typedef enum NodeTag
 	T_JsonFormat,
 	T_JsonReturning,
 	T_JsonValueExpr,
+	T_JsonCtorExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

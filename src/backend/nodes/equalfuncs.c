@@ -848,6 +848,22 @@ _equalJsonValueExpr(const JsonValueExpr *a, const JsonValueExpr *b)
 	return true;
 }
 
+static bool
+_equalJsonCtorExpr(const JsonCtorExpr *a, const JsonCtorExpr *b)
+{
+	COMPARE_NODE_FIELD(func);
+	COMPARE_SCALAR_FIELD(type);
+	COMPARE_SCALAR_FIELD(returning.format.type);
+	COMPARE_SCALAR_FIELD(returning.format.encoding);
+	COMPARE_LOCATION_FIELD(returning.format.location);
+	COMPARE_SCALAR_FIELD(returning.typid);
+	COMPARE_SCALAR_FIELD(returning.typmod);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+	COMPARE_SCALAR_FIELD(unique);
+
+	return true;
+}
+
 /*
  * Stuff from pathnodes.h
  */
@@ -3248,6 +3264,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_JsonValueExpr:
 			retval = _equalJsonValueExpr(a, b);
+			break;
+		case T_JsonCtorExpr:
+			retval = _equalJsonCtorExpr(a, b);
 			break;
 
 			/*

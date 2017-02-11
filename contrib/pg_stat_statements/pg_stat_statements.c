@@ -3112,6 +3112,17 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) expr->format);
 			}
 			break;
+		case T_JsonCtorExpr:
+			{
+				JsonCtorExpr *ctor = (JsonCtorExpr *) node;
+
+				JumbleExpr(jstate, (Node *) ctor->func);
+				JumbleExpr(jstate, (Node *) ctor->returning);
+				APP_JUMB(ctor->type);
+				APP_JUMB(ctor->unique);
+				APP_JUMB(ctor->absent_on_null);
+			}
+			break;
 		case T_List:
 			foreach(temp, (List *) node)
 			{

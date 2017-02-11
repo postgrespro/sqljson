@@ -1389,6 +1389,27 @@ _readJsonValueExpr(void)
 }
 
 /*
+ * _readJsonCtorExpr
+ */
+static JsonCtorExpr *
+_readJsonCtorExpr(void)
+{
+	READ_LOCALS(JsonCtorExpr);
+
+	READ_NODE_FIELD(func);
+	READ_INT_FIELD(type);
+	READ_ENUM_FIELD(returning.format.type, JsonFormatType);
+	READ_ENUM_FIELD(returning.format.encoding, JsonEncoding);
+	READ_LOCATION_FIELD(returning.format.location);
+	READ_OID_FIELD(returning.typid);
+	READ_INT_FIELD(returning.typmod);
+	READ_BOOL_FIELD(unique);
+	READ_BOOL_FIELD(absent_on_null);
+
+	READ_DONE();
+}
+
+/*
  *	Stuff from pathnodes.h.
  *
  * Mostly we don't need to read planner nodes back in again, but some
@@ -2931,6 +2952,8 @@ parseNodeString(void)
 		return_value = _readJsonReturning();
 	else if (MATCH("JSONVALUEEXPR", 13))
 		return_value = _readJsonValueExpr();
+	else if (MATCH("JSONCTOREXPR", 12))
+		return_value = _readJsonCtorExpr();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

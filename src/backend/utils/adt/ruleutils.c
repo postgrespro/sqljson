@@ -448,6 +448,8 @@ static void get_coercion_expr(Node *arg, deparse_context *context,
 							  Node *parentNode);
 static void get_const_expr(Const *constval, deparse_context *context,
 						   int showtype);
+static void get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
+							   bool showimplicit);
 static void get_const_collation(Const *constval, deparse_context *context);
 static void simple_quote_literal(StringInfo buf, const char *val);
 static void get_sublink_expr(SubLink *sublink, deparse_context *context);
@@ -5820,7 +5822,8 @@ get_rule_sortgroupclause(Index ref, List *tlist, bool force_colno,
 		bool		need_paren = (PRETTY_PAREN(context)
 								  || IsA(expr, FuncExpr)
 								  || IsA(expr, Aggref)
-								  || IsA(expr, WindowFunc));
+								  || IsA(expr, WindowFunc)
+								  || IsA(expr, JsonCtorExpr));
 
 		if (need_paren)
 			appendStringInfoChar(context->buf, '(');
@@ -7617,6 +7620,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_Aggref:
 		case T_WindowFunc:
 		case T_FuncExpr:
+		case T_JsonCtorExpr:
 			/* function-like: name(..) or name[..] */
 			return true;
 
@@ -9122,6 +9126,10 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
+		case T_JsonCtorExpr:
+			get_json_ctor_expr((JsonCtorExpr *) node, context, false);
+			break;
+
 		case T_List:
 			{
 				char	   *sep;
@@ -9372,6 +9380,78 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	}
 	appendStringInfoChar(buf, ')');
 }
+
+static void
+get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplicit)
+{
+	StringInfo	buf = context->buf;
+	const char *funcname;
+	int			firstarg;
+	int			nargs;
+	ListCell   *lc;
+
+	switch (ctor->type)
+	{
+		case JSCTOR_JSON_OBJECT:
+			funcname = "JSON_OBJECT";
+			firstarg = 2;
+			break;
+		case JSCTOR_JSON_ARRAY:
+			funcname = "JSON_ARRAY";
+			firstarg = 1;
+			break;
+		case JSCTOR_JSON_OBJECTAGG:
+			funcname = "JSON_OBJECTAGG";
+			firstarg = 2;
+			break;
+		case JSCTOR_JSON_ARRAYAGG:
+			funcname = "JSON_ARRAYAGG";
+			firstarg = 2;
+			break;
+		default:
+			elog(ERROR, "invalid JsonCtorExprType %d", ctor->type);
+	}
+
+	appendStringInfo(buf, "%s(", funcname);
+
+	nargs = 0;
+	foreach(lc, ctor->func->args)
+	{
+		if (nargs++ < firstarg)
+			continue;
+
+		if (nargs > firstarg + 1)
+		{
+			const char *sep = ctor->type == JSCTOR_JSON_OBJECT &&
+				!((nargs - firstarg) % 2) ? " : " : ", ";
+
+			appendStringInfoString(buf, sep);
+		}
+
+		get_rule_expr((Node *) lfirst(lc), context, true);
+	}
+
+	if (ctor->absent_on_null)
+	{
+		if (ctor->type == JSCTOR_JSON_OBJECT ||
+			ctor->type == JSCTOR_JSON_OBJECTAGG)
+			appendStringInfoString(context->buf, " ABSENT ON NULL");
+	}
+	else
+	{
+		if (ctor->type == JSCTOR_JSON_ARRAY ||
+			ctor->type == JSCTOR_JSON_ARRAYAGG)
+			appendStringInfoString(context->buf, " NULL ON NULL");
+	}
+
+	if (ctor->unique)
+		appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
+
+	get_json_returning(&ctor->returning, context, true);
+
+	appendStringInfo(buf, ")");
+}
+
 
 /*
  * get_agg_expr			- Parse back an Aggref node
