@@ -3679,6 +3679,30 @@ raw_expression_tree_walker(Node *node,
 			break;
 		case T_CommonTableExpr:
 			return walker(((CommonTableExpr *) node)->ctequery, context);
+		case T_JsonValueExpr:
+			return walker(((JsonValueExpr *) node)->expr, context);
+		case T_JsonOutput:
+			return walker(((JsonOutput *) node)->typename, context);
+		case T_JsonKeyValue:
+			{
+				JsonKeyValue *jkv = (JsonKeyValue *) node;
+
+				if (walker(jkv->key, context))
+					return true;
+				if (walker(jkv->value, context))
+					return true;
+			}
+			break;
+		case T_JsonObjectCtor:
+			{
+				JsonObjectCtor *joc = (JsonObjectCtor *) node;
+
+				if (walker(joc->output, context))
+					return true;
+				if (walker(joc->exprs, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
