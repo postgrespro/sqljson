@@ -643,7 +643,7 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING char(10));
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING char(3));
  ?column? 
 ----------
- 
+ [1,
 (1 row)
 
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING text FORMAT JSON);
