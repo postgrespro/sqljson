@@ -51,6 +51,15 @@ typedef enum					/* type categories for datum_to_jsonb */
 	JSONBTYPE_OTHER				/* all else */
 } JsonbTypeCategory;
 
+typedef struct JsonbUniqueCheckContext
+{
+	MemoryContext mcxt;
+	JsonbValue *obj;
+	int		   *skipped_keys;
+	int			skipped_keys_allocated;
+	int			skipped_keys_count;
+} JsonbUniqueCheckContext;
+
 typedef struct JsonbAggState
 {
 	JsonbInState *res;
@@ -88,6 +97,8 @@ static void add_jsonb(Datum val, bool is_null, JsonbInState *result,
 static JsonbParseState *clone_parse_state(JsonbParseState *state);
 static char *JsonbToCStringWorker(StringInfo out, JsonbContainer *in, int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
+static Datum jsonb_build_array_worker(FunctionCallInfo fcinfo, int first_vararg,
+									  bool absent_on_null);
 
 /*
  * jsonb type input function
@@ -1182,17 +1193,112 @@ to_jsonb(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
 }
 
-/*
- * SQL function jsonb_build_object(variadic "any")
- */
-Datum
-jsonb_build_object(PG_FUNCTION_ARGS)
+static inline void
+jsonb_unique_check_init(JsonbUniqueCheckContext *cxt, JsonbValue *obj,
+						MemoryContext mcxt)
+{
+	cxt->mcxt = mcxt;
+	cxt->obj = obj;
+	cxt->skipped_keys = NULL;
+	cxt->skipped_keys_count = 0;
+	cxt->skipped_keys_allocated = 0;
+}
+
+static inline void
+jsonb_unique_check_add_skipped(JsonbUniqueCheckContext *cxt)
+{
+	if (cxt->skipped_keys_count >= cxt->skipped_keys_allocated)
+	{
+		if (cxt->skipped_keys_allocated)
+		{
+			cxt->skipped_keys_allocated *= 2;
+			cxt->skipped_keys = repalloc(cxt->skipped_keys,
+										 sizeof(*cxt->skipped_keys) *
+										 cxt->skipped_keys_allocated);
+		}
+		else
+		{
+			cxt->skipped_keys_allocated = 16;
+			cxt->skipped_keys = MemoryContextAlloc(cxt->mcxt,
+												   sizeof(*cxt->skipped_keys) *
+												   cxt->skipped_keys_allocated);
+		}
+	}
+
+	cxt->skipped_keys[cxt->skipped_keys_count++] = cxt->obj->val.object.nPairs;
+}
+
+static inline void
+jsonb_unique_check_key(JsonbUniqueCheckContext *cxt, bool skip)
+{
+	JsonbPair *pair = cxt->obj->val.object.pairs;
+	/* nPairs incremented only after value was appended */
+	JsonbPair *last = &pair[cxt->obj->val.object.nPairs];
+
+	for (; pair < last; pair++)
+		if (pair->key.val.string.len ==
+			last->key.val.string.len &&
+			!memcmp(pair->key.val.string.val,
+					last->key.val.string.val,
+					last->key.val.string.len))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_JSON_OBJECT_KEY_VALUE),
+					 errmsg("duplicate JSON key \"%*s\"",
+							last->key.val.string.len,
+							last->key.val.string.val)));
+
+	if (skip)
+	{
+		/* save skipped key index */
+		jsonb_unique_check_add_skipped(cxt);
+
+		/* add dummy null value for the skipped key */
+		last->value.type = jbvNull;
+		cxt->obj->val.object.nPairs++;
+	}
+}
+
+static void
+jsonb_unique_check_remove_skipped_keys(JsonbUniqueCheckContext *cxt)
+{
+	int		   *skipped_keys = cxt->skipped_keys;
+	int			skipped_keys_count = cxt->skipped_keys_count;
+
+	if (!skipped_keys_count)
+		return;
+
+	if (cxt->obj->val.object.nPairs > skipped_keys_count)
+	{
+		/* remove skipped key-value pairs */
+		JsonbPair  *pairs = cxt->obj->val.object.pairs;
+		int			i;
+
+		jsonb_unique_check_add_skipped(cxt);
+
+		for (i = 0; i < skipped_keys_count; i++)
+		{
+			int			skipped_key = skipped_keys[i];
+			int			nkeys = skipped_keys[i + 1] - skipped_key - 1;
+
+			memmove(&pairs[skipped_key - i],
+					&pairs[skipped_key + 1],
+					sizeof(JsonbPair) * nkeys);
+		}
+	}
+
+	cxt->obj->val.object.nPairs -= skipped_keys_count;
+}
+
+static Datum
+jsonb_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
+						  bool absent_on_null, bool unique_keys)
 {
 	int			nargs = PG_NARGS();
 	int			i;
 	Datum		arg;
 	Oid			val_type;
 	JsonbInState result;
+	JsonbUniqueCheckContext unique_check;
 
 	if (nargs % 2 != 0)
 		ereport(ERROR,
@@ -1203,14 +1309,20 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 
 	result.res = pushJsonbValue(&result.parseState, WJB_BEGIN_OBJECT, NULL);
 
-	for (i = 0; i < nargs; i += 2)
+	/* if (unique_keys) */
+	jsonb_unique_check_init(&unique_check, result.res,
+							CurrentMemoryContext);
+
+	for (i = first_vararg; i < nargs; i += 2)
 	{
 		/* process key */
+		bool		skip;
 
 		if (PG_ARGISNULL(i))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("argument %d: key must not be null", i + 1)));
+
 		val_type = get_fn_expr_argtype(fcinfo->flinfo, i);
 
 		/*
@@ -1231,7 +1343,24 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("could not determine data type for argument %d", i + 1)));
 
+		/*
+		 * Skip null values if absent_on_null unless key uniqueness check is
+		 * needed (because we must save keys in this case).
+		 */
+		skip = absent_on_null && PG_ARGISNULL(i + 1);
+
+		if (skip && !unique_keys)
+			continue;
+
 		add_jsonb(arg, false, &result, val_type, true);
+
+		if (unique_keys)
+		{
+			jsonb_unique_check_key(&unique_check, skip);
+
+			if (skip)
+				continue;
+		}
 
 		/* process value */
 
@@ -1256,9 +1385,31 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 		add_jsonb(arg, PG_ARGISNULL(i + 1), &result, val_type, false);
 	}
 
+	if (unique_keys && absent_on_null)
+		jsonb_unique_check_remove_skipped_keys(&unique_check);
+
 	result.res = pushJsonbValue(&result.parseState, WJB_END_OBJECT, NULL);
 
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
+}
+
+/*
+ * SQL function jsonb_build_object(variadic "any")
+ */
+Datum
+jsonb_build_object(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_object_worker(fcinfo, 0, false, false);
+}
+
+/*
+ * SQL function jsonb_build_object_ext(absent_on_null bool, unique bool, variadic "any")
+ */
+Datum
+jsonb_build_object_ext(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_object_worker(fcinfo, 2,
+									 PG_GETARG_BOOL(0), PG_GETARG_BOOL(1));
 }
 
 /*
