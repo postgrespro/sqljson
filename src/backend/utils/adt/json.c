@@ -66,6 +66,23 @@ typedef enum					/* type categories for datum_to_json */
 	JSONTYPE_OTHER				/* all else */
 } JsonTypeCategory;
 
+/* Context for key uniqueness check */
+typedef struct JsonUniqueCheckContext
+{
+	struct JsonKeyInfo
+	{
+		int			offset;				/* key offset:
+										 *   in result if positive,
+										 *   in skipped_keys if negative */
+		int			length;				/* key length */
+	}		   *keys;					/* key info array */
+	int			nkeys;					/* number of processed keys */
+	int			nallocated;				/* number of allocated keys in array */
+	StringInfo	result;					/* resulting json */
+	StringInfoData skipped_keys;		/* skipped keys with NULL values */
+	MemoryContext mcxt;					/* context for saving skipped keys */
+} JsonUniqueCheckContext;
+
 typedef struct JsonAggState
 {
 	StringInfo	str;
@@ -2058,6 +2075,100 @@ json_agg_finalfn(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(catenate_stringinfo_string(state->str, "]"));
 }
 
+static inline void
+json_unique_check_init(JsonUniqueCheckContext *cxt,
+					   StringInfo result, int nkeys)
+{
+	cxt->mcxt = CurrentMemoryContext;
+	cxt->nkeys = 0;
+	cxt->nallocated = nkeys ? nkeys : 16;
+	cxt->keys = palloc(sizeof(*cxt->keys) * cxt->nallocated);
+	cxt->result = result;
+	cxt->skipped_keys.data = NULL;
+}
+
+static inline void
+json_unique_check_free(JsonUniqueCheckContext *cxt)
+{
+	if (cxt->keys)
+		pfree(cxt->keys);
+
+	if (cxt->skipped_keys.data)
+		pfree(cxt->skipped_keys.data);
+}
+
+/* On-demand initialization of skipped_keys StringInfo structure */
+static inline StringInfo
+json_unique_check_get_skipped_keys(JsonUniqueCheckContext *cxt)
+{
+	StringInfo	out = &cxt->skipped_keys;
+
+	if (!out->data)
+	{
+		MemoryContext oldcxt = MemoryContextSwitchTo(cxt->mcxt);
+		initStringInfo(out);
+		MemoryContextSwitchTo(oldcxt);
+	}
+
+	return out;
+}
+
+/*
+ * Save current key offset (key is not yet appended) to the key list, key
+ * length is saved later in json_unique_check_key() when the key is appended.
+ */
+static inline void
+json_unique_check_save_key_offset(JsonUniqueCheckContext *cxt, StringInfo out)
+{
+	if (cxt->nkeys >= cxt->nallocated)
+	{
+		cxt->nallocated *= 2;
+		cxt->keys = repalloc(cxt->keys, sizeof(*cxt->keys) * cxt->nallocated);
+	}
+
+	cxt->keys[cxt->nkeys++].offset = out->len;
+}
+
+/*
+ * Check uniqueness of key already appended to 'out' StringInfo.
+ */
+static inline void
+json_unique_check_key(JsonUniqueCheckContext *cxt, StringInfo out)
+{
+	struct JsonKeyInfo *keys = cxt->keys;
+	int			curr = cxt->nkeys - 1;
+	int			offset = keys[curr].offset;
+	int			length = out->len - offset;
+	char	   *curr_key = &out->data[offset];
+	int			i;
+
+	keys[curr].length = length; /* save current key length */
+
+	if (out == &cxt->skipped_keys)
+		/* invert offset for skipped keys for their recognition */
+		keys[curr].offset = -keys[curr].offset;
+
+	/* check collisions with previous keys */
+	for (i = 0; i < curr; i++)
+	{
+		char	   *prev_key;
+
+		if (cxt->keys[i].length != length)
+			continue;
+
+		offset = cxt->keys[i].offset;
+
+		prev_key = offset > 0
+				? &cxt->result->data[offset]
+				: &cxt->skipped_keys.data[-offset];
+
+		if (!memcmp(curr_key, prev_key, length))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_JSON_OBJECT_KEY_VALUE),
+					 errmsg("duplicate JSON key %s", curr_key)));
+	}
+}
+
 /*
  * json_object_agg transition function.
  *
@@ -2192,11 +2303,9 @@ catenate_stringinfo_string(StringInfo buffer, const char *addon)
 	return result;
 }
 
-/*
- * SQL function json_build_object(variadic "any")
- */
-Datum
-json_build_object(PG_FUNCTION_ARGS)
+static Datum
+json_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
+						 bool absent_on_null, bool unique_keys)
 {
 	int			nargs = PG_NARGS();
 	int			i;
@@ -2205,9 +2314,11 @@ json_build_object(PG_FUNCTION_ARGS)
 	Datum	   *args;
 	bool	   *nulls;
 	Oid		   *types;
+	JsonUniqueCheckContext unique_check;
 
 	/* fetch argument values to build the object */
-	nargs = extract_variadic_args(fcinfo, 0, false, &args, &types, &nulls);
+	nargs = extract_variadic_args(fcinfo, first_vararg, false,
+								  &args, &types, &nulls);
 
 	if (nargs < 0)
 		PG_RETURN_NULL();
@@ -2222,19 +2333,53 @@ json_build_object(PG_FUNCTION_ARGS)
 
 	appendStringInfoChar(result, '{');
 
+	if (unique_keys)
+		json_unique_check_init(&unique_check, result, nargs / 2);
+
 	for (i = 0; i < nargs; i += 2)
 	{
-		appendStringInfoString(result, sep);
-		sep = ", ";
+		StringInfo	out;
+		bool		skip;
+
+		/* Skip null values if absent_on_null */
+		skip = absent_on_null && nulls[i + 1];
+
+		if (skip)
+		{
+			/* If key uniqueness check is needed we must save skipped keys */
+			if (!unique_keys)
+				continue;
+
+			out = json_unique_check_get_skipped_keys(&unique_check);
+		}
+		else
+		{
+			appendStringInfoString(result, sep);
+			sep = ", ";
+			out = result;
+		}
 
 		/* process key */
 		if (nulls[i])
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument %d cannot be null", i + 1),
+					 errmsg("argument %d cannot be null", first_vararg + i + 1),
 					 errhint("Object keys should be text.")));
 
-		add_json(args[i], false, result, types[i], true);
+		if (unique_keys)
+			/* save key offset before key appending */
+			json_unique_check_save_key_offset(&unique_check, out);
+
+		add_json(args[i], false, out, types[i], true);
+
+		if (unique_keys)
+		{
+			/* check key uniqueness after key appending */
+			json_unique_check_key(&unique_check, out);
+
+			if (skip)
+				continue;
+		}
 
 		appendStringInfoString(result, " : ");
 
@@ -2244,7 +2389,29 @@ json_build_object(PG_FUNCTION_ARGS)
 
 	appendStringInfoChar(result, '}');
 
+	if (unique_keys)
+		json_unique_check_free(&unique_check);
+
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+}
+
+/*
+ * SQL function json_build_object(variadic "any")
+ */
+Datum
+json_build_object(PG_FUNCTION_ARGS)
+{
+	return json_build_object_worker(fcinfo, 0, false, false);
+}
+
+/*
+ * SQL function json_build_object_ext(absent_on_null bool, unique bool, variadic "any")
+ */
+Datum
+json_build_object_ext(PG_FUNCTION_ARGS)
+{
+	return json_build_object_worker(fcinfo, 2,
+									PG_GETARG_BOOL(0), PG_GETARG_BOOL(1));
 }
 
 /*

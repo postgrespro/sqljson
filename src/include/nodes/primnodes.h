@@ -252,6 +252,10 @@ typedef struct Param
 typedef enum FuncFormat
 {
 	FUNCFMT_REGULAR = 0,
+	FUNCFMT_JSON_OBJECT = 1,
+	FUNCFMT_JSON_ARRAY = 2,
+	FUNCFMT_JSON_OBJECTAGG = 3,
+	FUNCFMT_JSON_ARRAYAGG = 4
 } FuncFormat;
 
 /*

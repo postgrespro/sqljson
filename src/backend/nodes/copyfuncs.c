@@ -2192,6 +2192,84 @@ _copyOnConflictExpr(const OnConflictExpr *from)
 	return newnode;
 }
 
+/*
+ * _copyJsonValueExpr
+ */
+static JsonValueExpr *
+_copyJsonValueExpr(const JsonValueExpr *from)
+{
+	JsonValueExpr  *newnode = makeNode(JsonValueExpr);
+
+	COPY_NODE_FIELD(expr);
+	COPY_SCALAR_FIELD(format);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonKeyValue
+ */
+static JsonKeyValue *
+_copyJsonKeyValue(const JsonKeyValue *from)
+{
+	JsonKeyValue *newnode = makeNode(JsonKeyValue);
+
+	COPY_NODE_FIELD(key);
+	COPY_NODE_FIELD(value);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonObjectCtor
+ */
+static JsonObjectCtor *
+_copyJsonObjectCtor(const JsonObjectCtor *from)
+{
+	JsonObjectCtor *newnode = makeNode(JsonObjectCtor);
+
+	COPY_NODE_FIELD(exprs);
+	COPY_NODE_FIELD(output);
+	COPY_SCALAR_FIELD(absent_on_null);
+	COPY_SCALAR_FIELD(unique);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonCtorOpts
+ */
+static JsonCtorOpts *
+_copyJsonCtorOpts(const JsonCtorOpts *from)
+{
+	JsonCtorOpts *newnode = makeNode(JsonCtorOpts);
+
+	COPY_SCALAR_FIELD(returning.format.type);
+	COPY_SCALAR_FIELD(returning.format.encoding);
+	COPY_LOCATION_FIELD(returning.format.location);
+	COPY_SCALAR_FIELD(returning.typid);
+	COPY_SCALAR_FIELD(returning.typmod);
+	COPY_SCALAR_FIELD(unique);
+	COPY_SCALAR_FIELD(absent_on_null);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonOutput
+ */
+static JsonOutput *
+_copyJsonOutput(const JsonOutput *from)
+{
+	JsonOutput	   *newnode = makeNode(JsonOutput);
+
+	COPY_NODE_FIELD(typename);
+	COPY_SCALAR_FIELD(returning);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *						relation.h copy functions
  *
@@ -5078,6 +5156,21 @@ copyObjectImpl(const void *from)
 			break;
 		case T_OnConflictExpr:
 			retval = _copyOnConflictExpr(from);
+			break;
+		case T_JsonValueExpr:
+			retval = _copyJsonValueExpr(from);
+			break;
+		case T_JsonKeyValue:
+			retval = _copyJsonKeyValue(from);
+			break;
+		case T_JsonCtorOpts:
+			retval = _copyJsonCtorOpts(from);
+			break;
+		case T_JsonObjectCtor:
+			retval = _copyJsonObjectCtor(from);
+			break;
+		case T_JsonOutput:
+			retval = _copyJsonOutput(from);
 			break;
 
 			/*

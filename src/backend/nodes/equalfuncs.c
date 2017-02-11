@@ -818,6 +818,31 @@ _equalOnConflictExpr(const OnConflictExpr *a, const OnConflictExpr *b)
 	return true;
 }
 
+static bool
+_equalJsonValueExpr(const JsonValueExpr *a, const JsonValueExpr *b)
+{
+	COMPARE_NODE_FIELD(expr);
+	COMPARE_SCALAR_FIELD(format.type);
+	COMPARE_SCALAR_FIELD(format.encoding);
+	COMPARE_LOCATION_FIELD(format.location);
+
+	return true;
+}
+
+static bool
+_equalJsonCtorOpts(const JsonCtorOpts *a, const JsonCtorOpts *b)
+{
+	COMPARE_SCALAR_FIELD(returning.format.type);
+	COMPARE_SCALAR_FIELD(returning.format.encoding);
+	COMPARE_LOCATION_FIELD(returning.format.location);
+	COMPARE_SCALAR_FIELD(returning.typid);
+	COMPARE_SCALAR_FIELD(returning.typmod);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+	COMPARE_SCALAR_FIELD(unique);
+
+	return true;
+}
+
 /*
  * Stuff from relation.h
  */
@@ -3165,6 +3190,12 @@ equal(const void *a, const void *b)
 			break;
 		case T_JoinExpr:
 			retval = _equalJoinExpr(a, b);
+			break;
+		case T_JsonValueExpr:
+			retval = _equalJsonValueExpr(a, b);
+			break;
+		case T_JsonCtorOpts:
+			retval = _equalJsonCtorOpts(a, b);
 			break;
 
 			/*

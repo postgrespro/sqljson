@@ -163,6 +163,7 @@ test: json_encoding
 test: jsonpath
 test: json_jsonpath
 test: jsonb_jsonpath
+test: sqljson
 test: indirect_toast
 test: equivclass
 test: plancache

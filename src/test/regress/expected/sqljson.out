@@ -1,0 +1,284 @@
+-- JSON_OBJECT()
+SELECT JSON_OBJECT();
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING json);
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING json FORMAT JSON);
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING jsonb);
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING jsonb FORMAT JSON);
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING text);
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING text FORMAT JSON);
+ json_object 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING text FORMAT JSON ENCODING UTF8);
+ERROR:  cannot set JSON encoding for non-bytea output types
+LINE 1: SELECT JSON_OBJECT(RETURNING text FORMAT JSON ENCODING UTF8)...
+                                          ^
+SELECT JSON_OBJECT(RETURNING text FORMAT JSON ENCODING INVALID_ENCODING);
+ERROR:  unrecognized JSON encoding: invalid_encoding
+SELECT JSON_OBJECT(RETURNING bytea);
+ json_object 
+-------------
+ \x7b7d
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING bytea FORMAT JSON);
+ json_object 
+-------------
+ \x7b7d
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING bytea FORMAT JSON ENCODING UTF8);
+ json_object 
+-------------
+ \x7b7d
+(1 row)
+
+SELECT JSON_OBJECT(RETURNING bytea FORMAT JSON ENCODING UTF16);
+ERROR:  unsupported JSON encoding
+LINE 1: SELECT JSON_OBJECT(RETURNING bytea FORMAT JSON ENCODING UTF1...
+                                           ^
+HINT:  only UTF8 JSON encoding is supported
+SELECT JSON_OBJECT(RETURNING bytea FORMAT JSON ENCODING UTF32);
+ERROR:  unsupported JSON encoding
+LINE 1: SELECT JSON_OBJECT(RETURNING bytea FORMAT JSON ENCODING UTF3...
+                                           ^
+HINT:  only UTF8 JSON encoding is supported
+SELECT JSON_OBJECT('foo': NULL::int FORMAT JSON);
+ERROR:  cannot use non-string types with explicit FORMAT JSON clause
+LINE 1: SELECT JSON_OBJECT('foo': NULL::int FORMAT JSON);
+                                            ^
+SELECT JSON_OBJECT('foo': NULL::int FORMAT JSON ENCODING UTF8);
+ERROR:  JSON ENCODING clause is only allowed for bytea input type
+LINE 1: SELECT JSON_OBJECT('foo': NULL::int FORMAT JSON ENCODING UTF...
+                                            ^
+SELECT JSON_OBJECT('foo': NULL::json FORMAT JSON);
+WARNING:  FORMAT JSON has no effect for json and jsonb types
+  json_object   
+----------------
+ {"foo" : null}
+(1 row)
+
+SELECT JSON_OBJECT('foo': NULL::json FORMAT JSON ENCODING UTF8);
+ERROR:  JSON ENCODING clause is only allowed for bytea input type
+LINE 1: SELECT JSON_OBJECT('foo': NULL::json FORMAT JSON ENCODING UT...
+                                             ^
+SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON);
+WARNING:  FORMAT JSON has no effect for json and jsonb types
+  json_object   
+----------------
+ {"foo" : null}
+(1 row)
+
+SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON ENCODING UTF8);
+ERROR:  JSON ENCODING clause is only allowed for bytea input type
+LINE 1: SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON ENCODING U...
+                                              ^
+SELECT JSON_OBJECT(NULL: 1);
+ERROR:  argument 3 cannot be null
+HINT:  Object keys should be text.
+SELECT JSON_OBJECT('a': 2 + 3);
+ json_object 
+-------------
+ {"a" : 5}
+(1 row)
+
+SELECT JSON_OBJECT('a' VALUE 2 + 3);
+ json_object 
+-------------
+ {"a" : 5}
+(1 row)
+
+--SELECT JSON_OBJECT(KEY 'a' VALUE 2 + 3);
+SELECT JSON_OBJECT('a' || 2: 1);
+ json_object 
+-------------
+ {"a2" : 1}
+(1 row)
+
+SELECT JSON_OBJECT(('a' || 2) VALUE 1);
+ json_object 
+-------------
+ {"a2" : 1}
+(1 row)
+
+--SELECT JSON_OBJECT('a' || 2 VALUE 1);
+--SELECT JSON_OBJECT(KEY 'a' || 2 VALUE 1);
+SELECT JSON_OBJECT('a': 2::text);
+ json_object 
+-------------
+ {"a" : "2"}
+(1 row)
+
+SELECT JSON_OBJECT('a' VALUE 2::text);
+ json_object 
+-------------
+ {"a" : "2"}
+(1 row)
+
+--SELECT JSON_OBJECT(KEY 'a' VALUE 2::text);
+SELECT JSON_OBJECT(1::text: 2);
+ json_object 
+-------------
+ {"1" : 2}
+(1 row)
+
+SELECT JSON_OBJECT((1::text) VALUE 2);
+ json_object 
+-------------
+ {"1" : 2}
+(1 row)
+
+--SELECT JSON_OBJECT(1::text VALUE 2);
+--SELECT JSON_OBJECT(KEY 1::text VALUE 2);
+SELECT JSON_OBJECT(json '[1]': 123);
+ERROR:  key value must be scalar, not array, composite, or json
+SELECT JSON_OBJECT(ARRAY[1,2,3]: 'aaa');
+ERROR:  key value must be scalar, not array, composite, or json
+SELECT JSON_OBJECT(
+	'a': '123',
+	1.23: 123,
+	'c': json '[ 1,true,{ } ]',
+	'd': jsonb '{ "x" : 123.45 }'
+);
+                              json_object                               
+------------------------------------------------------------------------
+ {"a" : "123", "1.23" : 123, "c" : [ 1,true,{ } ], "d" : {"x": 123.45}}
+(1 row)
+
+SELECT JSON_OBJECT(
+	'a': '123',
+	1.23: 123,
+	'c': json '[ 1,true,{ } ]',
+	'd': jsonb '{ "x" : 123.45 }'
+	RETURNING jsonb
+);
+                            json_object                            
+-------------------------------------------------------------------
+ {"a": "123", "c": [1, true, {}], "d": {"x": 123.45}, "1.23": 123}
+(1 row)
+
+/*
+SELECT JSON_OBJECT(
+	'a': '123',
+	KEY 1.23 VALUE 123,
+	'c' VALUE json '[1, true, {}]'
+);
+*/
+SELECT JSON_OBJECT('a': '123', 'b': JSON_OBJECT('a': 111, 'b': 'aaa'));
+                  json_object                  
+-----------------------------------------------
+ {"a" : "123", "b" : {"a" : 111, "b" : "aaa"}}
+(1 row)
+
+SELECT JSON_OBJECT('a': '123', 'b': JSON_OBJECT('a': 111, 'b': 'aaa' RETURNING jsonb));
+                 json_object                 
+---------------------------------------------
+ {"a" : "123", "b" : {"a": 111, "b": "aaa"}}
+(1 row)
+
+SELECT JSON_OBJECT('a': JSON_OBJECT('b': 1 RETURNING text));
+      json_object      
+-----------------------
+ {"a" : "{\"b\" : 1}"}
+(1 row)
+
+SELECT JSON_OBJECT('a': JSON_OBJECT('b': 1 RETURNING text) FORMAT JSON);
+    json_object    
+-------------------
+ {"a" : {"b" : 1}}
+(1 row)
+
+SELECT JSON_OBJECT('a': JSON_OBJECT('b': 1 RETURNING bytea));
+           json_object           
+---------------------------------
+ {"a" : "\\x7b226222203a20317d"}
+(1 row)
+
+SELECT JSON_OBJECT('a': JSON_OBJECT('b': 1 RETURNING bytea) FORMAT JSON);
+    json_object    
+-------------------
+ {"a" : {"b" : 1}}
+(1 row)
+
+SELECT JSON_OBJECT('a': '1', 'b': NULL, 'c': 2);
+           json_object            
+----------------------------------
+ {"a" : "1", "b" : null, "c" : 2}
+(1 row)
+
+SELECT JSON_OBJECT('a': '1', 'b': NULL, 'c': 2 NULL ON NULL);
+           json_object            
+----------------------------------
+ {"a" : "1", "b" : null, "c" : 2}
+(1 row)
+
+SELECT JSON_OBJECT('a': '1', 'b': NULL, 'c': 2 ABSENT ON NULL);
+     json_object      
+----------------------
+ {"a" : "1", "c" : 2}
+(1 row)
+
+SELECT JSON_OBJECT(1: 1, '1': NULL WITH UNIQUE);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '1': NULL ABSENT ON NULL WITH UNIQUE);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '1': NULL NULL ON NULL WITH UNIQUE RETURNING jsonb);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '1': NULL ABSENT ON NULL WITH UNIQUE RETURNING jsonb);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 NULL ON NULL WITH UNIQUE);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITH UNIQUE);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITHOUT UNIQUE);
+    json_object     
+--------------------
+ {"1" : 1, "1" : 1}
+(1 row)
+
+SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITH UNIQUE RETURNING jsonb);
+ERROR:  duplicate JSON key "1"
+SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITHOUT UNIQUE RETURNING jsonb);
+ json_object 
+-------------
+ {"1": 1}
+(1 row)
+
+SELECT JSON_OBJECT(1: 1, '2': NULL, '3': 1, 4: NULL, '5': 'a' ABSENT ON NULL WITH UNIQUE RETURNING jsonb);
+        json_object         
+----------------------------
+ {"1": 1, "3": 1, "5": "a"}
+(1 row)
+
