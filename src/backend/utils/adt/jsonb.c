@@ -216,6 +216,23 @@ jsonb_typeof(PG_FUNCTION_ARGS)
 }
 
 /*
+ * jsonb_from_bytea -- bytea to jsonb conversion with validation
+ */
+Datum
+jsonb_from_bytea(PG_FUNCTION_ARGS)
+{
+	bytea	   *ba = PG_GETARG_BYTEA_P(0);
+	Jsonb	   *jb = (Jsonb *) ba;
+
+	if (!JsonbValidate(VARDATA(jb), VARSIZE(jb) - VARHDRSZ))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+				 errmsg("incorrect jsonb binary data format")));
+
+	PG_RETURN_JSONB(jb);
+}
+
+/*
  * jsonb_from_cstring
  *
  * Turns json string into a jsonb Datum.

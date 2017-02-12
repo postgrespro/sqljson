@@ -480,6 +480,10 @@ WHERE c.castfunc = p.oid AND
 -- As of 9.1, this finds the cast from pg_node_tree to text, which we
 -- intentionally do not provide a reverse pathway for.
 
+-- As of 10.0, this finds the cast from jsonb to bytea, because those are
+-- binary-compatible while the reverse goes through jsonb_from_bytea(),
+-- which does a jsonb structure validation.
+
 SELECT castsource::regtype, casttarget::regtype, castfunc, castcontext
 FROM pg_cast c
 WHERE c.castmethod = 'b' AND
