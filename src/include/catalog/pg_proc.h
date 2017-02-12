@@ -4979,6 +4979,8 @@ DATA(insert OID =  3804 (  jsonb_out		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0
 DESCR("I/O");
 DATA(insert OID =  3803 (  jsonb_send		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 17 "3802" _null_ _null_ _null_ _null_ _null_ jsonb_send _null_ _null_ _null_ ));
 DESCR("I/O");
+DATA(insert OID =  6105 (  jsonb_from_bytea	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 3802 "17" _null_ _null_ _null_ _null_ _null_ jsonb_from_bytea _null_ _null_ _null_ ));
+DESCR("bytea to jsonb");
 
 DATA(insert OID = 3263 (  jsonb_object	 PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 3802 "1009" _null_ _null_ _null_ _null_ _null_ jsonb_object _null_ _null_ _null_ ));
 DESCR("map text array of key value pairs to jsonb object");

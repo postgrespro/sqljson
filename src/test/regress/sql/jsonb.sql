@@ -1184,3 +1184,9 @@ select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": 
 select ts_headline('null'::jsonb, tsquery('aaa & bbb'));
 select ts_headline('{}'::jsonb, tsquery('aaa & bbb'));
 select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
+
+-- test jsonb to/from bytea conversion
+SELECT '{"a": 1, "b": [2, true]}'::jsonb::bytea;
+SELECT '{"a": 1, "b": [2, true]}'::jsonb::bytea::jsonb;
+SELECT 'aaaa'::bytea::jsonb;
+SELECT count(*) FROM testjsonb WHERE j::bytea::jsonb <> j;
