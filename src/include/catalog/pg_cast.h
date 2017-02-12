@@ -391,5 +391,8 @@ DATA(insert ( 1700 1700 1703 i f ));
 /* json to/from jsonb */
 DATA(insert (  114 3802    0 a i ));
 DATA(insert ( 3802	114    0 a i ));
+/* jsonb to/from bytea */
+DATA(insert ( 3802   17    0 e b ));
+DATA(insert (   17 3802 6105 e f ));
 
 #endif							/* PG_CAST_H */
