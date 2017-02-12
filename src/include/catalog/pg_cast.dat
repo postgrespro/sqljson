@@ -496,6 +496,13 @@
 { castsource => 'jsonb', casttarget => 'json', castfunc => '0',
   castcontext => 'a', castmethod => 'i' },
 
+# jsonb to/from bytea
+{ castsource => 'jsonb', casttarget => 'bytea', castfunc => '0',
+  castcontext => 'e', castmethod => 'b' },
+{ castsource => 'bytea', casttarget => 'jsonb',
+  castfunc => 'jsonb_from_bytea(bytea)',
+  castcontext => 'e', castmethod => 'f' },
+
 # jsonb to numeric and bool types
 { castsource => 'jsonb', casttarget => 'bool', castfunc => 'bool(jsonb)',
   castcontext => 'e', castmethod => 'f' },

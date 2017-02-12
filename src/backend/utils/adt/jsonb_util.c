@@ -1892,3 +1892,133 @@ uniqueifyJsonbObject(JsonbValue *object)
 		object->val.object.nPairs = res + 1 - object->val.object.pairs;
 	}
 }
+
+bool
+JsonbValidate(const void *data, uint32 size)
+{
+	const JsonbContainer *jbc = data;
+	const JEntry *entries;
+	const char *base;
+	uint32		header;
+	uint32		nentries;
+	uint32		offset;
+	uint32		i;
+	uint32		nkeys = 0;
+
+	check_stack_depth();
+
+	/* check header size */
+	if (size < offsetof(JsonbContainer, children))
+		return false;
+
+	size -= offsetof(JsonbContainer, children);
+
+	/* read header */
+	header = jbc->header;
+	entries = &jbc->children[0];
+	nentries = header & JB_CMASK;
+
+	switch (header & ~JB_CMASK)
+	{
+		case JB_FOBJECT:
+			nkeys = nentries;
+			nentries *= 2;
+			break;
+
+		case JB_FARRAY | JB_FSCALAR:
+			if (nentries != 1)
+				/* scalar pseudo-array must have one element */
+				return false;
+			break;
+
+		case JB_FARRAY:
+			break;
+
+		default:
+			/* invalid container type */
+			return false;
+	}
+
+	/* check JEntry array size */
+	if (size < sizeof(JEntry) * nentries)
+		return false;
+
+	size -= sizeof(JEntry) * nentries;
+
+	base = (const char *) &entries[nentries];
+
+	for (i = 0, offset = 0; i < nentries; i++)
+	{
+		JEntry		entry = entries[i];
+		uint32		offlen = JBE_OFFLENFLD(entry);
+		uint32		length;
+		uint32		nextOffset;
+
+		if (JBE_HAS_OFF(entry))
+		{
+			nextOffset = offlen;
+			length = nextOffset - offset;
+		}
+		else
+		{
+			length = offlen;
+			nextOffset = offset + length;
+		}
+
+		if (nextOffset < offset || nextOffset > size)
+			return false;
+
+		/* check that object key is string */
+		if (i < nkeys && !JBE_ISSTRING(entry))
+			return false;
+
+		switch (entry & JENTRY_TYPEMASK)
+		{
+			case JENTRY_ISSTRING:
+				break;
+
+			case JENTRY_ISNUMERIC:
+				{
+					uint32		padding = INTALIGN(offset) - offset;
+
+					if (length < padding)
+						return false;
+
+					if (length - padding < sizeof(struct varlena))
+						return false;
+
+					/* TODO JsonValidateNumeric(); */
+					break;
+				}
+
+			case JENTRY_ISBOOL_FALSE:
+			case JENTRY_ISBOOL_TRUE:
+			case JENTRY_ISNULL:
+				if (length)
+					return false;
+
+				break;
+
+			case JENTRY_ISCONTAINER:
+				{
+					uint32		padding = INTALIGN(offset) - offset;
+
+					if (length < padding)
+						return false;
+
+					if (!JsonbValidate(&base[offset + padding],
+									   length - padding))
+						return false;
+
+					break;
+				}
+
+			default:
+				return false;
+		}
+
+		offset = nextOffset;
+	}
+
+	return true;
+}

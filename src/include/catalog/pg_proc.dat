@@ -9131,6 +9131,9 @@
 { oid => '6062', descr => 'check jsonb value type',
   proname => 'jsonb_is_valid', prorettype => 'bool',
   proargtypes => 'jsonb text', prosrc => 'jsonb_is_valid' },
+{ oid => '6116', descr => 'bytea to jsonb',
+  proname => 'jsonb_from_bytea', prorettype => 'jsonb', proargtypes => 'bytea',
+  prosrc => 'jsonb_from_bytea' },
 
 { oid => '3478',
   proname => 'jsonb_object_field', prorettype => 'jsonb',

@@ -1250,3 +1250,9 @@ select '12345.0000000000000000000000000000000000000000000005'::jsonb::float8;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int2;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int4;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int8;
+
+-- test jsonb to/from bytea conversion
+SELECT '{"a": 1, "b": [2, true]}'::jsonb::bytea;
+SELECT '{"a": 1, "b": [2, true]}'::jsonb::bytea::jsonb;
+SELECT 'aaaa'::bytea::jsonb;
+SELECT count(*) FROM testjsonb WHERE j::bytea::jsonb <> j;

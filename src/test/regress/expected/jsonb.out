@@ -4930,3 +4930,24 @@ select '12345.0000000000000000000000000000000000000000000005'::jsonb::int8;
  12345
 (1 row)
 
+-- test jsonb to/from bytea conversion
+SELECT '{"a": 1, "b": [2, true]}'::jsonb::bytea;
+                                                   bytea                                                    
+------------------------------------------------------------------------------------------------------------
+ \x0200002001000080010000000a000010140000506162000020000000008001000200004008000090000000302000000000800200
+(1 row)
+
+SELECT '{"a": 1, "b": [2, true]}'::jsonb::bytea::jsonb;
+          jsonb           
+--------------------------
+ {"a": 1, "b": [2, true]}
+(1 row)
+
+SELECT 'aaaa'::bytea::jsonb;
+ERROR:  incorrect jsonb binary data format
+SELECT count(*) FROM testjsonb WHERE j::bytea::jsonb <> j;
+ count 
+-------
+     0
+(1 row)
+
