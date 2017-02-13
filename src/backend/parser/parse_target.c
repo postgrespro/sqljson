@@ -1935,6 +1935,7 @@ FigureColnameInternal(Node *node, char **name)
 			*name = "json_object";
 			return 2;
 		case T_JsonArrayCtor:
+		case T_JsonArrayQueryCtor:
 			*name = "json_array";
 			return 2;
 		case T_JsonObjectAgg:
