@@ -1423,11 +1423,9 @@ jsonb_build_object_noargs(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
 }
 
-/*
- * SQL function jsonb_build_array(variadic "any")
- */
-Datum
-jsonb_build_array(PG_FUNCTION_ARGS)
+static Datum
+jsonb_build_array_worker(FunctionCallInfo fcinfo, int first_vararg,
+						 bool absent_on_null)
 {
 	int			nargs = PG_NARGS();
 	int			i;
@@ -1439,7 +1437,7 @@ jsonb_build_array(PG_FUNCTION_ARGS)
 
 	result.res = pushJsonbValue(&result.parseState, WJB_BEGIN_ARRAY, NULL);
 
-	for (i = 0; i < nargs; i++)
+	for (i = first_vararg; i < nargs; i++)
 	{
 		val_type = get_fn_expr_argtype(fcinfo->flinfo, i);
 		/* see comments in jsonb_build_object above */
@@ -1459,12 +1457,34 @@ jsonb_build_array(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("could not determine data type for argument %d", i + 1)));
+
+		if (absent_on_null && PG_ARGISNULL(i))
+			continue;
+
 		add_jsonb(arg, PG_ARGISNULL(i), &result, val_type, false);
 	}
 
 	result.res = pushJsonbValue(&result.parseState, WJB_END_ARRAY, NULL);
 
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
+}
+
+/*
+ * SQL function jsonb_build_array(variadic "any")
+ */
+Datum
+jsonb_build_array(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_array_worker(fcinfo, 0, false);
+}
+
+/*
+ * SQL function jsonb_build_array_ext(absent_on_null bool, variadic "any")
+ */
+Datum
+jsonb_build_array_ext(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_array_worker(fcinfo, 1, PG_GETARG_BOOL(0));
 }
 
 /*

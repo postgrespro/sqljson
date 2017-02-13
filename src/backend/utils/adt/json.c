@@ -2362,11 +2362,9 @@ json_build_object_noargs(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text_with_len("{}", 2));
 }
 
-/*
- * SQL function json_build_array(variadic "any")
- */
-Datum
-json_build_array(PG_FUNCTION_ARGS)
+static Datum
+json_build_array_worker(FunctionCallInfo fcinfo, int first_vararg,
+						bool absent_on_null)
 {
 	int			nargs = PG_NARGS();
 	int			i;
@@ -2379,8 +2377,11 @@ json_build_array(PG_FUNCTION_ARGS)
 
 	appendStringInfoChar(result, '[');
 
-	for (i = 0; i < nargs; i++)
+	for (i = first_vararg; i < nargs; i++)
 	{
+		if (absent_on_null && PG_ARGISNULL(i))
+			continue;
+
 		/*
 		 * Note: since json_build_array() is declared as taking type "any",
 		 * the parser will not do any type conversion on unknown-type literals
@@ -2410,6 +2411,24 @@ json_build_array(PG_FUNCTION_ARGS)
 	appendStringInfoChar(result, ']');
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+}
+
+/*
+ * SQL function json_build_array(variadic "any")
+ */
+Datum
+json_build_array(PG_FUNCTION_ARGS)
+{
+	return json_build_array_worker(fcinfo, 0, false);
+}
+
+/*
+ * SQL function json_build_array_ext(absent_on_null bool, variadic "any")
+ */
+Datum
+json_build_array_ext(PG_FUNCTION_ARGS)
+{
+	return json_build_array_worker(fcinfo, 1, PG_GETARG_BOOL(0));
 }
 
 /*
