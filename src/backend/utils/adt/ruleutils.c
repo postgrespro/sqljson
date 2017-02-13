@@ -450,6 +450,8 @@ static void get_const_expr(Const *constval, deparse_context *context,
 						   int showtype);
 static void get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
 							   bool showimplicit);
+static void get_json_agg_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
+								   const char *funcname, bool is_json_objectagg);
 static void get_const_collation(Const *constval, deparse_context *context);
 static void simple_quote_literal(StringInfo buf, const char *val);
 static void get_sublink_expr(SubLink *sublink, deparse_context *context);
@@ -7906,12 +7908,12 @@ get_rule_expr_paren(Node *node, deparse_context *context,
  * get_json_format			- Parse back a JsonFormat node
  */
 static void
-get_json_format(JsonFormat *format, deparse_context *context)
+get_json_format(JsonFormat *format, StringInfo buf)
 {
 	if (format->format == JS_FORMAT_DEFAULT)
 		return;
 
-	appendStringInfoString(context->buf,
+	appendStringInfoString(buf,
 						   format->format == JS_FORMAT_JSONB ?
 						   " FORMAT JSONB" : " FORMAT JSON");
 
@@ -7921,7 +7923,7 @@ get_json_format(JsonFormat *format, deparse_context *context)
 			format->encoding == JS_ENC_UTF16 ? "UTF16" :
 			format->encoding == JS_ENC_UTF32 ? "UTF32" : "UTF8";
 
-		appendStringInfo(context->buf, " ENCODING %s", encoding);
+		appendStringInfo(buf, " ENCODING %s", encoding);
 	}
 }
 
@@ -7929,20 +7931,20 @@ get_json_format(JsonFormat *format, deparse_context *context)
  * get_json_returning		- Parse back a JsonReturning structure
  */
 static void
-get_json_returning(JsonReturning *returning, deparse_context *context,
+get_json_returning(JsonReturning *returning, StringInfo buf,
 				   bool json_format_by_default)
 {
 	if (!OidIsValid(returning->typid))
 		return;
 
-	appendStringInfo(context->buf, " RETURNING %s",
+	appendStringInfo(buf, " RETURNING %s",
 					 format_type_with_typemod(returning->typid,
 											  returning->typmod));
 
 	if (!json_format_by_default ||
 		returning->format->format !=
 			(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
-		get_json_format(returning->format, context);
+		get_json_format(returning->format, buf);
 }
 
 /* ----------
@@ -9122,7 +9124,7 @@ get_rule_expr(Node *node, deparse_context *context,
 				JsonValueExpr *jve = (JsonValueExpr *) node;
 
 				get_rule_expr((Node *) jve->raw_expr, context, false);
-				get_json_format(jve->format, context);
+				get_json_format(jve->format, context->buf);
 			}
 			break;
 
@@ -9382,6 +9384,28 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 }
 
 static void
+get_json_ctor_options(JsonCtorExpr *ctor, StringInfo buf)
+{
+	if (ctor->absent_on_null)
+	{
+		if (ctor->type == JSCTOR_JSON_OBJECT ||
+			ctor->type == JSCTOR_JSON_OBJECTAGG)
+			appendStringInfoString(buf, " ABSENT ON NULL");
+	}
+	else
+	{
+		if (ctor->type == JSCTOR_JSON_ARRAY ||
+			ctor->type == JSCTOR_JSON_ARRAYAGG)
+			appendStringInfoString(buf, " NULL ON NULL");
+	}
+
+	if (ctor->unique)
+		appendStringInfoString(buf, " WITH UNIQUE KEYS");
+
+	get_json_returning(&ctor->returning, buf, true);
+}
+
+static void
 get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplicit)
 {
 	StringInfo	buf = context->buf;
@@ -9398,13 +9422,9 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 			funcname = "JSON_ARRAY";
 			break;
 		case JSCTOR_JSON_OBJECTAGG:
-			funcname = "JSON_OBJECTAGG";
-			firstarg = 2;
-			break;
+			return get_json_agg_ctor_expr(ctor, context, "JSON_OBJECTAGG", true);
 		case JSCTOR_JSON_ARRAYAGG:
-			funcname = "JSON_ARRAYAGG";
-			firstarg = 2;
-			break;
+			return get_json_agg_ctor_expr(ctor, context, "JSON_ARRAYAGG", false);
 		default:
 			elog(ERROR, "invalid JsonCtorExprType %d", ctor->type);
 	}
@@ -9427,39 +9447,24 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 		nargs++;
 	}
 
-	if (ctor->absent_on_null)
-	{
-		if (ctor->type == JSCTOR_JSON_OBJECT ||
-			ctor->type == JSCTOR_JSON_OBJECTAGG)
-			appendStringInfoString(context->buf, " ABSENT ON NULL");
-	}
-	else
-	{
-		if (ctor->type == JSCTOR_JSON_ARRAY ||
-			ctor->type == JSCTOR_JSON_ARRAYAGG)
-			appendStringInfoString(context->buf, " NULL ON NULL");
-	}
-
-	if (ctor->unique)
-		appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
-
-	get_json_returning(&ctor->returning, context, true);
+	get_json_ctor_options(ctor, buf);
 
 	appendStringInfo(buf, ")");
 }
 
 
 /*
- * get_agg_expr			- Parse back an Aggref node
+ * get_agg_expr_helper			- Parse back an Aggref node
  */
 static void
-get_agg_expr(Aggref *aggref, deparse_context *context,
-			 Aggref *original_aggref)
+get_agg_expr_helper(Aggref *aggref, deparse_context *context,
+					Aggref *original_aggref, const char *funcname,
+					const char *options, bool is_json_objectagg)
 {
 	StringInfo	buf = context->buf;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
-	bool		use_variadic;
+	bool		use_variadic = false;
 
 	/*
 	 * For a combining aggregate, we look up and deparse the corresponding
@@ -9489,13 +9494,14 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 	/* Extract the argument types as seen by the parser */
 	nargs = get_aggregate_argtypes(aggref, argtypes);
 
+	if (!funcname)
+		funcname = generate_function_name(aggref->aggfnoid, nargs, NIL,
+										  argtypes, aggref->aggvariadic,
+										  &use_variadic,
+										  context->special_exprkind);
+
 	/* Print the aggregate name, schema-qualified if needed */
-	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(aggref->aggfnoid, nargs,
-											NIL, argtypes,
-											aggref->aggvariadic,
-											&use_variadic,
-											context->special_exprkind),
+	appendStringInfo(buf, "%s(%s", funcname,
 					 (aggref->aggdistinct != NIL) ? "DISTINCT " : "");
 
 	if (AGGKIND_IS_ORDERED_SET(aggref->aggkind))
@@ -9531,7 +9537,17 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 				if (tle->resjunk)
 					continue;
 				if (i++ > 0)
-					appendStringInfoString(buf, ", ");
+				{
+					if (is_json_objectagg)
+					{
+						if (i > 2)
+							break; /* skip ABSENT ON NULL and WITH UNIQUE args */
+
+						appendStringInfoString(buf, " : ");
+					}
+					else
+						appendStringInfoString(buf, ", ");
+				}
 				if (use_variadic && i == nargs)
 					appendStringInfoString(buf, "VARIADIC ");
 				get_rule_expr(arg, context, true);
@@ -9545,6 +9561,9 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 		}
 	}
 
+	if (options)
+		appendStringInfoString(buf, options);
+
 	if (aggref->aggfilter != NULL)
 	{
 		appendStringInfoString(buf, ") FILTER (WHERE ");
@@ -9552,6 +9571,16 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 	}
 
 	appendStringInfoChar(buf, ')');
+}
+
+/*
+ * get_agg_expr			- Parse back an Aggref node
+ */
+static void
+get_agg_expr(Aggref *aggref, deparse_context *context, Aggref *original_aggref)
+{
+	return get_agg_expr_helper(aggref, context, original_aggref, NULL, NULL,
+							   false);
 }
 
 /*
@@ -9573,10 +9602,12 @@ get_agg_combine_expr(Node *node, deparse_context *context, void *callback_arg)
 }
 
 /*
- * get_windowfunc_expr	- Parse back a WindowFunc node
+ * get_windowfunc_expr_helper	- Parse back a WindowFunc node
  */
 static void
-get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
+get_windowfunc_expr_helper(WindowFunc *wfunc, deparse_context *context,
+						   const char *funcname, const char *options,
+						   bool is_json_objectagg)
 {
 	StringInfo	buf = context->buf;
 	Oid			argtypes[FUNC_MAX_ARGS];
@@ -9600,16 +9631,30 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(",
-					 generate_function_name(wfunc->winfnoid, nargs,
-											argnames, argtypes,
-											false, NULL,
-											context->special_exprkind));
+	if (!funcname)
+		funcname = generate_function_name(wfunc->winfnoid, nargs, argnames,
+										  argtypes, false, NULL,
+										  context->special_exprkind);
+
+	appendStringInfo(buf, "%s(", funcname);
+
 	/* winstar can be set only in zero-argument aggregates */
 	if (wfunc->winstar)
 		appendStringInfoChar(buf, '*');
 	else
-		get_rule_expr((Node *) wfunc->args, context, true);
+	{
+		if (is_json_objectagg)
+		{
+			get_rule_expr((Node *) linitial(wfunc->args), context, false);
+			appendStringInfoString(buf, " : ");
+			get_rule_expr((Node *) lsecond(wfunc->args), context, false);
+		}
+		else
+			get_rule_expr((Node *) wfunc->args, context, true);
+	}
+
+	if (options)
+		appendStringInfoString(buf, options);
 
 	if (wfunc->aggfilter != NULL)
 	{
@@ -9644,6 +9689,39 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		 */
 		appendStringInfoString(buf, "(?)");
 	}
+}
+
+/*
+ * get_windowfunc_expr	- Parse back a WindowFunc node
+ */
+static void
+get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
+{
+	return get_windowfunc_expr_helper(wfunc, context, NULL, NULL, false);
+}
+
+/*
+ * get_json_agg_ctor_expr		- Parse back an aggregate JsonCtorExpr node
+ */
+static void
+get_json_agg_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
+					   const char *funcname, bool is_json_objectagg)
+{
+	StringInfoData options;
+
+	initStringInfo(&options);
+	get_json_ctor_options(ctor, &options);
+
+	if (IsA(ctor->func, Aggref))
+		return get_agg_expr_helper((Aggref *) ctor->func, context,
+								   (Aggref *) ctor->func,
+								   funcname, options.data, is_json_objectagg);
+	else if (IsA(ctor->func, WindowFunc))
+		return get_windowfunc_expr_helper((WindowFunc *) ctor->func, context,
+										  funcname, options.data, is_json_objectagg);
+	else
+		elog(ERROR, "invalid JsonCtorExpr underlying node type: %d",
+			 nodeTag(ctor->func));
 }
 
 /* ----------

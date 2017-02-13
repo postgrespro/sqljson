@@ -1258,14 +1258,14 @@ typedef enum JsonCtorType
 
 /*
  * JsonCtorExpr -
- *		wrapper over FuncExpr for SQL/JSON constructors
+ *		wrapper over FuncExpr/Aggref/WindowFunc for SQL/JSON constructors
  */
 typedef struct JsonCtorExpr
 {
 	Expr		xpr;
 	JsonCtorType type;			/* constructor type */
 	List	   *args;
-	FuncExpr   *func;			/* underlying json[b]_xxx() function call */
+	Expr	   *func;			/* underlying json[b]_xxx() function call */
 	JsonReturning *returning;	/* RETURNING clause */
 	bool		absent_on_null;	/* ABSENT ON NULL? */
 	bool		unique;			/* WITH UNIQUE KEYS? (JSON_OBJECT[AGG] only) */

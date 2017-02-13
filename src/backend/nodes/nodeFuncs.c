@@ -3254,7 +3254,7 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, jve, JsonCtorExpr);
 				MUTATE(newnode->args, jve->args, List *);
-				MUTATE(newnode->func, jve->func, FuncExpr *);
+				MUTATE(newnode->func, jve->func, Expr *);
 				MUTATE(newnode->returning, jve->returning, JsonReturning *);
 
 				return (Node *) newnode;
@@ -4017,6 +4017,38 @@ raw_expression_tree_walker(Node *node,
 				if (walker(jac->output, context))
 					return true;
 				if (walker(jac->exprs, context))
+					return true;
+			}
+			break;
+		case T_JsonObjectAgg:
+			{
+				JsonObjectAgg *joa = (JsonObjectAgg *) node;
+
+				if (walker(joa->ctor.output, context))
+					return true;
+				if (walker(joa->ctor.agg_order, context))
+					return true;
+				if (walker(joa->ctor.agg_filter, context))
+					return true;
+				if (walker(joa->ctor.over, context))
+					return true;
+				if (walker(joa->arg, context))
+					return true;
+			}
+			break;
+		case T_JsonArrayAgg:
+			{
+				JsonArrayAgg *jaa = (JsonArrayAgg *) node;
+
+				if (walker(jaa->ctor.output, context))
+					return true;
+				if (walker(jaa->ctor.agg_order, context))
+					return true;
+				if (walker(jaa->ctor.agg_filter, context))
+					return true;
+				if (walker(jaa->ctor.over, context))
+					return true;
+				if (walker(jaa->arg, context))
 					return true;
 			}
 			break;

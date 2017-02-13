@@ -1937,6 +1937,12 @@ FigureColnameInternal(Node *node, char **name)
 		case T_JsonArrayCtor:
 			*name = "json_array";
 			return 2;
+		case T_JsonObjectAgg:
+			*name = "json_objectagg";
+			return 2;
+		case T_JsonArrayAgg:
+			*name = "json_arrayagg";
+			return 2;
 		default:
 			break;
 	}

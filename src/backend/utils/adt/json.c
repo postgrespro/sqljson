@@ -86,6 +86,7 @@ typedef struct JsonAggState
 	Oid			key_output_func;
 	JsonTypeCategory val_category;
 	Oid			val_output_func;
+	JsonUniqueBuilderState unique_check;
 } JsonAggState;
 
 static void composite_to_json(Datum composite, StringInfo result,
@@ -791,8 +792,8 @@ to_json(PG_FUNCTION_ARGS)
  *
  * aggregate input column as a json array value.
  */
-Datum
-json_agg_transfn(PG_FUNCTION_ARGS)
+static Datum
+json_agg_transfn_worker(FunctionCallInfo fcinfo, bool absent_on_null)
 {
 	MemoryContext aggcontext,
 				oldcontext;
@@ -832,8 +833,13 @@ json_agg_transfn(PG_FUNCTION_ARGS)
 	else
 	{
 		state = (JsonAggState *) PG_GETARG_POINTER(0);
-		appendStringInfoString(state->str, ", ");
 	}
+
+	if (absent_on_null && PG_ARGISNULL(1))
+		PG_RETURN_POINTER(state);
+
+	if (state->str->len > 1)
+		appendStringInfoString(state->str, ", ");
 
 	/* fast path for NULLs */
 	if (PG_ARGISNULL(1))
@@ -846,7 +852,7 @@ json_agg_transfn(PG_FUNCTION_ARGS)
 	val = PG_GETARG_DATUM(1);
 
 	/* add some whitespace if structured type and not first item */
-	if (!PG_ARGISNULL(0) &&
+	if (!PG_ARGISNULL(0) && state->str->len > 1 &&
 		(state->val_category == JSONTYPE_ARRAY ||
 		 state->val_category == JSONTYPE_COMPOSITE))
 	{
@@ -862,6 +868,25 @@ json_agg_transfn(PG_FUNCTION_ARGS)
 	 * pass the JsonAggState pointer through nodeAgg.c's machinations.
 	 */
 	PG_RETURN_POINTER(state);
+}
+
+
+/*
+ * json_agg aggregate function
+ */
+Datum
+json_agg_transfn(PG_FUNCTION_ARGS)
+{
+	return json_agg_transfn_worker(fcinfo, false);
+}
+
+/*
+ * json_agg_strict aggregate function
+ */
+Datum
+json_agg_strict_transfn(PG_FUNCTION_ARGS)
+{
+	return json_agg_transfn_worker(fcinfo, true);
 }
 
 /*
@@ -992,13 +1017,17 @@ json_unique_builder_get_skipped_keys(JsonUniqueBuilderState *cxt)
  *
  * aggregate two input columns as a single json object value.
  */
-Datum
-json_object_agg_transfn(PG_FUNCTION_ARGS)
+static Datum
+json_object_agg_transfn_worker(FunctionCallInfo fcinfo,
+							   bool absent_on_null, bool unique_keys)
 {
 	MemoryContext aggcontext,
 				oldcontext;
 	JsonAggState *state;
+	StringInfo	out;
 	Datum		arg;
+	bool		skip;
+	int			key_offset;
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
@@ -1019,6 +1048,10 @@ json_object_agg_transfn(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(aggcontext);
 		state = (JsonAggState *) palloc(sizeof(JsonAggState));
 		state->str = makeStringInfo();
+		if (unique_keys)
+			json_unique_builder_init(&state->unique_check);
+		else
+			memset(&state->unique_check, 0, sizeof(state->unique_check));
 		MemoryContextSwitchTo(oldcontext);
 
 		arg_type = get_fn_expr_argtype(fcinfo->flinfo, 1);
@@ -1046,7 +1079,6 @@ json_object_agg_transfn(PG_FUNCTION_ARGS)
 	else
 	{
 		state = (JsonAggState *) PG_GETARG_POINTER(0);
-		appendStringInfoString(state->str, ", ");
 	}
 
 	/*
@@ -1062,10 +1094,44 @@ json_object_agg_transfn(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("field name must not be null")));
 
+	/* Skip null values if absent_on_null */
+	skip = absent_on_null && PG_ARGISNULL(2);
+
+	if (skip)
+	{
+		/* If key uniqueness check is needed we must save skipped keys */
+		if (!unique_keys)
+			PG_RETURN_POINTER(state);
+
+		out = json_unique_builder_get_skipped_keys(&state->unique_check);
+	}
+	else
+	{
+		out = state->str;
+
+		if (out->len > 2)
+			appendStringInfoString(out, ", ");
+	}
+
 	arg = PG_GETARG_DATUM(1);
 
-	datum_to_json(arg, false, state->str, state->key_category,
+	key_offset = out->len;
+
+	datum_to_json(arg, false, out, state->key_category,
 				  state->key_output_func, true);
+
+	if (unique_keys)
+	{
+		const char *key = &out->data[key_offset];
+
+		if (!json_unique_check_key(&state->unique_check.check, key, 0))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_JSON_OBJECT_KEY_VALUE),
+					 errmsg("duplicate JSON key %s", key)));
+
+		if (skip)
+			PG_RETURN_POINTER(state);
+	}
 
 	appendStringInfoString(state->str, " : ");
 
@@ -1078,6 +1144,26 @@ json_object_agg_transfn(PG_FUNCTION_ARGS)
 				  state->val_output_func, false);
 
 	PG_RETURN_POINTER(state);
+}
+
+/*
+ * json_object_agg aggregate function
+ */
+Datum
+json_object_agg_transfn(PG_FUNCTION_ARGS)
+{
+	return json_object_agg_transfn_worker(fcinfo, false, false);
+}
+
+/*
+ * json_objectagg aggregate function
+ */
+Datum
+json_objectagg_transfn(PG_FUNCTION_ARGS)
+{
+	return json_object_agg_transfn_worker(fcinfo,
+										  PG_GETARG_BOOL(3),
+										  PG_GETARG_BOOL(4));
 }
 
 /*
@@ -1096,6 +1182,8 @@ json_object_agg_finalfn(PG_FUNCTION_ARGS)
 	/* NULL result for no rows in, as is standard with aggregates */
 	if (state == NULL)
 		PG_RETURN_NULL();
+
+	json_unique_builder_free(&state->unique_check);
 
 	/* Else return state with appropriate object terminator added */
 	PG_RETURN_TEXT_P(catenate_stringinfo_string(state->str, " }"));

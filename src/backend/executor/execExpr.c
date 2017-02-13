@@ -2138,6 +2138,12 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				int			nargs = list_length(args);
 				int			argno = 0;
 
+				if (ctor->func)
+				{
+					ExecInitExprRec(ctor->func, state, resv, resnull);
+					break;
+				}
+
 				scratch.opcode = EEOP_JSON_CTOR;
 				scratch.d.json_ctor.ctor = ctor;
 				scratch.d.json_ctor.arg_values = palloc(sizeof(Datum) * nargs);
