@@ -69,6 +69,7 @@ typedef struct JsonbAggState
 	Oid			key_output_func;
 	JsonbTypeCategory val_category;
 	Oid			val_output_func;
+	JsonbUniqueCheckContext unique_check;
 } JsonbAggState;
 
 static inline Datum jsonb_from_cstring(char *json, int len);
@@ -1654,12 +1655,8 @@ clone_parse_state(JsonbParseState *state)
 	return result;
 }
 
-
-/*
- * jsonb_agg aggregate function
- */
-Datum
-jsonb_agg_transfn(PG_FUNCTION_ARGS)
+static Datum
+jsonb_agg_transfn_worker(FunctionCallInfo fcinfo, bool absent_on_null)
 {
 	MemoryContext oldcontext,
 				aggcontext;
@@ -1706,6 +1703,9 @@ jsonb_agg_transfn(PG_FUNCTION_ARGS)
 		state = (JsonbAggState *) PG_GETARG_POINTER(0);
 		result = state->res;
 	}
+
+	if (absent_on_null && PG_ARGISNULL(1))
+		PG_RETURN_POINTER(state);
 
 	/* turn the argument into jsonb in the normal function context */
 
@@ -1776,6 +1776,24 @@ jsonb_agg_transfn(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(state);
 }
 
+/*
+ * jsonb_agg aggregate function
+ */
+Datum
+jsonb_agg_transfn(PG_FUNCTION_ARGS)
+{
+	return jsonb_agg_transfn_worker(fcinfo, false);
+}
+
+/*
+ * jsonb_agg_strict aggregate function
+ */
+Datum
+jsonb_agg_strict_transfn(PG_FUNCTION_ARGS)
+{
+	return jsonb_agg_transfn_worker(fcinfo, true);
+}
+
 Datum
 jsonb_agg_finalfn(PG_FUNCTION_ARGS)
 {
@@ -1808,11 +1826,9 @@ jsonb_agg_finalfn(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(out);
 }
 
-/*
- * jsonb_object_agg aggregate function
- */
-Datum
-jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
+static Datum
+jsonb_object_agg_transfn_worker(FunctionCallInfo fcinfo,
+								bool absent_on_null, bool unique_keys)
 {
 	MemoryContext oldcontext,
 				aggcontext;
@@ -1826,6 +1842,7 @@ jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
 			   *jbval;
 	JsonbValue	v;
 	JsonbIteratorToken type;
+	bool		skip;
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
@@ -1845,6 +1862,11 @@ jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
 		state->res = result;
 		result->res = pushJsonbValue(&result->parseState,
 									 WJB_BEGIN_OBJECT, NULL);
+		if (unique_keys)
+			jsonb_unique_check_init(&state->unique_check, result->res,
+									aggcontext);
+		else
+			memset(&state->unique_check, 0, sizeof(state->unique_check));
 		MemoryContextSwitchTo(oldcontext);
 
 		arg_type = get_fn_expr_argtype(fcinfo->flinfo, 1);
@@ -1879,6 +1901,15 @@ jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("field name must not be null")));
+
+	/*
+	 * Skip null values if absent_on_null unless key uniqueness check is
+	 * needed (because we must save keys in this case).
+	 */
+	skip = absent_on_null && PG_ARGISNULL(2);
+
+	if (skip && !unique_keys)
+		PG_RETURN_POINTER(state);
 
 	val = PG_GETARG_DATUM(1);
 
@@ -1935,6 +1966,18 @@ jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
 				}
 				result->res = pushJsonbValue(&result->parseState,
 											 WJB_KEY, &v);
+
+				if (unique_keys)
+				{
+					jsonb_unique_check_key(&state->unique_check, skip);
+
+					if (skip)
+					{
+						MemoryContextSwitchTo(oldcontext);
+						PG_RETURN_POINTER(state);
+					}
+				}
+
 				break;
 			case WJB_END_ARRAY:
 				break;
@@ -2005,6 +2048,26 @@ jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 	PG_RETURN_POINTER(state);
+}
+
+/*
+ * jsonb_object_agg aggregate function
+ */
+Datum
+jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
+{
+	return jsonb_object_agg_transfn_worker(fcinfo, false, false);
+}
+
+/*
+ * jsonb_objectagg aggregate function
+ */
+Datum
+jsonb_objectagg_transfn(PG_FUNCTION_ARGS)
+{
+	return jsonb_object_agg_transfn_worker(fcinfo,
+										   PG_GETARG_BOOL(3),
+										   PG_GETARG_BOOL(4));
 }
 
 Datum
