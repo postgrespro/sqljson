@@ -4509,16 +4509,27 @@ DATA(insert OID = 3156 (  row_to_json	   PGNSP PGUID 12 1 0 0 0 f f f f t f s s 
 DESCR("map row to json with optional pretty printing");
 DATA(insert OID = 3173 (  json_agg_transfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 2 0 2281 "2281 2283" _null_ _null_ _null_ _null_ _null_ json_agg_transfn _null_ _null_ _null_ ));
 DESCR("json aggregate transition function");
+DATA(insert OID = 3452 (  json_agg_strict_transfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 2 0 2281 "2281 2283" _null_ _null_ _null_ _null_ _null_ json_agg_strict_transfn _null_ _null_ _null_ ));
+DESCR("json aggregate transition function");
 DATA(insert OID = 3174 (  json_agg_finalfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f i s 1 0 114 "2281" _null_ _null_ _null_ _null_ _null_ json_agg_finalfn _null_ _null_ _null_ ));
 DESCR("json aggregate final function");
 DATA(insert OID = 3175 (  json_agg		   PGNSP PGUID 12 1 0 0 0 t f f f f f s s 1 0 114 "2283" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("aggregate input into json");
+#define F_JSON_AGG 3175
+DATA(insert OID = 3450 (  json_agg_strict  PGNSP PGUID 12 1 0 0 0 t f f f f f s s 1 0 114 "2283" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
+DESCR("aggregate input into json");
+#define F_JSON_AGG_STRICT 3450
 DATA(insert OID = 3180 (  json_object_agg_transfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 3 0 2281 "2281 2276 2276" _null_ _null_ _null_ _null_ _null_ json_object_agg_transfn _null_ _null_ _null_ ));
+DESCR("json object aggregate transition function");
+DATA(insert OID = 3453 (  json_objectagg_transfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 5 0 2281 "2281 2276 2276 16 16" _null_ _null_ _null_ _null_ _null_ json_objectagg_transfn _null_ _null_ _null_ ));
 DESCR("json object aggregate transition function");
 DATA(insert OID = 3196 (  json_object_agg_finalfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f i s 1 0 114 "2281" _null_ _null_ _null_ _null_ _null_ json_object_agg_finalfn _null_ _null_ _null_ ));
 DESCR("json object aggregate final function");
 DATA(insert OID = 3197 (  json_object_agg		   PGNSP PGUID 12 1 0 0 0 t f f f f f s s 2 0 114 "2276 2276" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("aggregate input into a json object");
+DATA(insert OID = 3451 (  json_objectagg		   PGNSP PGUID 12 1 0 0 0 t f f f f f s s 4 0 114 "2276 2276 16 16" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
+DESCR("aggregate input into a json object");
+#define F_JSON_OBJECTAGG 3451
 DATA(insert OID = 3198 (  json_build_array	   PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 1 0 114 "2276" "{2276}" "{v}" _null_ _null_ _null_ json_build_array _null_ _null_ _null_ ));
 DESCR("build a json array from any inputs");
 DATA(insert OID = 3199 (  json_build_array	   PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 114  "" _null_ _null_ _null_ _null_ _null_ json_build_array_noargs _null_ _null_ _null_ ));
@@ -4973,16 +4984,27 @@ DATA(insert OID = 3787 (  to_jsonb	   PGNSP PGUID 12 1 0 0 0 f f f f t f s s 1 0
 DESCR("map input to jsonb");
 DATA(insert OID = 3265 (  jsonb_agg_transfn  PGNSP PGUID 12 1 0 0 0 f f f f f f s s 2 0 2281 "2281 2283" _null_ _null_ _null_ _null_ _null_ jsonb_agg_transfn _null_ _null_ _null_ ));
 DESCR("jsonb aggregate transition function");
+DATA(insert OID = 6065 (  jsonb_agg_strict_transfn  PGNSP PGUID 12 1 0 0 0 f f f f f f s s 2 0 2281 "2281 2283" _null_ _null_ _null_ _null_ _null_ jsonb_agg_strict_transfn _null_ _null_ _null_ ));
+DESCR("jsonb aggregate transition function");
 DATA(insert OID = 3266 (  jsonb_agg_finalfn  PGNSP PGUID 12 1 0 0 0 f f f f f f s s 1 0 3802 "2281" _null_ _null_ _null_ _null_ _null_ jsonb_agg_finalfn _null_ _null_ _null_ ));
 DESCR("jsonb aggregate final function");
 DATA(insert OID = 3267 (  jsonb_agg		   PGNSP PGUID 12 1 0 0 0 t f f f f f s s 1 0 3802 "2283" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("aggregate input into jsonb");
+#define F_JSONB_AGG 3267
+DATA(insert OID = 6063 (  jsonb_agg_strict PGNSP PGUID 12 1 0 0 0 t f f f f f s s 1 0 3802 "2283" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
+DESCR("aggregate input into jsonb skipping nulls");
+#define F_JSONB_AGG_STRICT 6063
 DATA(insert OID = 3268 (  jsonb_object_agg_transfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 3 0 2281 "2281 2276 2276" _null_ _null_ _null_ _null_ _null_ jsonb_object_agg_transfn _null_ _null_ _null_ ));
+DESCR("jsonb object aggregate transition function");
+DATA(insert OID = 3449 (  jsonb_objectagg_transfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 5 0 2281 "2281 2276 2276 16 16" _null_ _null_ _null_ _null_ _null_ jsonb_objectagg_transfn _null_ _null_ _null_ ));
 DESCR("jsonb object aggregate transition function");
 DATA(insert OID = 3269 (  jsonb_object_agg_finalfn	 PGNSP PGUID 12 1 0 0 0 f f f f f f s s 1 0 3802 "2281" _null_ _null_ _null_ _null_ _null_ jsonb_object_agg_finalfn _null_ _null_ _null_ ));
 DESCR("jsonb object aggregate final function");
 DATA(insert OID = 3270 (  jsonb_object_agg		   PGNSP PGUID 12 1 0 0 0 t f f f f f i s 2 0 3802 "2276 2276" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("aggregate inputs into jsonb object");
+DATA(insert OID = 6064 (  jsonb_objectagg		   PGNSP PGUID 12 1 0 0 0 t f f f f f i s 4 0 3802 "2276 2276 16 16" _null_ _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
+DESCR("aggregate inputs into jsonb object");
+#define F_JSONB_OBJECTAGG 6064
 DATA(insert OID = 3271 (  jsonb_build_array    PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 1 0 3802 "2276" "{2276}" "{v}" _null_ _null_ _null_ jsonb_build_array _null_ _null_ _null_ ));
 DESCR("build a jsonb array from any inputs");
 DATA(insert OID = 3272 (  jsonb_build_array    PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 3802	"" _null_ _null_ _null_ _null_ _null_ jsonb_build_array_noargs _null_ _null_ _null_ ));
