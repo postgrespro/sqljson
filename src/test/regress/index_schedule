@@ -1,0 +1,12 @@
+test: tablespace
+test: create_function_1
+test: create_type
+test: create_table
+test: copy
+test: create_misc
+test: polygon
+test: point
+test: circle
+test: create_index
+test: btree_index
+test: gist
