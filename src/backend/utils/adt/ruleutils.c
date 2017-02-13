@@ -9338,8 +9338,9 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 {
 	StringInfo	buf = context->buf;
 	Oid			argtypes[FUNC_MAX_ARGS];
+	const char *funcname;
 	int			nargs;
-	bool		use_variadic;
+	bool		use_variadic = false;
 
 	/*
 	 * For a combining aggregate, we look up and deparse the corresponding
@@ -9368,13 +9369,24 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 	/* Extract the argument types as seen by the parser */
 	nargs = get_aggregate_argtypes(aggref, argtypes);
 
+	switch (aggref->aggformat)
+	{
+		case FUNCFMT_JSON_OBJECTAGG:
+			funcname = "JSON_OBJECTAGG";
+			break;
+		case FUNCFMT_JSON_ARRAYAGG:
+			funcname = "JSON_ARRAYAGG";
+			break;
+		default:
+			funcname = generate_function_name(aggref->aggfnoid, nargs, NIL,
+											  argtypes, aggref->aggvariadic,
+											  &use_variadic,
+											  context->special_exprkind);
+			break;
+	}
+
 	/* Print the aggregate name, schema-qualified if needed */
-	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(aggref->aggfnoid, nargs,
-											NIL, argtypes,
-											aggref->aggvariadic,
-											&use_variadic,
-											context->special_exprkind),
+	appendStringInfo(buf, "%s(%s", funcname,
 					 (aggref->aggdistinct != NIL) ? "DISTINCT " : "");
 
 	if (AGGKIND_IS_ORDERED_SET(aggref->aggkind))
@@ -9410,7 +9422,17 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 				if (tle->resjunk)
 					continue;
 				if (i++ > 0)
-					appendStringInfoString(buf, ", ");
+				{
+					if (aggref->aggformat == FUNCFMT_JSON_OBJECTAGG)
+					{
+						if (i > 2)
+							break; /* skip ABSENT ON NULL and WITH UNIQUE args */
+
+						appendStringInfoString(buf, " : ");
+					}
+					else
+						appendStringInfoString(buf, ", ");
+				}
 				if (use_variadic && i == nargs)
 					appendStringInfoString(buf, "VARIADIC ");
 				get_rule_expr(arg, context, true);
@@ -9464,6 +9486,7 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 	int			nargs;
 	List	   *argnames;
 	ListCell   *l;
+	const char *funcname;
 
 	if (list_length(wfunc->args) > FUNC_MAX_ARGS)
 		ereport(ERROR,
@@ -9481,16 +9504,37 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(",
-					 generate_function_name(wfunc->winfnoid, nargs,
-											argnames, argtypes,
-											false, NULL,
-											context->special_exprkind));
+	switch (wfunc->winformat)
+	{
+		case FUNCFMT_JSON_OBJECTAGG:
+			funcname = "JSON_OBJECTAGG";
+			break;
+		case FUNCFMT_JSON_ARRAYAGG:
+			funcname = "JSON_ARRAYAGG";
+			break;
+		default:
+			funcname = generate_function_name(wfunc->winfnoid, nargs, argnames,
+											  argtypes, false, NULL,
+											  context->special_exprkind);
+			break;
+	}
+
+	appendStringInfo(buf, "%s(", funcname);
+
 	/* winstar can be set only in zero-argument aggregates */
 	if (wfunc->winstar)
 		appendStringInfoChar(buf, '*');
 	else
-		get_rule_expr((Node *) wfunc->args, context, true);
+	{
+		if (wfunc->winformat == FUNCFMT_JSON_OBJECTAGG)
+		{
+			get_rule_expr((Node *) linitial(wfunc->args), context, false);
+			appendStringInfoString(buf, " : ");
+			get_rule_expr((Node *) lsecond(wfunc->args), context, false);
+		}
+		else
+			get_rule_expr((Node *) wfunc->args, context, true);
+	}
 
 	get_func_opts(wfunc->winformat, wfunc->winformatopts, context);
 

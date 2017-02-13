@@ -15,6 +15,8 @@
 
 #include "postgres.h"
 
+#include "catalog/pg_aggregate.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
@@ -123,6 +125,8 @@ static Node *transformTypeCast(ParseState *pstate, TypeCast *tc);
 static Node *transformCollateClause(ParseState *pstate, CollateClause *c);
 static Node *transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor);
 static Node *transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor);
+static Node *transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg);
+static Node *transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
 									List *largs, List *rargs, int location);
 static Node *make_row_distinct_op(ParseState *pstate, List *opname,
@@ -377,6 +381,14 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_JsonArrayCtor:
 			result = transformJsonArrayCtor(pstate, (JsonArrayCtor *) expr);
+			break;
+
+		case T_JsonObjectAgg:
+			result = transformJsonObjectAgg(pstate, (JsonObjectAgg *) expr);
+			break;
+
+		case T_JsonArrayAgg:
+			result = transformJsonArrayAgg(pstate, (JsonArrayAgg *) expr);
 			break;
 
 		default:
@@ -3956,6 +3968,168 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 													  ctor->absent_on_null);
 
 	return coerceJsonFuncExpr(pstate, (Node *) fexpr, &returning, true);
+}
+
+/*
+ * Common code for JSON_OBJECTAGG and JSON_ARRAYAGG transformation.
+ */
+static Node *
+transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
+					 JsonReturning *returning, List *args, const char *aggfn,
+					 Oid aggtype, FuncFormat format, JsonCtorOpts *formatopts)
+{
+	Oid			aggfnoid;
+	Node	   *node;
+	Expr	   *aggfilter = agg_ctor->agg_filter ? (Expr *)
+		transformWhereClause(pstate, agg_ctor->agg_filter,
+							 EXPR_KIND_FILTER, "FILTER") : NULL;
+
+	aggfnoid = DatumGetInt32(DirectFunctionCall1(regprocin,
+												 CStringGetDatum(aggfn)));
+
+	if (agg_ctor->over)
+	{
+		/* window function */
+		WindowFunc *wfunc = makeNode(WindowFunc);
+
+		wfunc->winfnoid = aggfnoid;
+		wfunc->wintype = aggtype;
+		/* wincollid and inputcollid will be set by parse_collate.c */
+		wfunc->args = args;
+		/* winref will be set by transformWindowFuncCall */
+		wfunc->winstar = false;
+		wfunc->winagg = true;
+		wfunc->aggfilter = aggfilter;
+		wfunc->winformat = format;
+		wfunc->winformatopts = (Node *) formatopts;
+		wfunc->location = agg_ctor->location;
+
+		/*
+		 * ordered aggs not allowed in windows yet
+		 */
+		if (agg_ctor->agg_order != NIL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("aggregate ORDER BY is not implemented for window functions"),
+					 parser_errposition(pstate, agg_ctor->location)));
+
+		/* parse_agg.c does additional window-func-specific processing */
+		transformWindowFuncCall(pstate, wfunc, agg_ctor->over);
+
+		node = (Node *) wfunc;
+	}
+	else
+	{
+		Aggref	   *aggref = makeNode(Aggref);
+
+		aggref->aggfnoid = aggfnoid;
+		aggref->aggtype = aggtype;
+
+		/* aggcollid and inputcollid will be set by parse_collate.c */
+		aggref->aggtranstype = InvalidOid;		/* will be set by planner */
+		/* aggargtypes will be set by transformAggregateCall */
+		/* aggdirectargs and args will be set by transformAggregateCall */
+		/* aggorder and aggdistinct will be set by transformAggregateCall */
+		aggref->aggfilter = aggfilter;
+		aggref->aggstar = false;
+		aggref->aggvariadic = false;
+		aggref->aggkind = AGGKIND_NORMAL;
+		/* agglevelsup will be set by transformAggregateCall */
+		aggref->aggsplit = AGGSPLIT_SIMPLE;		/* planner might change this */
+		aggref->aggformat = format;
+		aggref->aggformatopts = (Node *) formatopts;
+		aggref->location = agg_ctor->location;
+
+		transformAggregateCall(pstate, aggref, args, agg_ctor->agg_order, false);
+
+		node = (Node *) aggref;
+	}
+
+	return coerceJsonFuncExpr(pstate, node, returning, true);
+}
+
+/*
+ * Transform JSON_OBJECTAGG() aggregate function.
+ *
+ * JSON_OBJECTAGG() is transformed into
+ * json[b]_objectagg(key, value, absent_on_null, check_unique) call depending on
+ * the output JSON format.  Then the function call result is coerced to the
+ * target output type.
+ */
+static Node *
+transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
+{
+	JsonReturning returning;
+	Node	   *key;
+	Node	   *val;
+	List	   *args;
+	const char *aggfnname;
+	Oid			aggtype;
+
+	transformJsonOutput(pstate, agg->ctor.output, true, &returning);
+
+	key = transformExprRecurse(pstate, (Node *) agg->arg->key);
+	val = transformJsonValueExpr(pstate, agg->arg->value, JS_FORMAT_DEFAULT);
+
+	args = list_make4(key,
+					  val,
+					  makeBoolConst(agg->absent_on_null, false),
+					  makeBoolConst(agg->unique, false));
+
+	if (returning.format.type == JS_FORMAT_JSONB)
+	{
+		aggfnname = "pg_catalog.jsonb_objectagg"; /* F_JSONB_OBJECTAGG */
+		aggtype = JSONBOID;
+	}
+	else
+	{
+		aggfnname = "pg_catalog.json_objectagg"; /* F_JSON_OBJECTAGG; */
+		aggtype = JSONOID;
+	}
+
+	return transformJsonAggCtor(pstate, &agg->ctor, &returning, args, aggfnname,
+								aggtype, FUNCFMT_JSON_OBJECTAGG,
+								makeJsonCtorOpts(&returning,
+												 agg->unique,
+												 agg->absent_on_null));
+}
+
+/*
+ * Transform JSON_ARRAYAGG() aggregate function.
+ *
+ * JSON_ARRAYAGG() is transformed into json[b]_agg[_strict]() call depending
+ * on the output JSON format and absent_on_null.  Then the function call result
+ * is coerced to the target output type.
+ */
+static Node *
+transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
+{
+	JsonReturning returning;
+	Node	   *arg;
+	const char *aggfnname;
+	Oid			aggtype;
+
+	transformJsonOutput(pstate, agg->ctor.output, true, &returning);
+
+	arg = transformJsonValueExpr(pstate, agg->arg, JS_FORMAT_DEFAULT);
+
+	if (returning.format.type == JS_FORMAT_JSONB)
+	{
+		aggfnname = agg->absent_on_null ?
+			"pg_catalog.jsonb_agg_strict" : "pg_catalog.jsonb_agg";
+		aggtype = JSONBOID;
+	}
+	else
+	{
+		aggfnname = agg->absent_on_null ?
+			"pg_catalog.json_agg_strict" : "pg_catalog.json_agg";
+		aggtype = JSONOID;
+	}
+
+	return transformJsonAggCtor(pstate, &agg->ctor, &returning, list_make1(arg),
+								aggfnname, aggtype, FUNCFMT_JSON_ARRAYAGG,
+								makeJsonCtorOpts(&returning,
+												 false, agg->absent_on_null));
 }
 
 /*

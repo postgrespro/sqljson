@@ -2272,6 +2272,26 @@ _copyJsonCtorOpts(const JsonCtorOpts *from)
 }
 
 /*
+ * _copyJsonObjectAgg
+ */
+static JsonObjectAgg *
+_copyJsonObjectAgg(const JsonObjectAgg *from)
+{
+	JsonObjectAgg *newnode = makeNode(JsonObjectAgg);
+
+	COPY_NODE_FIELD(ctor.output);
+	COPY_NODE_FIELD(ctor.agg_filter);
+	COPY_NODE_FIELD(ctor.agg_order);
+	COPY_NODE_FIELD(ctor.over);
+	COPY_LOCATION_FIELD(ctor.location);
+	COPY_NODE_FIELD(arg);
+	COPY_SCALAR_FIELD(absent_on_null);
+	COPY_SCALAR_FIELD(unique);
+
+	return newnode;
+}
+
+/*
  * _copyJsonOutput
  */
 static JsonOutput *
@@ -2279,7 +2299,7 @@ _copyJsonOutput(const JsonOutput *from)
 {
 	JsonOutput	   *newnode = makeNode(JsonOutput);
 
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typeName);
 	COPY_SCALAR_FIELD(returning);
 
 	return newnode;
@@ -2297,6 +2317,25 @@ _copyJsonArrayCtor(const JsonArrayCtor *from)
 	COPY_NODE_FIELD(output);
 	COPY_SCALAR_FIELD(absent_on_null);
 	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonArrayAgg
+ */
+static JsonArrayAgg *
+_copyJsonArrayAgg(const JsonArrayAgg *from)
+{
+	JsonArrayAgg *newnode = makeNode(JsonArrayAgg);
+
+	COPY_NODE_FIELD(ctor.output);
+	COPY_NODE_FIELD(ctor.agg_filter);
+	COPY_NODE_FIELD(ctor.agg_order);
+	COPY_NODE_FIELD(ctor.over);
+	COPY_LOCATION_FIELD(ctor.location);
+	COPY_NODE_FIELD(arg);
+	COPY_SCALAR_FIELD(absent_on_null);
 
 	return newnode;
 }
@@ -5214,11 +5253,17 @@ copyObjectImpl(const void *from)
 		case T_JsonObjectCtor:
 			retval = _copyJsonObjectCtor(from);
 			break;
+		case T_JsonObjectAgg:
+			retval = _copyJsonObjectAgg(from);
+			break;
 		case T_JsonOutput:
 			retval = _copyJsonOutput(from);
 			break;
 		case T_JsonArrayCtor:
 			retval = _copyJsonArrayCtor(from);
+			break;
+		case T_JsonArrayAgg:
+			retval = _copyJsonArrayAgg(from);
 			break;
 
 			/*
