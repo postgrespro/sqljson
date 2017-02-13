@@ -282,3 +282,140 @@ SELECT JSON_OBJECT(1: 1, '2': NULL, '3': 1, 4: NULL, '5': 'a' ABSENT ON NULL WIT
  {"1": 1, "3": 1, "5": "a"}
 (1 row)
 
+-- JSON_ARRAY()
+SELECT JSON_ARRAY();
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING json);
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING json FORMAT JSON);
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING jsonb);
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING jsonb FORMAT JSON);
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING text);
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING text FORMAT JSON);
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING text FORMAT JSON ENCODING UTF8);
+ERROR:  cannot set JSON encoding for non-bytea output types
+LINE 1: SELECT JSON_ARRAY(RETURNING text FORMAT JSON ENCODING UTF8);
+                                         ^
+SELECT JSON_ARRAY(RETURNING text FORMAT JSON ENCODING INVALID_ENCODING);
+ERROR:  unrecognized JSON encoding: invalid_encoding
+SELECT JSON_ARRAY(RETURNING bytea);
+ ?column? 
+----------
+ \x5b5d
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON);
+ ?column? 
+----------
+ \x5b5d
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON ENCODING UTF8);
+ ?column? 
+----------
+ \x5b5d
+(1 row)
+
+SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON ENCODING UTF16);
+ERROR:  unsupported JSON encoding
+LINE 1: SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON ENCODING UTF16...
+                                          ^
+HINT:  only UTF8 JSON encoding is supported
+SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON ENCODING UTF32);
+ERROR:  unsupported JSON encoding
+LINE 1: SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON ENCODING UTF32...
+                                          ^
+HINT:  only UTF8 JSON encoding is supported
+SELECT JSON_ARRAY('aaa', 111, true, array[1,2,3], NULL, json '{"a": [1]}', jsonb '["a",3]');
+                     ?column?                      
+---------------------------------------------------
+ ["aaa", 111, true, [1,2,3], {"a": [1]}, ["a", 3]]
+(1 row)
+
+SELECT JSON_ARRAY('a',  NULL, 'b' NULL   ON NULL);
+     ?column?     
+------------------
+ ["a", null, "b"]
+(1 row)
+
+SELECT JSON_ARRAY('a',  NULL, 'b' ABSENT ON NULL);
+  ?column?  
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT JSON_ARRAY(NULL, NULL, 'b' ABSENT ON NULL);
+ ?column? 
+----------
+ ["b"]
+(1 row)
+
+SELECT JSON_ARRAY('a',  NULL, 'b' NULL   ON NULL RETURNING jsonb);
+     ?column?     
+------------------
+ ["a", null, "b"]
+(1 row)
+
+SELECT JSON_ARRAY('a',  NULL, 'b' ABSENT ON NULL RETURNING jsonb);
+  ?column?  
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT JSON_ARRAY(NULL, NULL, 'b' ABSENT ON NULL RETURNING jsonb);
+ ?column? 
+----------
+ ["b"]
+(1 row)
+
+SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' RETURNING text));
+           ?column?            
+-------------------------------
+ ["[\"{ \\\"a\\\" : 123 }\"]"]
+(1 row)
+
+SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' FORMAT JSON RETURNING text));
+       ?column?        
+-----------------------
+ ["[{ \"a\" : 123 }]"]
+(1 row)
+
+SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' FORMAT JSON RETURNING text) FORMAT JSON);
+     ?column?      
+-------------------
+ [[{ "a" : 123 }]]
+(1 row)
+
