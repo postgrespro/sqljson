@@ -2358,6 +2358,22 @@ _copyJsonOutput(const JsonOutput *from)
 	return newnode;
 }
 
+/*
+ * _copyJsonArrayCtor
+ */
+static JsonArrayCtor *
+_copyJsonArrayCtor(const JsonArrayCtor *from)
+{
+	JsonArrayCtor *newnode = makeNode(JsonArrayCtor);
+
+	COPY_NODE_FIELD(exprs);
+	COPY_NODE_FIELD(output);
+	COPY_SCALAR_FIELD(absent_on_null);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *						pathnodes.h copy functions
  *
@@ -5275,6 +5291,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_JsonOutput:
 			retval = _copyJsonOutput(from);
+			break;
+		case T_JsonArrayCtor:
+			retval = _copyJsonArrayCtor(from);
 			break;
 
 			/*

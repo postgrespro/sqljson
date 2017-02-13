@@ -122,6 +122,7 @@ static Node *transformIndirection(ParseState *pstate, A_Indirection *ind);
 static Node *transformTypeCast(ParseState *pstate, TypeCast *tc);
 static Node *transformCollateClause(ParseState *pstate, CollateClause *c);
 static Node *transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor);
+static Node *transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
 									List *largs, List *rargs, int location);
 static Node *make_row_distinct_op(ParseState *pstate, List *opname,
@@ -372,6 +373,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_JsonObjectCtor:
 			result = transformJsonObjectCtor(pstate, (JsonObjectCtor *) expr);
+			break;
+
+		case T_JsonArrayCtor:
+			result = transformJsonArrayCtor(pstate, (JsonArrayCtor *) expr);
 			break;
 
 		default:
@@ -3994,4 +3999,69 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 	jsctor->location = ctor->location;
 
 	return coerceJsonFuncExpr(pstate, (Node *) jsctor, jsctor->returning, true);
+}
+
+/*
+ * Transform JSON_ARRAY() constructor.
+ *
+ * JSON_ARRAY() is transformed into json[b]_build_array[_ext]() call
+ * depending on the output JSON format. The first argument of
+ * json[b]_build_array_ext() is absent_on_null.
+ *
+ * Then function call result is coerced to the target type.
+ */
+static Node *
+transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor)
+{
+	JsonReturning returning;
+	JsonCtorExpr *jsctor;
+	FuncExpr   *fexpr;
+	List	   *args = NIL;
+	Oid			funcid;
+	Oid			funcrettype;
+
+	/* transform element expressions, if any */
+	if (ctor->exprs)
+	{
+		ListCell   *lc;
+
+		/* append the first absent_on_null argument */
+		args = lappend(args, makeBoolConst(ctor->absent_on_null, false));
+
+		/* transform and append element arguments */
+		foreach(lc, ctor->exprs)
+		{
+			JsonValueExpr *jsval = castNode(JsonValueExpr, lfirst(lc));
+			Node	   *val = transformJsonValueExpr(pstate, jsval,
+													 JS_FORMAT_DEFAULT);
+
+			args = lappend(args, val);
+		}
+	}
+
+	transformJsonOutput(pstate, ctor->output, true, &returning);
+
+	if (returning.format.type == JS_FORMAT_JSONB)
+	{
+		funcid = args ? F_JSONB_BUILD_ARRAY_EXT : F_JSONB_BUILD_ARRAY_NOARGS;
+		funcrettype = JSONBOID;
+	}
+	else
+	{
+		funcid = args ? F_JSON_BUILD_ARRAY_EXT : F_JSON_BUILD_ARRAY_NOARGS;
+		funcrettype = JSONOID;
+	}
+
+	fexpr = makeFuncExpr(funcid, funcrettype, args,
+						 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	fexpr->location = ctor->location;
+
+	jsctor = makeNode(JsonCtorExpr);
+	jsctor->func = fexpr;
+	jsctor->type = JSCTOR_JSON_ARRAY;
+	jsctor->returning = returning;
+	jsctor->unique = false;
+	jsctor->absent_on_null = ctor->absent_on_null;
+
+	return coerceJsonFuncExpr(pstate, (Node *) jsctor, &returning, true);
 }
