@@ -125,6 +125,8 @@ static Node *transformTypeCast(ParseState *pstate, TypeCast *tc);
 static Node *transformCollateClause(ParseState *pstate, CollateClause *c);
 static Node *transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor);
 static Node *transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor);
+static Node *transformJsonArrayQueryCtor(ParseState *pstate,
+										 JsonArrayQueryCtor *ctor);
 static Node *transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg);
 static Node *transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
@@ -381,6 +383,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_JsonArrayCtor:
 			result = transformJsonArrayCtor(pstate, (JsonArrayCtor *) expr);
+			break;
+
+		case T_JsonArrayQueryCtor:
+			result = transformJsonArrayQueryCtor(pstate, (JsonArrayQueryCtor *) expr);
 			break;
 
 		case T_JsonObjectAgg:
@@ -3968,6 +3974,71 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 													  ctor->absent_on_null);
 
 	return coerceJsonFuncExpr(pstate, (Node *) fexpr, &returning, true);
+}
+
+/*
+ * Transform JSON_ARRAY(query [FORMAT] [RETURNING] [ON NULL]) into
+ *  (SELECT  JSON_ARRAYAGG(a  [FORMAT] [RETURNING] [ON NULL]) FROM (query) q(a))
+ */
+static Node *
+transformJsonArrayQueryCtor(ParseState *pstate, JsonArrayQueryCtor *ctor)
+{
+	SubLink	   *sublink = makeNode(SubLink);
+	SelectStmt *select = makeNode(SelectStmt);
+	RangeSubselect *range = makeNode(RangeSubselect);
+	Alias	   *alias = makeNode(Alias);
+	ResTarget  *target = makeNode(ResTarget);
+	JsonArrayAgg *agg = makeNode(JsonArrayAgg);
+	ColumnRef  *colref = makeNode(ColumnRef);
+	Query	   *query;
+	ParseState *qpstate;
+
+	/* Transform query only for counting target list entries. */
+	qpstate = make_parsestate(pstate);
+
+	query = transformStmt(qpstate, ctor->query);
+
+	if (count_nonjunk_tlist_entries(query->targetList) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("subquery must return only one column"),
+				 parser_errposition(pstate, ctor->location)));
+
+	free_parsestate(qpstate);
+
+	colref->fields = list_make2(makeString(pstrdup("q")),
+								makeString(pstrdup("a")));
+	colref->location = ctor->location;
+
+	agg->arg = makeJsonValueExpr((Expr *) colref, ctor->format);
+	agg->ctor.agg_order = NIL;
+	agg->ctor.output = ctor->output;
+	agg->absent_on_null = ctor->absent_on_null;
+	agg->ctor.location = ctor->location;
+
+	target->name = NULL;
+	target->indirection = NIL;
+	target->val = (Node *) agg;
+	target->location = ctor->location;
+
+	alias->aliasname = pstrdup("q");
+	alias->colnames = list_make1(makeString(pstrdup("a")));
+
+	range->lateral = false;
+	range->subquery = ctor->query;
+	range->alias = alias;
+
+	select->targetList = list_make1(target);
+	select->fromClause = list_make1(range);
+
+	sublink->subLinkType = EXPR_SUBLINK;
+	sublink->subLinkId = 0;
+	sublink->testexpr = NULL;
+	sublink->operName = NIL;
+	sublink->subselect = (Node *) select;
+	sublink->location = ctor->location;
+
+	return transformExprRecurse(pstate, (Node *) sublink);
 }
 
 /*

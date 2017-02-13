@@ -3837,6 +3837,16 @@ raw_expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_JsonArrayQueryCtor:
+			{
+				JsonArrayQueryCtor *jaqc = (JsonArrayQueryCtor *) node;
+
+				if (walker(jaqc->output, context))
+					return true;
+				if (walker(jaqc->query, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

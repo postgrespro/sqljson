@@ -2340,6 +2340,23 @@ _copyJsonArrayAgg(const JsonArrayAgg *from)
 	return newnode;
 }
 
+/*
+ * _copyJsonArrayQueryCtor
+ */
+static JsonArrayQueryCtor *
+_copyJsonArrayQueryCtor(const JsonArrayQueryCtor *from)
+{
+	JsonArrayQueryCtor *newnode = makeNode(JsonArrayQueryCtor);
+
+	COPY_NODE_FIELD(query);
+	COPY_NODE_FIELD(output);
+	COPY_SCALAR_FIELD(format);
+	COPY_SCALAR_FIELD(absent_on_null);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *						pathnodes.h copy functions
  *
@@ -5261,6 +5278,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_JsonArrayCtor:
 			retval = _copyJsonArrayCtor(from);
+			break;
+		case T_JsonArrayQueryCtor:
+			retval = _copyJsonArrayQueryCtor(from);
 			break;
 		case T_JsonArrayAgg:
 			retval = _copyJsonArrayAgg(from);

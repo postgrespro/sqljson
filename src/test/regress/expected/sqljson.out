@@ -419,6 +419,46 @@ SELECT JSON_ARRAY(JSON_ARRAY('{ "a" : 123 }' FORMAT JSON RETURNING text) FORMAT 
  [[{ "a" : 123 }]]
 (1 row)
 
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i));
+ json_array 
+------------
+ [1, 2, 4]
+(1 row)
+
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i));
+ json_array 
+------------
+ [[1,2],   +
+  [3,4]]
+(1 row)
+
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i) RETURNING jsonb);
+    json_array    
+------------------
+ [[1, 2], [3, 4]]
+(1 row)
+
+--SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i) NULL ON NULL);
+--SELECT JSON_ARRAY(SELECT i FROM (VALUES (NULL::int[]), ('{1,2}'), (NULL), (NULL), ('{3,4}'), (NULL)) foo(i) NULL ON NULL RETURNING jsonb);
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (3), (1), (NULL), (2)) foo(i) ORDER BY i);
+ json_array 
+------------
+ [1, 2, 3]
+(1 row)
+
+-- Should fail
+SELECT JSON_ARRAY(SELECT FROM (VALUES (1)) foo(i));
+ERROR:  subquery must return only one column
+LINE 1: SELECT JSON_ARRAY(SELECT FROM (VALUES (1)) foo(i));
+               ^
+SELECT JSON_ARRAY(SELECT i, i FROM (VALUES (1)) foo(i));
+ERROR:  subquery must return only one column
+LINE 1: SELECT JSON_ARRAY(SELECT i, i FROM (VALUES (1)) foo(i));
+               ^
+SELECT JSON_ARRAY(SELECT * FROM (VALUES (1, 2)) foo(i, j));
+ERROR:  subquery must return only one column
+LINE 1: SELECT JSON_ARRAY(SELECT * FROM (VALUES (1, 2)) foo(i, j));
+               ^
 -- JSON_ARRAYAGG()
 SELECT	JSON_ARRAYAGG(i) IS NULL,
 		JSON_ARRAYAGG(i RETURNING jsonb) IS NULL
