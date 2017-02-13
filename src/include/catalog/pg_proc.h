@@ -4523,6 +4523,8 @@ DATA(insert OID = 3198 (  json_build_array	   PGNSP PGUID 12 1 0 2276 0 f f f f 
 DESCR("build a json array from any inputs");
 DATA(insert OID = 3199 (  json_build_array	   PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 114  "" _null_ _null_ _null_ _null_ _null_ json_build_array_noargs _null_ _null_ _null_ ));
 DESCR("build an empty json array");
+DATA(insert OID = 3998 (  json_build_array_ext PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 2 0 114 "16 2276" "{16,2276}" "{i,v}" _null_ _null_ _null_ json_build_array_ext _null_ _null_ _null_ ));
+DESCR("build a json array from any inputs");
 DATA(insert OID = 3200 (  json_build_object    PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 1 0 114 "2276" "{2276}" "{v}" _null_ _null_ _null_ json_build_object _null_ _null_ _null_ ));
 DESCR("build a json object from pairwise key/value inputs");
 DATA(insert OID = 3201 (  json_build_object    PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 114  "" _null_ _null_ _null_ _null_ _null_ json_build_object_noargs _null_ _null_ _null_ ));
@@ -4985,6 +4987,8 @@ DATA(insert OID = 3271 (  jsonb_build_array    PGNSP PGUID 12 1 0 2276 0 f f f f
 DESCR("build a jsonb array from any inputs");
 DATA(insert OID = 3272 (  jsonb_build_array    PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 3802	"" _null_ _null_ _null_ _null_ _null_ jsonb_build_array_noargs _null_ _null_ _null_ ));
 DESCR("build an empty jsonb array");
+DATA(insert OID = 6068 (  jsonb_build_array_ext PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 2 0 3802 "16 2276" "{16,2276}" "{i,v}" _null_ _null_ _null_ jsonb_build_array_ext _null_ _null_ _null_ ));
+DESCR("build a jsonb array from any inputs");
 DATA(insert OID = 3273 (  jsonb_build_object	PGNSP PGUID 12 1 0 2276 0 f f f f f f s s 1 0 3802 "2276" "{2276}" "{v}" _null_ _null_ _null_ jsonb_build_object _null_ _null_ _null_ ));
 DESCR("build a jsonb object from pairwise key/value inputs");
 DATA(insert OID = 3274 (  jsonb_build_object	PGNSP PGUID 12 1 0 0 0 f f f f f f s s 0 0 3802  "" _null_ _null_ _null_ _null_ _null_ jsonb_build_object_noargs _null_ _null_ _null_ ));
