@@ -2431,11 +2431,9 @@ json_build_object_noargs(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text_with_len("{}", 2));
 }
 
-/*
- * SQL function json_build_array(variadic "any")
- */
-Datum
-json_build_array(PG_FUNCTION_ARGS)
+static Datum
+json_build_array_worker(FunctionCallInfo fcinfo, int first_vararg,
+						bool absent_on_null)
 {
 	int			nargs;
 	int			i;
@@ -2446,7 +2444,8 @@ json_build_array(PG_FUNCTION_ARGS)
 	Oid		   *types;
 
 	/* fetch argument values to build the array */
-	nargs = extract_variadic_args(fcinfo, 0, false, &args, &types, &nulls);
+	nargs = extract_variadic_args(fcinfo, first_vararg, false,
+								  &args, &types, &nulls);
 
 	if (nargs < 0)
 		PG_RETURN_NULL();
@@ -2457,6 +2456,9 @@ json_build_array(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < nargs; i++)
 	{
+		if (absent_on_null && nulls[i])
+			continue;
+
 		appendStringInfoString(result, sep);
 		sep = ", ";
 		add_json(args[i], nulls[i], result, types[i], false);
@@ -2465,6 +2467,24 @@ json_build_array(PG_FUNCTION_ARGS)
 	appendStringInfoChar(result, ']');
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+}
+
+/*
+ * SQL function json_build_array(variadic "any")
+ */
+Datum
+json_build_array(PG_FUNCTION_ARGS)
+{
+	return json_build_array_worker(fcinfo, 0, false);
+}
+
+/*
+ * SQL function json_build_array_ext(absent_on_null bool, variadic "any")
+ */
+Datum
+json_build_array_ext(PG_FUNCTION_ARGS)
+{
+	return json_build_array_worker(fcinfo, 1, PG_GETARG_BOOL(0));
 }
 
 /*

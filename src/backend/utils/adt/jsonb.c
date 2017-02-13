@@ -1366,11 +1366,9 @@ jsonb_build_object_noargs(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
 }
 
-/*
- * SQL function jsonb_build_array(variadic "any")
- */
-Datum
-jsonb_build_array(PG_FUNCTION_ARGS)
+static Datum
+jsonb_build_array_worker(FunctionCallInfo fcinfo, int first_vararg,
+						 bool absent_on_null)
 {
 	int			nargs;
 	int			i;
@@ -1380,7 +1378,8 @@ jsonb_build_array(PG_FUNCTION_ARGS)
 	Oid		   *types;
 
 	/* build argument values to build the array */
-	nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+	nargs = extract_variadic_args(fcinfo, first_vararg, true,
+								  &args, &types, &nulls);
 
 	if (nargs < 0)
 		PG_RETURN_NULL();
@@ -1390,11 +1389,34 @@ jsonb_build_array(PG_FUNCTION_ARGS)
 	result.res = pushJsonbValue(&result.parseState, WJB_BEGIN_ARRAY, NULL);
 
 	for (i = 0; i < nargs; i++)
+	{
+		if (absent_on_null && nulls[i])
+			continue;
+
 		add_jsonb(args[i], nulls[i], &result, types[i], false);
+	}
 
 	result.res = pushJsonbValue(&result.parseState, WJB_END_ARRAY, NULL);
 
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
+}
+
+/*
+ * SQL function jsonb_build_array(variadic "any")
+ */
+Datum
+jsonb_build_array(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_array_worker(fcinfo, 0, false);
+}
+
+/*
+ * SQL function jsonb_build_array_ext(absent_on_null bool, variadic "any")
+ */
+Datum
+jsonb_build_array_ext(PG_FUNCTION_ARGS)
+{
+	return jsonb_build_array_worker(fcinfo, 1, PG_GETARG_BOOL(0));
 }
 
 /*

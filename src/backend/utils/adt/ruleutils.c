@@ -9286,6 +9286,13 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 			firstarg = 2;
 			use_variadic = false;
 			break;
+
+		case FUNCFMT_JSON_ARRAY:
+			funcname = "JSON_ARRAY";
+			firstarg = 1;
+			use_variadic = false;
+			break;
+
 		default:
 			funcname = generate_function_name(funcoid, nargs,
 											  argnames, argtypes,

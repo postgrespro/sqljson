@@ -1929,6 +1929,9 @@ FigureColnameInternal(Node *node, char **name)
 		case T_JsonObjectCtor:
 			*name = "json_object";
 			return 2;
+		case T_JsonArrayCtor:
+			*name = "json_array";
+			return 2;
 		default:
 			break;
 	}
