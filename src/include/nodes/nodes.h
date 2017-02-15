@@ -202,6 +202,9 @@ typedef enum NodeTag
 	T_JsonReturning,
 	T_JsonValueExpr,
 	T_JsonConstructorExpr,
+	T_JsonExpr,
+	T_JsonCoercion,
+	T_JsonItemCoercions,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

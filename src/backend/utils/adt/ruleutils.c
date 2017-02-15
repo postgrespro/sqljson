@@ -7625,6 +7625,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_WindowFunc:
 		case T_FuncExpr:
 		case T_JsonConstructorExpr:
+		case T_JsonExpr:
 			/* function-like: name(..) or name[..] */
 			return true;
 
@@ -7742,6 +7743,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_Aggref:	/* own parentheses */
 				case T_WindowFunc:	/* own parentheses */
 				case T_CaseExpr:	/* other separators */
+				case T_JsonExpr: /* own parentheses */
 					return true;
 				default:
 					return false;
@@ -7948,6 +7950,82 @@ get_json_returning(JsonReturning *returning, StringInfo buf,
 		returning->format->format !=
 			(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
 		get_json_format(returning->format, buf);
+}
+
+static void
+get_json_behavior(JsonBehavior *behavior, deparse_context *context,
+				  const char *on)
+{
+	switch (behavior->btype)
+	{
+		case JSON_BEHAVIOR_DEFAULT:
+			appendStringInfoString(context->buf, " DEFAULT ");
+			get_rule_expr(behavior->default_expr, context, false);
+			break;
+
+		case JSON_BEHAVIOR_EMPTY:
+			appendStringInfoString(context->buf, " EMPTY");
+			break;
+
+		case JSON_BEHAVIOR_EMPTY_ARRAY:
+			appendStringInfoString(context->buf, " EMPTY ARRAY");
+			break;
+
+		case JSON_BEHAVIOR_EMPTY_OBJECT:
+			appendStringInfoString(context->buf, " EMPTY OBJECT");
+			break;
+
+		case JSON_BEHAVIOR_ERROR:
+			appendStringInfoString(context->buf, " ERROR");
+			break;
+
+		case JSON_BEHAVIOR_FALSE:
+			appendStringInfoString(context->buf, " FALSE");
+			break;
+
+		case JSON_BEHAVIOR_NULL:
+			appendStringInfoString(context->buf, " NULL");
+			break;
+
+		case JSON_BEHAVIOR_TRUE:
+			appendStringInfoString(context->buf, " TRUE");
+			break;
+
+		case JSON_BEHAVIOR_UNKNOWN:
+			appendStringInfoString(context->buf, " UNKNOWN");
+			break;
+	}
+
+	appendStringInfo(context->buf, " ON %s", on);
+}
+
+/*
+ * get_json_expr_options
+ *
+ * Parse back common options for JSON_QUERY, JSON_VALUE, JSON_EXISTS.
+ */
+static void
+get_json_expr_options(JsonExpr *jsexpr, deparse_context *context,
+					  JsonBehaviorType default_behavior)
+{
+	if (jsexpr->op == IS_JSON_QUERY)
+	{
+		if (jsexpr->wrapper == JSW_CONDITIONAL)
+			appendStringInfo(context->buf, " WITH CONDITIONAL WRAPPER");
+
+		if (jsexpr->wrapper == JSW_UNCONDITIONAL)
+			appendStringInfo(context->buf, " WITH UNCONDITIONAL WRAPPER");
+
+		if (jsexpr->omit_quotes)
+			appendStringInfo(context->buf, " OMIT QUOTES");
+	}
+
+	if (jsexpr->op != IS_JSON_EXISTS &&
+		jsexpr->on_empty->btype != default_behavior)
+		get_json_behavior(jsexpr->on_empty, context, "EMPTY");
+
+	if (jsexpr->on_error->btype != default_behavior)
+		get_json_behavior(jsexpr->on_error, context, "ERROR");
 }
 
 /* ----------
@@ -9122,6 +9200,7 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
+
 		case T_JsonValueExpr:
 			{
 				JsonValueExpr *jve = (JsonValueExpr *) node;
@@ -9166,6 +9245,63 @@ get_rule_expr(Node *node, deparse_context *context,
 
 				if (!PRETTY_PAREN(context))
 					appendStringInfoChar(context->buf, ')');
+			}
+			break;
+
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) node;
+
+				switch (jexpr->op)
+				{
+					case IS_JSON_QUERY:
+						appendStringInfoString(buf, "JSON_QUERY(");
+						break;
+					case IS_JSON_VALUE:
+						appendStringInfoString(buf, "JSON_VALUE(");
+						break;
+					case IS_JSON_EXISTS:
+						appendStringInfoString(buf, "JSON_EXISTS(");
+						break;
+				}
+
+				get_rule_expr(jexpr->raw_expr, context, showimplicit);
+
+				get_json_format(jexpr->format, context->buf);
+
+				appendStringInfoString(buf, ", ");
+
+				get_const_expr(jexpr->path_spec, context, -1);
+
+				if (jexpr->passing_values)
+				{
+					ListCell   *lc1, *lc2;
+					bool		needcomma = false;
+
+					appendStringInfoString(buf, " PASSING ");
+
+					forboth(lc1, jexpr->passing_names,
+							lc2, jexpr->passing_values)
+					{
+						if (needcomma)
+							appendStringInfoString(buf, ", ");
+						needcomma = true;
+
+						get_rule_expr((Node *) lfirst(lc2), context, showimplicit);
+						appendStringInfo(buf, " AS %s",
+										 ((Value *) lfirst(lc1))->val.str);
+					}
+				}
+
+				if (jexpr->op != IS_JSON_EXISTS)
+					get_json_returning(jexpr->returning, context->buf,
+									   jexpr->op != IS_JSON_VALUE);
+
+				get_json_expr_options(jexpr, context,
+									  jexpr->op == IS_JSON_EXISTS ?
+									  JSON_BEHAVIOR_FALSE : JSON_BEHAVIOR_NULL);
+
+				appendStringInfoString(buf, ")");
 			}
 			break;
 
@@ -9265,6 +9401,7 @@ looks_like_function(Node *node)
 		case T_MinMaxExpr:
 		case T_SQLValueFunction:
 		case T_XmlExpr:
+		case T_JsonExpr:
 			/* these are all accepted by func_expr_common_subexpr */
 			return true;
 		default:

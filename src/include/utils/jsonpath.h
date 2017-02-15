@@ -16,7 +16,9 @@
 
 #include "fmgr.h"
 #include "nodes/pg_list.h"
+#include "nodes/primnodes.h"
 #include "utils/jsonb.h"
+#include "utils/jsonfuncs.h"
 
 typedef struct
 {
@@ -247,5 +249,35 @@ typedef struct JsonPathParseResult
 extern JsonPathParseResult *parsejsonpath(const char *str, int len);
 
 extern int	jspConvertRegexFlags(uint32 xflags);
+
+/*
+ * Evaluation of jsonpath
+ */
+
+/* External variable passed into jsonpath. */
+typedef struct JsonPathVariableEvalContext
+{
+	char	   *name;
+	Oid			typid;
+	int32		typmod;
+	struct ExprContext *econtext;
+	struct ExprState  *estate;
+	Datum		value;
+	bool		isnull;
+	bool		evaluated;
+} JsonPathVariableEvalContext;
+
+/* SQL/JSON item */
+extern void JsonItemFromDatum(Datum val, Oid typid, int32 typmod,
+							  JsonbValue *res);
+
+extern bool  JsonbPathExists(Datum jb, JsonPath *path, List *vars);
+extern Datum JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
+			   bool *empty, List *vars);
+extern JsonbValue *JsonbPathValue(Datum jb, JsonPath *jp, bool *empty,
+								  List *vars);
+
+extern int EvalJsonPathVar(void *vars, char *varName, int varNameLen,
+						   JsonbValue *val, JsonbValue *baseObject);
 
 #endif

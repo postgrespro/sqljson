@@ -14921,6 +14921,8 @@ json_behavior_unknown:
 
 json_behavior_empty_array:
 			EMPTY_P ARRAY	{ $$ = makeJsonBehavior(JSON_BEHAVIOR_EMPTY_ARRAY, NULL); }
+			/* non-standard, for Oracle compatibility only */
+			| EMPTY_P 		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_EMPTY_ARRAY, NULL); }
 		;
 
 json_behavior_empty_object:
