@@ -8250,6 +8250,13 @@
 { oid => '3261', descr => 'remove object fields with null values from json',
   proname => 'json_strip_nulls', prorettype => 'json', proargtypes => 'json',
   prosrc => 'json_strip_nulls' },
+{ oid => '6073', descr => 'check json value type and key uniqueness',
+  proname => 'json_is_valid', prorettype => 'bool',
+  proargtypes => 'json text bool', prosrc => 'json_is_valid' },
+{ oid => '6074',
+  descr => 'check json text validity, value type and key uniquenes',
+  proname => 'json_is_valid', prorettype => 'bool',
+  proargtypes => 'text text bool', prosrc => 'json_is_valid' },
 
 { oid => '3947',
   proname => 'json_object_field', prorettype => 'json',
@@ -9121,6 +9128,9 @@
 { oid => '3262', descr => 'remove object fields with null values from jsonb',
   proname => 'jsonb_strip_nulls', prorettype => 'jsonb', proargtypes => 'jsonb',
   prosrc => 'jsonb_strip_nulls' },
+{ oid => '6062', descr => 'check jsonb value type',
+  proname => 'jsonb_is_valid', prorettype => 'bool',
+  proargtypes => 'jsonb text', prosrc => 'jsonb_is_valid' },
 
 { oid => '3478',
   proname => 'jsonb_object_field', prorettype => 'jsonb',

@@ -9204,6 +9204,37 @@ get_func_opts(FuncFormat aggformat, Node *aggformatopts, deparse_context *contex
 				get_json_returning(&opts->returning, context, true);
 			}
 			break;
+
+		case FUNCFMT_IS_JSON:
+			{
+				JsonIsPredicateOpts *opts =
+					castNode(JsonIsPredicateOpts, aggformatopts);
+
+				appendStringInfoString(context->buf, " IS JSON");
+
+				if (!opts)
+					break;
+
+				switch (opts->value_type)
+				{
+					case JS_TYPE_SCALAR:
+						appendStringInfoString(context->buf, " SCALAR");
+						break;
+					case JS_TYPE_ARRAY:
+						appendStringInfoString(context->buf, " ARRAY");
+						break;
+					case JS_TYPE_OBJECT:
+						appendStringInfoString(context->buf, " OBJECT");
+						break;
+					default:
+						break;
+				}
+
+				if (opts->unique_keys)
+					appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
+			}
+			break;
+
 		default:
 			break;
 	}
@@ -9221,6 +9252,7 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
 	int			firstarg;
+	int			lastarg = list_length(expr->args);
 	List	   *argnames;
 	bool		use_variadic;
 	ListCell   *l;
@@ -9293,6 +9325,13 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 			use_variadic = false;
 			break;
 
+		case FUNCFMT_IS_JSON:
+			funcname = NULL;
+			firstarg = 0;
+			lastarg = 0;
+			use_variadic = false;
+			break;
+
 		default:
 			funcname = generate_function_name(funcoid, nargs,
 											  argnames, argtypes,
@@ -9303,11 +9342,17 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 			break;
 	}
 
-	appendStringInfo(buf, "%s(", funcname);
+	if (funcname)
+		appendStringInfo(buf, "%s(", funcname);
+	else if (!PRETTY_PAREN(context))
+		appendStringInfoChar(buf, '(');
 
 	nargs = 0;
 	foreach(l, expr->args)
 	{
+		if (nargs > lastarg)
+			break;
+
 		if (nargs++ < firstarg)
 			continue;
 
@@ -9326,7 +9371,8 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 
 	get_func_opts(expr->funcformat2, expr->funcformatopts, context);
 
-	appendStringInfoChar(buf, ')');
+	if (funcname || !PRETTY_PAREN(context))
+		appendStringInfoChar(buf, ')');
 }
 
 /*
