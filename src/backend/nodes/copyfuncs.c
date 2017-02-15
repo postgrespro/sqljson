@@ -2440,6 +2440,23 @@ _copyJsonArrayQueryConstructor(const JsonArrayQueryConstructor *from)
 	return newnode;
 }
 
+/*
+ * _copyJsonIsPredicate
+ */
+static JsonIsPredicate *
+_copyJsonIsPredicate(const JsonIsPredicate *from)
+{
+	JsonIsPredicate *newnode = makeNode(JsonIsPredicate);
+
+	COPY_NODE_FIELD(expr);
+	COPY_SCALAR_FIELD(format);
+	COPY_SCALAR_FIELD(value_type);
+	COPY_SCALAR_FIELD(unique_keys);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *						pathnodes.h copy functions
  *
@@ -5372,6 +5389,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_JsonArrayAgg:
 			retval = _copyJsonArrayAgg(from);
+			break;
+		case T_JsonIsPredicate:
+			retval = _copyJsonIsPredicate(from);
 			break;
 
 			/*

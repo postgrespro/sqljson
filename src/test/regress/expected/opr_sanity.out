@@ -215,10 +215,11 @@ ORDER BY 1, 2;
  bigint                      | xid8
  text                        | character
  text                        | character varying
+ text                        | json
  timestamp without time zone | timestamp with time zone
  bit                         | bit varying
  txid_snapshot               | pg_snapshot
-(6 rows)
+(7 rows)
 
 SELECT DISTINCT p1.proargtypes[1]::regtype, p2.proargtypes[1]::regtype
 FROM pg_proc AS p1, pg_proc AS p2

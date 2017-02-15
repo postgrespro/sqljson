@@ -329,8 +329,6 @@ typedef struct JsObject
 			hash_destroy((jso)->val.json_hash); \
 	} while (0)
 
-static int	report_json_context(JsonLexContext *lex);
-
 /* semantic action functions for json_object_keys */
 static void okeys_object_field_start(void *state, char *fname, bool isnull);
 static void okeys_array_start(void *state);
@@ -631,7 +629,7 @@ json_ereport_error(JsonParseErrorType error, JsonLexContext *lex)
  * The return value isn't meaningful, but we make it non-void so that this
  * can be invoked inside ereport().
  */
-static int
+int
 report_json_context(JsonLexContext *lex)
 {
 	const char *context_start;

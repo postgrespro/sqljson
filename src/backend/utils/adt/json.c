@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "access/hash.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
@@ -1649,6 +1650,143 @@ escape_json(StringInfo buf, const char *str)
 		}
 	}
 	appendStringInfoCharMacro(buf, '"');
+}
+
+/* Semantic actions for key uniqueness check */
+static void
+json_unique_object_start(void *_state)
+{
+	JsonUniqueParsingState *state = _state;
+	JsonUniqueStackEntry *entry;
+
+	if (!state->unique)
+		return;
+
+	/* push object entry to stack */
+	entry = palloc(sizeof(*entry));
+	entry->object_id = state->id_counter++;
+	entry->parent = state->stack;
+	state->stack = entry;
+}
+
+static void
+json_unique_object_end(void *_state)
+{
+	JsonUniqueParsingState *state = _state;
+	JsonUniqueStackEntry *entry;
+
+	if (!state->unique)
+		return;
+
+	entry = state->stack;
+	state->stack = entry->parent;	/* pop object from stack */
+	pfree(entry);
+}
+
+static void
+json_unique_object_field_start(void *_state, char *field, bool isnull)
+{
+	JsonUniqueParsingState *state = _state;
+	JsonUniqueStackEntry *entry;
+
+	if (!state->unique)
+		return;
+
+	/* find key collision in the current object */
+	if (json_unique_check_key(&state->check, field, state->stack->object_id))
+		return;
+
+	state->unique = false;
+
+	/* pop all objects entries */
+	while ((entry = state->stack))
+	{
+		state->stack = entry->parent;
+		pfree(entry);
+	}
+}
+
+/*
+ * json_is_valid -- check json text validity, its value type and key uniqueness
+ */
+Datum
+json_is_valid(PG_FUNCTION_ARGS)
+{
+	text	   *json = PG_GETARG_TEXT_P(0);
+	text	   *type = PG_GETARG_TEXT_P(1);
+	bool		unique = PG_GETARG_BOOL(2);
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	if (!PG_ARGISNULL(1) &&
+		strncmp("any", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+	{
+		JsonLexContext *lex;
+		JsonTokenType tok;
+		JsonParseErrorType result;
+
+		lex = makeJsonLexContext(json, false);
+
+		/* Lex exactly one token from the input and check its type. */
+		result = json_lex(lex);
+
+		if (result != JSON_SUCCESS)
+			PG_RETURN_BOOL(false);	/* invalid json */
+
+		tok = lex->token_type;
+
+		if (!strncmp("object", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (tok != JSON_TOKEN_OBJECT_START)
+				PG_RETURN_BOOL(false);	/* json is not a object */
+		}
+		else if (!strncmp("array", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (tok != JSON_TOKEN_ARRAY_START)
+				PG_RETURN_BOOL(false);	/* json is not an array */
+		}
+		else
+		{
+			if (tok == JSON_TOKEN_OBJECT_START ||
+				tok == JSON_TOKEN_ARRAY_START)
+				PG_RETURN_BOOL(false);	/* json is not a scalar */
+		}
+	}
+
+	/* do full parsing pass only for uniqueness check or JSON text validation */
+	if (unique ||
+		get_fn_expr_argtype(fcinfo->flinfo, 0) != JSONOID)
+	{
+		JsonLexContext *lex = makeJsonLexContext(json, unique);
+		JsonSemAction uniqueSemAction = {0};
+		JsonUniqueParsingState state;
+		JsonParseErrorType result;
+
+		if (unique)
+		{
+			state.lex = lex;
+			state.stack = NULL;
+			state.id_counter = 0;
+			state.unique = true;
+			json_unique_check_init(&state.check);
+
+			uniqueSemAction.semstate = &state;
+			uniqueSemAction.object_start = json_unique_object_start;
+			uniqueSemAction.object_field_start = json_unique_object_field_start;
+			uniqueSemAction.object_end = json_unique_object_end;
+		}
+
+		result = pg_parse_json(lex, unique ? &uniqueSemAction : &nullSemAction);
+
+		if (result != JSON_SUCCESS)
+			PG_RETURN_BOOL(false);	/* invalid json */
+
+		if (unique && !state.unique)
+			PG_RETURN_BOOL(false);	/* not unique keys */
+	}
+
+	PG_RETURN_BOOL(true);	/* ok */
 }
 
 /*

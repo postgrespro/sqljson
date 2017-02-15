@@ -3124,6 +3124,16 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(ctor->absent_on_null);
 			}
 			break;
+		case T_JsonIsPredicate:
+			{
+				JsonIsPredicate *pred = (JsonIsPredicate *) node;
+
+				JumbleExpr(jstate, (Node *) pred->expr);
+				JumbleExpr(jstate, (Node *) pred->format);
+				APP_JUMB(pred->unique_keys);
+				APP_JUMB(pred->value_type);
+			}
+			break;
 		case T_List:
 			foreach(temp, (List *) node)
 			{
