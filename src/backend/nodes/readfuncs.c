@@ -1365,6 +1365,20 @@ _readJsonCtorOpts(void)
 }
 
 /*
+ * _readJsonIsPredicateOpts
+ */
+static JsonIsPredicateOpts *
+_readJsonIsPredicateOpts()
+{
+	READ_LOCALS(JsonIsPredicateOpts);
+
+	READ_ENUM_FIELD(value_type, JsonValueType);
+	READ_BOOL_FIELD(unique_keys);
+
+	READ_DONE();
+}
+
+/*
  *	Stuff from parsenodes.h.
  */
 
@@ -2713,6 +2727,8 @@ parseNodeString(void)
 		return_value = _readJsonValueExpr();
 	else if (MATCH("JSONCTOROPTS", 12))
 		return_value = _readJsonCtorOpts();
+	else if (MATCH("JSONISOPTS", 10))
+		return_value = _readJsonIsPredicateOpts();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

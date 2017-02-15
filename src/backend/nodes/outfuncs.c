@@ -1727,6 +1727,15 @@ _outJsonCtorOpts(StringInfo str, const JsonCtorOpts *node)
 	WRITE_BOOL_FIELD(absent_on_null);
 }
 
+static void
+_outJsonIsPredicateOpts(StringInfo str, const JsonIsPredicateOpts *node)
+{
+	WRITE_NODE_TYPE("JSONISOPTS");
+
+	WRITE_ENUM_FIELD(value_type, JsonValueType);
+	WRITE_BOOL_FIELD(unique_keys);
+}
+
 /*****************************************************************************
  *
  *	Stuff from relation.h.
@@ -4274,6 +4283,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_JsonCtorOpts:
 				_outJsonCtorOpts(str, obj);
+				break;
+			case T_JsonIsPredicateOpts:
+				_outJsonIsPredicateOpts(str, obj);
 				break;
 
 			default:
