@@ -1696,6 +1696,37 @@ _outOnConflictExpr(StringInfo str, const OnConflictExpr *node)
 	WRITE_NODE_FIELD(exclRelTlist);
 }
 
+static void
+_outJsonExpr(StringInfo str, const JsonExpr *node)
+{
+	WRITE_NODE_TYPE("JSONEXPR");
+
+	WRITE_ENUM_FIELD(op, JsonExprOp);
+	WRITE_NODE_FIELD(raw_expr);
+	WRITE_NODE_FIELD(formatted_expr);
+	WRITE_NODE_FIELD(result_expr);
+	WRITE_BOOL_FIELD(coerce_via_io);
+	WRITE_OID_FIELD(coerce_via_io_collation);
+	WRITE_ENUM_FIELD(format.type, JsonFormatType);
+	WRITE_ENUM_FIELD(format.encoding, JsonEncoding);
+	WRITE_LOCATION_FIELD(format.location);
+	WRITE_NODE_FIELD(path_spec);
+	WRITE_NODE_FIELD(passing.values);
+	WRITE_NODE_FIELD(passing.names);
+	WRITE_ENUM_FIELD(returning.format.type, JsonFormatType);
+	WRITE_ENUM_FIELD(returning.format.encoding, JsonEncoding);
+	WRITE_LOCATION_FIELD(returning.format.location);
+	WRITE_OID_FIELD(returning.typid);
+	WRITE_INT_FIELD(returning.typmod);
+	WRITE_ENUM_FIELD(on_error.btype, JsonBehaviorType);
+	WRITE_NODE_FIELD(on_error.default_expr);
+	WRITE_ENUM_FIELD(on_empty.btype, JsonBehaviorType);
+	WRITE_NODE_FIELD(on_empty.default_expr);
+	WRITE_ENUM_FIELD(wrapper, JsonWrapper);
+	WRITE_BOOL_FIELD(omit_quotes);
+	WRITE_LOCATION_FIELD(location);
+}
+
 /*****************************************************************************
  *
  *	Stuff from relation.h.
@@ -4235,6 +4266,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
+				break;
+			case T_JsonExpr:
+				_outJsonExpr(str, obj);
 				break;
 
 			default:
