@@ -1537,6 +1537,13 @@ typedef struct JsonIsPredicate
 	int			location;		/* token location, or -1 if unknown */
 } JsonIsPredicate;
 
+typedef struct JsonIsPredicateOpts
+{
+	NodeTag		type;
+	JsonValueType value_type;	/* JSON item type */
+	bool		unique_keys;	/* check key uniqueness? */
+} JsonIsPredicateOpts;
+
 /*
  * JsonKeyValue -
  *		untransformed representation of JSON object key-value pair for

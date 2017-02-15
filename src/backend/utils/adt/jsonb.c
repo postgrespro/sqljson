@@ -2105,6 +2105,41 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 
 
 /*
+ * jsonb_is_valid -- check jsonb value type
+ */
+Datum
+jsonb_is_valid(PG_FUNCTION_ARGS)
+{
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
+	text	   *type = PG_GETARG_TEXT_P(1);
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	if (!PG_ARGISNULL(1) &&
+		strncmp("any", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+	{
+		if (!strncmp("object", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (!JB_ROOT_IS_OBJECT(jb))
+				PG_RETURN_BOOL(false);
+		}
+		else if (!strncmp("array", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (!JB_ROOT_IS_ARRAY(jb) || JB_ROOT_IS_SCALAR(jb))
+				PG_RETURN_BOOL(false);
+		}
+		else
+		{
+			if (!JB_ROOT_IS_ARRAY(jb) || !JB_ROOT_IS_SCALAR(jb))
+				PG_RETURN_BOOL(false);
+		}
+	}
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
  * Extract scalar value from raw-scalar pseudo-array jsonb.
  */
 JsonbValue *

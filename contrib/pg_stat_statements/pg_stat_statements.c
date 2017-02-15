@@ -2833,6 +2833,14 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(opts->absent_on_null);
 			}
 			break;
+		case T_JsonIsPredicateOpts:
+			{
+				JsonIsPredicateOpts *opts = (JsonIsPredicateOpts *) node;
+
+				APP_JUMB(opts->unique_keys);
+				APP_JUMB(opts->value_type);
+			}
+			break;
 		case T_List:
 			foreach(temp, (List *) node)
 			{

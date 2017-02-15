@@ -843,6 +843,16 @@ _equalJsonCtorOpts(const JsonCtorOpts *a, const JsonCtorOpts *b)
 	return true;
 }
 
+static bool
+_equalJsonIsPredicateOpts(const JsonIsPredicateOpts *a,
+						  const JsonIsPredicateOpts *b)
+{
+	COMPARE_SCALAR_FIELD(value_type);
+	COMPARE_SCALAR_FIELD(unique_keys);
+
+	return true;
+}
+
 /*
  * Stuff from relation.h
  */
@@ -3196,6 +3206,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_JsonCtorOpts:
 			retval = _equalJsonCtorOpts(a, b);
+			break;
+		case T_JsonIsPredicateOpts:
+			retval = _equalJsonIsPredicateOpts(a, b);
 			break;
 
 			/*
