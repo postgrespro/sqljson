@@ -4550,6 +4550,10 @@ DATA(insert OID = 3176 (  to_json	   PGNSP PGUID 12 1 0 0 0 f f f f t f s s 1 0 
 DESCR("map input to json");
 DATA(insert OID = 3261 (  json_strip_nulls	   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 114 "114" _null_ _null_ _null_ _null_ _null_ json_strip_nulls _null_ _null_ _null_ ));
 DESCR("remove object fields with null values from json");
+DATA(insert OID = 6060 (  json_is_valid	       PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 16 "114 25 16" _null_ _null_ _null_ _null_ _null_ json_is_valid _null_ _null_ _null_ ));
+DESCR("check json value type and key uniqueness");
+DATA(insert OID = 6061 (  json_is_valid	       PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 16 "25 25 16" _null_ _null_ _null_ _null_ _null_ json_is_valid _null_ _null_ _null_ ));
+DESCR("check json text validity, value type and key uniqueness");
 
 DATA(insert OID = 3947 (  json_object_field			PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 114 "114 25" _null_ _null_ "{from_json, field_name}" _null_ _null_ json_object_field _null_ _null_ _null_ ));
 DATA(insert OID = 3948 (  json_object_field_text	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 25  "114 25" _null_ _null_ "{from_json, field_name}" _null_ _null_ json_object_field_text _null_ _null_ _null_ ));
@@ -5019,6 +5023,9 @@ DATA(insert OID = 6067 (  jsonb_build_object_ext PGNSP PGUID 12 1 0 2276 0 f f f
 DESCR("build a jsonb object from pairwise key/value inputs");
 DATA(insert OID = 3262 (  jsonb_strip_nulls    PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 3802 "3802" _null_ _null_ _null_ _null_ _null_ jsonb_strip_nulls _null_ _null_ _null_ ));
 DESCR("remove object fields with null values from jsonb");
+DATA(insert OID = 6062 (  jsonb_is_valid	   PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "17 25" _null_ _null_ _null_ _null_ _null_ jsonb_is_valid _null_ _null_ _null_ ));
+DESCR("check jsonb value type");
+
 
 DATA(insert OID = 3478 (  jsonb_object_field			PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 3802 "3802 25" _null_ _null_ "{from_json, field_name}" _null_ _null_ jsonb_object_field _null_ _null_ _null_ ));
 DATA(insert OID = 3214 (  jsonb_object_field_text	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 25  "3802 25" _null_ _null_ "{from_json, field_name}" _null_ _null_ jsonb_object_field_text _null_ _null_ _null_ ));
