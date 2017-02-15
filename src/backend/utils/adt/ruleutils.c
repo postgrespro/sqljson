@@ -7582,6 +7582,53 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 		appendStringInfoChar(context->buf, ')');
 }
 
+static void
+get_json_behavior(JsonBehavior *behavior, deparse_context *context,
+				  const char *on)
+{
+	switch (behavior->btype)
+	{
+		case JSON_BEHAVIOR_DEFAULT:
+			appendStringInfoString(context->buf, " DEFAULT ");
+			get_rule_expr(behavior->default_expr, context, false);
+			break;
+
+		case JSON_BEHAVIOR_EMPTY:
+			appendStringInfoString(context->buf, " EMPTY");
+			break;
+
+		case JSON_BEHAVIOR_EMPTY_ARRAY:
+			appendStringInfoString(context->buf, " EMPTY ARRAY");
+			break;
+
+		case JSON_BEHAVIOR_EMPTY_OBJECT:
+			appendStringInfoString(context->buf, " EMPTY OBJECT");
+			break;
+
+		case JSON_BEHAVIOR_ERROR:
+			appendStringInfoString(context->buf, " ERROR");
+			break;
+
+		case JSON_BEHAVIOR_FALSE:
+			appendStringInfoString(context->buf, " FALSE");
+			break;
+
+		case JSON_BEHAVIOR_NULL:
+			appendStringInfoString(context->buf, " NULL");
+			break;
+
+		case JSON_BEHAVIOR_TRUE:
+			appendStringInfoString(context->buf, " TRUE");
+			break;
+
+		case JSON_BEHAVIOR_UNKNOWN:
+			appendStringInfoString(context->buf, " UNKNOWN");
+			break;
+	}
+
+	appendStringInfo(context->buf, " ON %s", on);
+}
+
 
 /* ----------
  * get_rule_expr			- Parse back an expression
@@ -8741,6 +8788,89 @@ get_rule_expr(Node *node, deparse_context *context,
 							 (int) spec->strategy);
 						break;
 				}
+			}
+			break;
+
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) node;
+
+				switch (jexpr->op)
+				{
+					case IS_JSON_QUERY:
+						appendStringInfoString(buf, "JSON_QUERY(");
+						break;
+					case IS_JSON_VALUE:
+						appendStringInfoString(buf, "JSON_VALUE(");
+						break;
+					case IS_JSON_EXISTS:
+						appendStringInfoString(buf, "JSON_EXISTS(");
+						break;
+				}
+
+				get_rule_expr(jexpr->raw_expr, context, false);
+
+				if (jexpr->format.type != JS_FORMAT_DEFAULT)
+				{
+					appendStringInfoString(buf,
+							jexpr->format.type == JS_FORMAT_JSONB ?
+									" FORMAT JSONB" : " FORMAT JSON");
+
+					if (jexpr->format.encoding != JS_ENC_DEFAULT)
+					{
+						const char *encoding =
+							jexpr->format.encoding == JS_ENC_UTF16 ? "UTF16" :
+							jexpr->format.encoding == JS_ENC_UTF32 ? "UTF32" :
+																	 "UTF8";
+
+						appendStringInfo(buf, " ENCODING %s", encoding);
+					}
+				}
+
+				appendStringInfoString(buf, ", ");
+
+				get_const_expr(jexpr->path_spec, context, -1);
+
+				if (jexpr->passing.values)
+				{
+					ListCell   *lc1, *lc2;
+					bool		needcomma = false;
+
+					appendStringInfoString(buf, " PASSING ");
+
+					forboth(lc1, jexpr->passing.names,
+							lc2, jexpr->passing.values)
+					{
+						if (needcomma)
+							appendStringInfoString(buf, ", ");
+						needcomma = true;
+
+						get_rule_expr((Node *) lfirst(lc2), context, false);
+						appendStringInfo(buf, " AS %s",
+										 ((Value *) lfirst(lc1))->val.str);
+					}
+				}
+
+				if (jexpr->op != IS_JSON_EXISTS)
+					appendStringInfo(buf, " RETURNING %s",
+							format_type_with_typemod(jexpr->returning.typid,
+													 jexpr->returning.typmod));
+
+				if (jexpr->wrapper == JSW_CONDITIONAL)
+					appendStringInfo(buf, " WITH CONDITIONAL WRAPPER");
+
+				if (jexpr->wrapper == JSW_UNCONDITIONAL)
+					appendStringInfo(buf, " WITH UNCONDITIONAL WRAPPER");
+
+				if (jexpr->omit_quotes)
+					appendStringInfo(buf, " OMIT QUOTES");
+
+				if (jexpr->op != IS_JSON_EXISTS)
+					get_json_behavior(&jexpr->on_empty, context, "EMPTY");
+
+				get_json_behavior(&jexpr->on_error, context, "ERROR");
+
+				appendStringInfoString(buf, ")");
 			}
 			break;
 

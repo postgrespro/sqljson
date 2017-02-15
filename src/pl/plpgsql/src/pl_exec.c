@@ -6460,7 +6460,6 @@ get_cast_hashentry(PLpgSQL_execstate *estate,
 	return cast_entry;
 }
 
-
 /* ----------
  * exec_simple_check_plan -		Check if a plan is simple enough to
  *								be evaluated by ExecEvalExpr() instead
