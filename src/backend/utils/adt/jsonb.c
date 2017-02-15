@@ -2190,6 +2190,45 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(out);
 }
 
+/*
+ * jsonb_is_valid -- check bytea jsonb validity and its value type
+ */
+Datum
+jsonb_is_valid(PG_FUNCTION_ARGS)
+{
+	bytea	   *ba = PG_GETARG_BYTEA_P(0);
+	text	   *type = PG_GETARG_TEXT_P(1);
+	Jsonb	   *jb = (Jsonb *) ba;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_BOOL(false);
+
+	if (!JsonbValidate(VARDATA(jb), VARSIZE(jb) - VARHDRSZ))
+		PG_RETURN_BOOL(false);
+
+	if (!PG_ARGISNULL(1) &&
+		strncmp("any", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+	{
+		if (!strncmp("object", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (!JB_ROOT_IS_OBJECT(jb))
+				PG_RETURN_BOOL(false);
+		}
+		else if (!strncmp("array", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (!JB_ROOT_IS_ARRAY(jb) || JB_ROOT_IS_SCALAR(jb))
+				PG_RETURN_BOOL(false);
+		}
+		else
+		{
+			if (!JB_ROOT_IS_ARRAY(jb) || !JB_ROOT_IS_SCALAR(jb))
+				PG_RETURN_BOOL(false);
+		}
+	}
+
+	PG_RETURN_BOOL(true);
+}
+
 JsonbValue *
 JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
 {

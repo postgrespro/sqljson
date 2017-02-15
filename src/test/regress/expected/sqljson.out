@@ -668,3 +668,219 @@ ERROR:  duplicate JSON key "1"
 SELECT JSON_OBJECTAGG(k: v ABSENT ON NULL WITH UNIQUE KEYS RETURNING jsonb)
 FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
 ERROR:  duplicate JSON key "1"
+-- IS JSON predicate
+SELECT NULL IS JSON;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT NULL IS NOT JSON;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT NULL::json IS JSON;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT NULL::jsonb IS JSON;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT NULL::text IS JSON;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT NULL::bytea IS JSON;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT NULL::int IS JSON;
+ERROR:  cannot use type integer in IS JSON predicate
+SELECT '' FORMAT JSONB IS JSON;
+ERROR:  cannot use FORMAT JSONB for string input types
+LINE 1: SELECT '' FORMAT JSONB IS JSON;
+                  ^
+SELECT bytea '\x00' IS JSON;
+ERROR:  invalid byte sequence for encoding "UTF8": 0x00
+SELECT bytea '\x00' FORMAT JSON IS JSON;
+ERROR:  invalid byte sequence for encoding "UTF8": 0x00
+SELECT bytea '\x00' FORMAT JSONB IS JSON;
+ ?column? 
+----------
+ f
+(1 row)
+
+CREATE TABLE test_is_json (js text);
+INSERT INTO test_is_json VALUES
+ (NULL),
+ (''),
+ ('123'),
+ ('"aaa "'),
+ ('true'),
+ ('null'),
+ ('[]'),
+ ('[1, "2", {}]'),
+ ('{}'),
+ ('{ "a": 1, "b": null }'),
+ ('{ "a": 1, "a": null }'),
+ ('{ "a": 1, "b": [{ "a": 1 }, { "a": 2 }] }'),
+ ('{ "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] }'),
+ ('aaa'),
+ ('{a:1}'),
+ ('["a",]');
+SELECT
+	js,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE",
+	js FORMAT JSON IS JSON "FORMAT JSON IS JSON"
+FROM
+	test_is_json;
+                      js                       | IS JSON | IS NOT JSON | IS VALUE | IS OBJECT | IS ARRAY | IS SCALAR | WITHOUT UNIQUE | WITH UNIQUE | FORMAT JSON IS JSON 
+-----------------------------------------------+---------+-------------+----------+-----------+----------+-----------+----------------+-------------+---------------------
+                                               |         |             |          |           |          |           |                |             | 
+                                               | f       | t           | f        | f         | f        | f         | f              | f           | f
+ 123                                           | t       | f           | t        | f         | f        | t         | t              | t           | t
+ "aaa "                                        | t       | f           | t        | f         | f        | t         | t              | t           | t
+ true                                          | t       | f           | t        | f         | f        | t         | t              | t           | t
+ null                                          | t       | f           | t        | f         | f        | t         | t              | t           | t
+ []                                            | t       | f           | t        | f         | t        | f         | t              | t           | t
+ [1, "2", {}]                                  | t       | f           | t        | f         | t        | f         | t              | t           | t
+ {}                                            | t       | f           | t        | t         | f        | f         | t              | t           | t
+ { "a": 1, "b": null }                         | t       | f           | t        | t         | f        | f         | t              | t           | t
+ { "a": 1, "a": null }                         | t       | f           | t        | t         | f        | f         | t              | f           | t
+ { "a": 1, "b": [{ "a": 1 }, { "a": 2 }] }     | t       | f           | t        | t         | f        | f         | t              | t           | t
+ { "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] } | t       | f           | t        | t         | f        | f         | t              | f           | t
+ aaa                                           | f       | t           | f        | f         | f        | f         | f              | f           | f
+ {a:1}                                         | f       | t           | f        | f         | f        | f         | f              | f           | f
+ ["a",]                                        | f       | t           | f        | f         | f        | f         | f              | f           | f
+(16 rows)
+
+SELECT
+	js,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE",
+	js FORMAT JSON IS JSON "FORMAT JSON IS JSON"
+FROM
+	(SELECT js::json FROM test_is_json WHERE js IS JSON) foo(js);
+                      js                       | IS JSON | IS NOT JSON | IS VALUE | IS OBJECT | IS ARRAY | IS SCALAR | WITHOUT UNIQUE | WITH UNIQUE | FORMAT JSON IS JSON 
+-----------------------------------------------+---------+-------------+----------+-----------+----------+-----------+----------------+-------------+---------------------
+ 123                                           | t       | f           | t        | f         | f        | t         | t              | t           | t
+ "aaa "                                        | t       | f           | t        | f         | f        | t         | t              | t           | t
+ true                                          | t       | f           | t        | f         | f        | t         | t              | t           | t
+ null                                          | t       | f           | t        | f         | f        | t         | t              | t           | t
+ []                                            | t       | f           | t        | f         | t        | f         | t              | t           | t
+ [1, "2", {}]                                  | t       | f           | t        | f         | t        | f         | t              | t           | t
+ {}                                            | t       | f           | t        | t         | f        | f         | t              | t           | t
+ { "a": 1, "b": null }                         | t       | f           | t        | t         | f        | f         | t              | t           | t
+ { "a": 1, "a": null }                         | t       | f           | t        | t         | f        | f         | t              | f           | t
+ { "a": 1, "b": [{ "a": 1 }, { "a": 2 }] }     | t       | f           | t        | t         | f        | f         | t              | t           | t
+ { "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] } | t       | f           | t        | t         | f        | f         | t              | f           | t
+(11 rows)
+
+SELECT
+	js0,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE",
+	js FORMAT JSON IS JSON "FORMAT JSON IS JSON",
+	js FORMAT JSONB IS JSON "FORMAT JSONB IS JSON"
+FROM
+	(SELECT js, js::bytea FROM test_is_json WHERE js IS JSON) foo(js0, js);
+                      js0                      | IS JSON | IS NOT JSON | IS VALUE | IS OBJECT | IS ARRAY | IS SCALAR | WITHOUT UNIQUE | WITH UNIQUE | FORMAT JSON IS JSON | FORMAT JSONB IS JSON 
+-----------------------------------------------+---------+-------------+----------+-----------+----------+-----------+----------------+-------------+---------------------+----------------------
+ 123                                           | t       | f           | t        | f         | f        | t         | t              | t           | t                   | f
+ "aaa "                                        | t       | f           | t        | f         | f        | t         | t              | t           | t                   | f
+ true                                          | t       | f           | t        | f         | f        | t         | t              | t           | t                   | f
+ null                                          | t       | f           | t        | f         | f        | t         | t              | t           | t                   | f
+ []                                            | t       | f           | t        | f         | t        | f         | t              | t           | t                   | f
+ [1, "2", {}]                                  | t       | f           | t        | f         | t        | f         | t              | t           | t                   | f
+ {}                                            | t       | f           | t        | t         | f        | f         | t              | t           | t                   | f
+ { "a": 1, "b": null }                         | t       | f           | t        | t         | f        | f         | t              | t           | t                   | f
+ { "a": 1, "a": null }                         | t       | f           | t        | t         | f        | f         | t              | f           | t                   | f
+ { "a": 1, "b": [{ "a": 1 }, { "a": 2 }] }     | t       | f           | t        | t         | f        | f         | t              | t           | t                   | f
+ { "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] } | t       | f           | t        | t         | f        | f         | t              | f           | t                   | f
+(11 rows)
+
+SELECT
+	js,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE",
+	js FORMAT JSON IS JSON "FORMAT JSON IS JSON"
+FROM
+	(SELECT js::jsonb FROM test_is_json WHERE js IS JSON) foo(js);
+                 js                  | IS JSON | IS NOT JSON | IS VALUE | IS OBJECT | IS ARRAY | IS SCALAR | WITHOUT UNIQUE | WITH UNIQUE | FORMAT JSON IS JSON 
+-------------------------------------+---------+-------------+----------+-----------+----------+-----------+----------------+-------------+---------------------
+ 123                                 | t       | f           | t        | f         | f        | t         | t              | t           | t
+ "aaa "                              | t       | f           | t        | f         | f        | t         | t              | t           | t
+ true                                | t       | f           | t        | f         | f        | t         | t              | t           | t
+ null                                | t       | f           | t        | f         | f        | t         | t              | t           | t
+ []                                  | t       | f           | t        | f         | t        | f         | t              | t           | t
+ [1, "2", {}]                        | t       | f           | t        | f         | t        | f         | t              | t           | t
+ {}                                  | t       | f           | t        | t         | f        | f         | t              | t           | t
+ {"a": 1, "b": null}                 | t       | f           | t        | t         | f        | f         | t              | t           | t
+ {"a": null}                         | t       | f           | t        | t         | f        | f         | t              | t           | t
+ {"a": 1, "b": [{"a": 1}, {"a": 2}]} | t       | f           | t        | t         | f        | f         | t              | t           | t
+ {"a": 1, "b": [{"a": 2, "b": 0}]}   | t       | f           | t        | t         | f        | f         | t              | t           | t
+(11 rows)
+
+SELECT
+	js0,
+	js FORMAT JSONB IS JSON "IS JSON",
+	js FORMAT JSONB IS NOT JSON "IS NOT JSON",
+	js FORMAT JSONB IS JSON VALUE "IS VALUE",
+	js FORMAT JSONB IS JSON OBJECT "IS OBJECT",
+	js FORMAT JSONB IS JSON ARRAY "IS ARRAY",
+	js FORMAT JSONB IS JSON SCALAR "IS SCALAR",
+	js FORMAT JSONB IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js FORMAT JSONB IS JSON WITH UNIQUE KEYS "WITH UNIQUE"
+FROM
+	(SELECT js, js::jsonb::bytea FROM test_is_json WHERE js IS JSON) foo(js0, js);
+                      js0                      | IS JSON | IS NOT JSON | IS VALUE | IS OBJECT | IS ARRAY | IS SCALAR | WITHOUT UNIQUE | WITH UNIQUE 
+-----------------------------------------------+---------+-------------+----------+-----------+----------+-----------+----------------+-------------
+ 123                                           | t       | f           | t        | f         | f        | t         | t              | t
+ "aaa "                                        | t       | f           | t        | f         | f        | t         | t              | t
+ true                                          | t       | f           | t        | f         | f        | t         | t              | t
+ null                                          | t       | f           | t        | f         | f        | t         | t              | t
+ []                                            | t       | f           | t        | f         | t        | f         | t              | t
+ [1, "2", {}]                                  | t       | f           | t        | f         | t        | f         | t              | t
+ {}                                            | t       | f           | t        | t         | f        | f         | t              | t
+ { "a": 1, "b": null }                         | t       | f           | t        | t         | f        | f         | t              | t
+ { "a": 1, "a": null }                         | t       | f           | t        | t         | f        | f         | t              | t
+ { "a": 1, "b": [{ "a": 1 }, { "a": 2 }] }     | t       | f           | t        | t         | f        | f         | t              | t
+ { "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] } | t       | f           | t        | t         | f        | f         | t              | t
+(11 rows)
+

@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "access/hash.h"
 #include "access/htup_details.h"
 #include "access/transam.h"
 #include "catalog/pg_type.h"
@@ -2730,6 +2731,180 @@ escape_json(StringInfo buf, const char *str)
 		}
 	}
 	appendStringInfoCharMacro(buf, '"');
+}
+
+typedef struct JsonObjectFields
+{
+	struct JsonObjectFields *parent;
+	HTAB	   *fields;
+} JsonObjectFields;
+
+typedef struct JsonUniqueState
+{
+	JsonLexContext *lex;
+	JsonObjectFields *stack;
+} JsonUniqueState;
+
+static int
+json_unique_hash_match(const void *key1, const void *key2, Size keysize)
+{
+	return strcmp(*(const char **) key1, *(const char **) key2);
+}
+
+static void *
+json_unique_hash_keycopy(void *dest, const void *src, Size keysize)
+{
+	*(const char **) dest = pstrdup(*(const char **) src);
+
+	return dest;
+}
+
+static uint32
+json_unique_hash(const void *key, Size keysize)
+{
+	const char *s = *(const char **) key;
+
+	return DatumGetUInt32(hash_any((const unsigned char *) s, (int) strlen(s)));
+}
+
+static void
+json_unique_object_start(void *_state)
+{
+	JsonUniqueState *state = _state;
+	JsonObjectFields *obj = palloc(sizeof(*obj));
+	HASHCTL		ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(char *);
+	ctl.entrysize = sizeof(char *);
+	ctl.hcxt = CurrentMemoryContext;
+	ctl.hash = json_unique_hash;
+	ctl.keycopy = json_unique_hash_keycopy;
+	ctl.match = json_unique_hash_match;
+	obj->fields = hash_create("json object hashtable",
+							  32,
+							  &ctl,
+							  HASH_ELEM | HASH_CONTEXT |
+							  HASH_FUNCTION | HASH_COMPARE | HASH_KEYCOPY);
+	obj->parent = state->stack;
+
+	state->stack = obj;
+}
+
+static void
+json_unique_object_end(void *_state)
+{
+	JsonUniqueState *state = _state;
+
+	hash_destroy(state->stack->fields);
+
+	state->stack = state->stack->parent;
+}
+
+static void
+json_unique_object_field_start(void *_state, char *field, bool isnull)
+{
+	JsonUniqueState *state = _state;
+	bool		found;
+
+	hash_search(state->stack->fields, &field, HASH_ENTER, &found);
+
+	if (found)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("duplicate JSON key \"%s\"", field),
+				 report_json_context(state->lex)));
+}
+
+Datum
+json_is_valid(PG_FUNCTION_ARGS)
+{
+	text	   *json = PG_GETARG_TEXT_P(0);
+	text	   *type = PG_GETARG_TEXT_P(1);
+	bool		unique = PG_GETARG_BOOL(2);
+	MemoryContext mcxt = CurrentMemoryContext;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	if (!PG_ARGISNULL(1) &&
+		strncmp("any", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+	{
+		JsonLexContext *lex;
+		JsonTokenType tok;
+
+		lex = makeJsonLexContext(json, false);
+
+		/* Lex exactly one token from the input and check its type. */
+		PG_TRY();
+		{
+			json_lex(lex);
+		}
+		PG_CATCH();
+		{
+			if (ERRCODE_TO_CATEGORY(geterrcode()) == ERRCODE_DATA_EXCEPTION)
+			{
+				FlushErrorState();
+				MemoryContextSwitchTo(mcxt);
+				PG_RETURN_BOOL(false);
+			}
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		tok = lex_peek(lex);
+
+		if (!strncmp("object", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (tok != JSON_TOKEN_OBJECT_START)
+				PG_RETURN_BOOL(false);
+		}
+		else if (!strncmp("array", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+		{
+			if (tok != JSON_TOKEN_ARRAY_START)
+				PG_RETURN_BOOL(false);
+		}
+		else
+		{
+			if (tok == JSON_TOKEN_OBJECT_START ||
+				tok == JSON_TOKEN_ARRAY_START)
+				PG_RETURN_BOOL(false);
+		}
+	}
+
+	if (unique ||
+		get_fn_expr_argtype(fcinfo->flinfo, 0) != JSONOID)
+	{
+		JsonLexContext *lex = makeJsonLexContext(json, unique);
+		JsonSemAction uniqueSemAction = {0};
+		JsonUniqueState state;
+
+		state.lex = lex;
+		state.stack = NULL;
+
+		uniqueSemAction.semstate = &state;
+		uniqueSemAction.object_start = json_unique_object_start;
+		uniqueSemAction.object_field_start = json_unique_object_field_start;
+		uniqueSemAction.object_end = json_unique_object_end;
+
+		PG_TRY();
+		{
+			pg_parse_json(lex, unique ? &uniqueSemAction : &nullSemAction);
+		}
+		PG_CATCH();
+		{
+			if (ERRCODE_TO_CATEGORY(geterrcode()) == ERRCODE_DATA_EXCEPTION)
+			{
+				FlushErrorState();
+				MemoryContextSwitchTo(mcxt);
+				PG_RETURN_BOOL(false);
+			}
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
+
+	PG_RETURN_BOOL(true);
 }
 
 /*
