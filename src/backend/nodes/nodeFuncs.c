@@ -262,6 +262,12 @@ exprType(const Node *expr)
 		case T_JsonValueExpr:
 			type = exprType((Node *) ((const JsonValueExpr *) expr)->expr);
 			break;
+		case T_JsonExpr:
+			type = ((const JsonExpr *) expr)->returning.typid;
+			break;
+		case T_JsonCoercion:
+			type = exprType(((const JsonCoercion *) expr)->expr);
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -497,6 +503,10 @@ exprTypmod(const Node *expr)
 			return exprTypmod((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 		case T_JsonValueExpr:
 			return exprTypmod((Node *) ((const JsonValueExpr *) expr)->expr);
+		case T_JsonExpr:
+			return ((JsonExpr *) expr)->returning.typmod;
+		case T_JsonCoercion:
+			return exprTypmod(((const JsonCoercion *) expr)->expr);
 		default:
 			break;
 	}
@@ -915,6 +925,21 @@ exprCollation(const Node *expr)
 		case T_JsonValueExpr:
 			coll = exprCollation((Node *) ((const JsonValueExpr *) expr)->expr);
 			break;
+		case T_JsonExpr:
+			{
+				JsonExpr *jexpr = (JsonExpr *) expr;
+				JsonCoercion *coercion = jexpr->result_coercion;
+
+				if (!coercion)
+					coll = InvalidOid;
+				else if (coercion->expr)
+					coll = exprCollation(coercion->expr);
+				else if (coercion->via_io || coercion->via_populate)
+					coll = coercion->collation;
+				else
+					coll = InvalidOid;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			coll = InvalidOid;	/* keep compiler quiet */
@@ -1121,6 +1146,21 @@ exprSetCollation(Node *expr, Oid collation)
 		case T_JsonValueExpr:
 			exprSetCollation((Node *) ((const JsonValueExpr *) expr)->expr,
 							 collation);
+			break;
+		case T_JsonExpr:
+			{
+				JsonExpr *jexpr = (JsonExpr *) expr;
+				JsonCoercion *coercion = jexpr->result_coercion;
+
+				if (!coercion)
+					Assert(!OidIsValid(collation));
+				else if (coercion->expr)
+					exprSetCollation(coercion->expr, collation);
+				else if (coercion->via_io || coercion->via_populate)
+					coercion->collation = collation;
+				else
+					Assert(!OidIsValid(collation));
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -1564,6 +1604,15 @@ exprLocation(const Node *expr)
 			break;
 		case T_JsonValueExpr:
 			loc = exprLocation((Node *) ((const JsonValueExpr *) expr)->expr);
+			break;
+		case T_JsonExpr:
+			{
+				const JsonExpr *jsexpr = (const JsonExpr *) expr;
+
+				/* consider both function name and leftmost arg */
+				loc = leftmostLoc(jsexpr->location,
+								  exprLocation(jsexpr->raw_expr));
+			}
 			break;
 		default:
 			/* for any other node type it's just unknown... */
@@ -2264,6 +2313,55 @@ expression_tree_walker(Node *node,
 			break;
 		case T_JsonValueExpr:
 			return walker(((JsonValueExpr *) node)->expr, context);
+		case T_JsonExpr:
+			{
+				JsonExpr    *jexpr = (JsonExpr *) node;
+
+				if (walker(jexpr->raw_expr, context))
+					return true;
+				if (walker(jexpr->formatted_expr, context))
+					return true;
+				if (walker(jexpr->result_coercion, context))
+					return true;
+				if (walker(jexpr->passing.values, context))
+					return true;
+				/* we assume walker doesn't care about passing.names */
+				if (walker(jexpr->on_empty.default_expr, context))
+					return true;
+				if (walker(jexpr->on_error.default_expr, context))
+					return true;
+				if (walker(jexpr->coercions, context))
+					return true;
+			}
+			break;
+		case T_JsonCoercion:
+			return walker(((JsonCoercion *) node)->expr, context);
+		case T_JsonItemCoercions:
+			{
+				JsonItemCoercions *coercions = (JsonItemCoercions *) node;
+
+				if (walker(coercions->null, context))
+					return true;
+				if (walker(coercions->string, context))
+					return true;
+				if (walker(coercions->numeric, context))
+					return true;
+				if (walker(coercions->boolean, context))
+					return true;
+				if (walker(coercions->date, context))
+					return true;
+				if (walker(coercions->time, context))
+					return true;
+				if (walker(coercions->timetz, context))
+					return true;
+				if (walker(coercions->timestamp, context))
+					return true;
+				if (walker(coercions->timestamptz, context))
+					return true;
+				if (walker(coercions->composite, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3126,6 +3224,54 @@ expression_tree_mutator(Node *node,
 
 				return (Node *) newnode;
 			}
+			break;
+		case T_JsonExpr:
+			{
+				JsonExpr    *jexpr = (JsonExpr *) node;
+				JsonExpr    *newnode;
+
+				FLATCOPY(newnode, jexpr, JsonExpr);
+				MUTATE(newnode->raw_expr, jexpr->raw_expr, Node *);
+				MUTATE(newnode->formatted_expr, jexpr->formatted_expr, Node *);
+				MUTATE(newnode->result_coercion, jexpr->result_coercion, JsonCoercion *);
+				MUTATE(newnode->passing.values, jexpr->passing.values, List *);
+				/* assume mutator does not care about passing.names */
+				MUTATE(newnode->on_empty.default_expr,
+					   jexpr->on_empty.default_expr, Node *);
+				MUTATE(newnode->on_error.default_expr,
+					   jexpr->on_error.default_expr, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonCoercion:
+			{
+				JsonCoercion *coercion = (JsonCoercion *) node;
+				JsonCoercion *newnode;
+
+				FLATCOPY(newnode, coercion, JsonCoercion);
+				MUTATE(newnode->expr, coercion->expr, Node *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_JsonItemCoercions:
+			{
+				JsonItemCoercions *coercions = (JsonItemCoercions *) node;
+				JsonItemCoercions *newnode;
+
+				FLATCOPY(newnode, coercions, JsonItemCoercions);
+				MUTATE(newnode->null, coercions->null, JsonCoercion *);
+				MUTATE(newnode->string, coercions->string, JsonCoercion *);
+				MUTATE(newnode->numeric, coercions->numeric, JsonCoercion *);
+				MUTATE(newnode->boolean, coercions->boolean, JsonCoercion *);
+				MUTATE(newnode->date, coercions->date, JsonCoercion *);
+				MUTATE(newnode->time, coercions->time, JsonCoercion *);
+				MUTATE(newnode->timetz, coercions->timetz, JsonCoercion *);
+				MUTATE(newnode->timestamp, coercions->timestamp, JsonCoercion *);
+				MUTATE(newnode->timestamptz, coercions->timestamptz, JsonCoercion *);
+				MUTATE(newnode->composite, coercions->composite, JsonCoercion *);
+				return (Node *) newnode;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3849,6 +3995,41 @@ raw_expression_tree_walker(Node *node,
 			break;
 		case T_JsonIsPredicate:
 			return walker(((JsonIsPredicate *) node)->expr, context);
+		case T_JsonArgument:
+			return walker(((JsonArgument *) node)->val, context);
+		case T_JsonCommon:
+			{
+				JsonCommon *jc = (JsonCommon *) node;
+
+				if (walker(jc->expr, context))
+					return true;
+				if (walker(jc->passing, context))
+					return true;
+			}
+			break;
+		case T_JsonBehavior:
+			{
+				JsonBehavior *jb = (JsonBehavior *) node;
+
+				if (jb->btype == JSON_BEHAVIOR_DEFAULT &&
+					walker(jb->default_expr, context))
+					return true;
+			}
+			break;
+		case T_JsonFuncExpr:
+			{
+				JsonFuncExpr *jfe = (JsonFuncExpr *) node;
+
+				if (walker(jfe->common, context))
+					return true;
+				if (jfe->output && walker(jfe->output, context))
+					return true;
+				if (walker(jfe->on_empty, context))
+					return true;
+				if (walker(jfe->on_error, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

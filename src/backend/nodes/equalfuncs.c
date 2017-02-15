@@ -856,6 +856,73 @@ _equalJsonIsPredicateOpts(const JsonIsPredicateOpts *a,
 }
 
 /*
+ * _equalJsonExpr
+ */
+static bool
+_equalJsonExpr(const JsonExpr *a, const JsonExpr *b)
+{
+	COMPARE_SCALAR_FIELD(op);
+	COMPARE_NODE_FIELD(raw_expr);
+	COMPARE_NODE_FIELD(formatted_expr);
+	COMPARE_NODE_FIELD(result_coercion);
+	COMPARE_SCALAR_FIELD(format.type);
+	COMPARE_SCALAR_FIELD(format.encoding);
+	COMPARE_LOCATION_FIELD(format.location);
+	COMPARE_NODE_FIELD(path_spec);
+	COMPARE_NODE_FIELD(passing.values);
+	COMPARE_NODE_FIELD(passing.names);
+	COMPARE_SCALAR_FIELD(returning.format.type);
+	COMPARE_SCALAR_FIELD(returning.format.encoding);
+	COMPARE_LOCATION_FIELD(returning.format.location);
+	COMPARE_SCALAR_FIELD(returning.typid);
+	COMPARE_SCALAR_FIELD(returning.typmod);
+	COMPARE_SCALAR_FIELD(on_error.btype);
+	COMPARE_NODE_FIELD(on_error.default_expr);
+	COMPARE_SCALAR_FIELD(on_empty.btype);
+	COMPARE_NODE_FIELD(on_empty.default_expr);
+	COMPARE_NODE_FIELD(coercions);
+	COMPARE_SCALAR_FIELD(wrapper);
+	COMPARE_SCALAR_FIELD(omit_quotes);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+/*
+ * _equalJsonCoercion
+ */
+static bool
+_equalJsonCoercion(const JsonCoercion *a, const JsonCoercion *b)
+{
+	COMPARE_NODE_FIELD(expr);
+	COMPARE_SCALAR_FIELD(via_populate);
+	COMPARE_SCALAR_FIELD(via_io);
+	COMPARE_SCALAR_FIELD(collation);
+
+	return true;
+}
+
+/*
+ * _equalJsonItemCoercions
+ */
+static bool
+_equalJsonItemCoercions(const JsonItemCoercions *a, const JsonItemCoercions *b)
+{
+	COMPARE_NODE_FIELD(null);
+	COMPARE_NODE_FIELD(string);
+	COMPARE_NODE_FIELD(numeric);
+	COMPARE_NODE_FIELD(boolean);
+	COMPARE_NODE_FIELD(date);
+	COMPARE_NODE_FIELD(time);
+	COMPARE_NODE_FIELD(timetz);
+	COMPARE_NODE_FIELD(timestamp);
+	COMPARE_NODE_FIELD(timestamptz);
+	COMPARE_NODE_FIELD(composite);
+
+	return true;
+}
+
+/*
  * Stuff from pathnodes.h
  */
 
@@ -3224,6 +3291,15 @@ equal(const void *a, const void *b)
 			break;
 		case T_JsonIsPredicateOpts:
 			retval = _equalJsonIsPredicateOpts(a, b);
+			break;
+		case T_JsonExpr:
+			retval = _equalJsonExpr(a, b);
+			break;
+		case T_JsonCoercion:
+			retval = _equalJsonCoercion(a, b);
+			break;
+		case T_JsonItemCoercions:
+			retval = _equalJsonItemCoercions(a, b);
 			break;
 
 			/*

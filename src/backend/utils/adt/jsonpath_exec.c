@@ -79,72 +79,6 @@
 #include "utils/varlena.h"
 
 
-typedef enum JsonItemType
-{
-	/* Scalar types */
-	jsiNull = jbvNull,
-	jsiString = jbvString,
-	jsiNumeric = jbvNumeric,
-	jsiBool = jbvBool,
-	/* Composite types */
-	jsiArray = jbvArray,
-	jsiObject = jbvObject,
-	/* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
-	jsiBinary = jbvBinary,
-
-	/*
-	 * Virtual types.
-	 *
-	 * These types are used only for in-memory JSON processing and serialized
-	 * into JSON strings when outputted to json/jsonb.
-	 */
-	jsiDatetime = 0x20
-} JsonItemType;
-
-/* SQL/JSON item */
-typedef struct JsonItem
-{
-	struct JsonItem *next;
-
-	union
-	{
-		int			type;	/* XXX JsonItemType */
-
-		JsonbValue	jbv;
-
-		struct
-		{
-			int			type;
-			Datum		value;
-			Oid			typid;
-			int32		typmod;
-			int			tz;
-		}			datetime;
-	} val;
-} JsonItem;
-
-#define JsonItemJbv(jsi)			(&(jsi)->val.jbv)
-#define JsonItemBool(jsi)			(JsonItemJbv(jsi)->val.boolean)
-#define JsonItemNumeric(jsi)		(JsonItemJbv(jsi)->val.numeric)
-#define JsonItemNumericDatum(jsi)	NumericGetDatum(JsonItemNumeric(jsi))
-#define JsonItemString(jsi)			(JsonItemJbv(jsi)->val.string)
-#define JsonItemBinary(jsi)			(JsonItemJbv(jsi)->val.binary)
-#define JsonItemArray(jsi)			(JsonItemJbv(jsi)->val.array)
-#define JsonItemObject(jsi)			(JsonItemJbv(jsi)->val.object)
-#define JsonItemDatetime(jsi)		((jsi)->val.datetime)
-
-#define JsonItemGetType(jsi)		((jsi)->val.type)
-#define JsonItemIsNull(jsi)			(JsonItemGetType(jsi) == jsiNull)
-#define JsonItemIsBool(jsi)			(JsonItemGetType(jsi) == jsiBool)
-#define JsonItemIsNumeric(jsi)		(JsonItemGetType(jsi) == jsiNumeric)
-#define JsonItemIsString(jsi)		(JsonItemGetType(jsi) == jsiString)
-#define JsonItemIsBinary(jsi)		(JsonItemGetType(jsi) == jsiBinary)
-#define JsonItemIsArray(jsi)		(JsonItemGetType(jsi) == jsiArray)
-#define JsonItemIsObject(jsi)		(JsonItemGetType(jsi) == jsiObject)
-#define JsonItemIsDatetime(jsi)		(JsonItemGetType(jsi) == jsiDatetime)
-#define JsonItemIsScalar(jsi)		(IsAJsonbScalar(JsonItemJbv(jsi)) || \
-									 JsonItemIsDatetime(jsi))
-
 typedef union Jsonx
 {
 	Jsonb		jb;
@@ -395,7 +329,6 @@ static void JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid,
 static JsonItem *copyJsonItem(JsonItem *src);
 static JsonItem *JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
-static Jsonb *JsonItemToJsonb(JsonItem *jsi);
 static const char *JsonItemTypeName(JsonItem *jsi);
 static JsonPathExecResult getArrayIndex(JsonPathExecContext *cxt,
 										JsonPathItem *jsp, JsonItem *jb,
@@ -428,7 +361,6 @@ static void JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc,
 static JsonbIteratorToken JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv,
 				  bool skipNested);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
-static Json *JsonItemToJson(JsonItem *jsi);
 static Jsonx *JsonbValueToJsonx(JsonbValue *jbv, bool isJsonb);
 static Datum JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb);
 static Datum JsonItemToJsonxDatum(JsonItem *jsi, bool isJsonb);
@@ -2712,7 +2644,7 @@ JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv)
 	}
 }
 
-static Jsonb *
+Jsonb *
 JsonItemToJsonb(JsonItem *jsi)
 {
 	JsonbValue	jbv;
@@ -3044,7 +2976,7 @@ JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv, bool skipNested)
 		JsonIteratorNext(&it->it.js, jbv, skipNested);
 }
 
-static Json *
+Json *
 JsonItemToJson(JsonItem *jsi)
 {
 	JsonbValue	jbv;
@@ -3398,4 +3330,222 @@ JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid, int32 typmod, int tz)
 	JsonItemDatetime(item).typid = typid;
 	JsonItemDatetime(item).typmod = typmod;
 	JsonItemDatetime(item).tz = tz;
+}
+
+/********************Interface to pgsql's executor***************************/
+
+bool
+JsonbPathExists(Datum jb, JsonPath *jp, List *vars)
+{
+	JsonPathExecResult res = executeJsonPath(jp, vars, EvalJsonPathVar,
+											 (Jsonx *) DatumGetJsonbP(jb),
+											 true, true, NULL);
+
+	Assert(!jperIsError(res));
+
+	return res == jperOk;
+}
+
+Datum
+JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
+			   bool *empty, List *vars)
+{
+	JsonItem   *first;
+	bool		wrap;
+	JsonValueList found = {0};
+	JsonPathExecResult jper PG_USED_FOR_ASSERTS_ONLY;
+	int			count;
+
+	jper = executeJsonPath(jp, vars, EvalJsonPathVar,
+						   (Jsonx *) DatumGetJsonbP(jb), true, true, &found);
+	Assert(!jperIsError(jper));
+
+	count = JsonValueListLength(&found);
+
+	first = count ? JsonValueListHead(&found) : NULL;
+
+	if (!first)
+		wrap = false;
+	else if (wrapper == JSW_NONE)
+		wrap = false;
+	else if (wrapper == JSW_UNCONDITIONAL)
+		wrap = true;
+	else if (wrapper == JSW_CONDITIONAL)
+		wrap = count > 1 ||
+			JsonItemIsScalar(first) ||
+			(JsonItemIsBinary(first) &&
+			 JsonContainerIsScalar(JsonItemBinary(first).data));
+	else
+	{
+		elog(ERROR, "unrecognized json wrapper %d", wrapper);
+		wrap = false;
+	}
+
+	if (wrap)
+		return JsonbPGetDatum(JsonbValueToJsonb(wrapItemsInArray(&found, true)));
+
+	if (count > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_MORE_THAN_ONE_JSON_ITEM),
+				 errmsg("JSON path expression in JSON_QUERY should return "
+						"singleton item without wrapper"),
+				 errhint("use WITH WRAPPER clause to wrap SQL/JSON item "
+						 "sequence into array")));
+
+	if (first)
+		return JsonbPGetDatum(JsonItemToJsonb(first));
+
+	*empty = true;
+	return PointerGetDatum(NULL);
+}
+
+JsonItem *
+JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
+{
+	JsonItem   *res;
+	JsonValueList found = { 0 };
+	JsonPathExecResult jper PG_USED_FOR_ASSERTS_ONLY;
+	int			count;
+
+	jper = executeJsonPath(jp, vars, EvalJsonPathVar,
+						   (Jsonx *) DatumGetJsonbP(jb), true, true, &found);
+	Assert(!jperIsError(jper));
+
+	count = JsonValueListLength(&found);
+
+	*empty = !count;
+
+	if (*empty)
+		return NULL;
+
+	if (count > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_MORE_THAN_ONE_JSON_ITEM),
+				 errmsg("JSON path expression in JSON_VALUE should return "
+						"singleton scalar item")));
+
+	res = JsonValueListHead(&found);
+
+	if (JsonItemIsBinary(res) &&
+		JsonContainerIsScalar(JsonItemBinary(res).data))
+		JsonbExtractScalar(JsonItemBinary(res).data, JsonItemJbv(res));
+
+	if (!JsonItemIsScalar(res))
+		ereport(ERROR,
+				(errcode(ERRCODE_JSON_SCALAR_REQUIRED),
+				 errmsg("JSON path expression in JSON_VALUE should return "
+						"singleton scalar item")));
+
+	if (JsonItemIsNull(res))
+		return NULL;
+
+	return res;
+}
+
+void
+JsonItemFromDatum(Datum val, Oid typid, int32 typmod, JsonItem *res,
+				  bool isJsonb)
+{
+	switch (typid)
+	{
+		case BOOLOID:
+			JsonItemInitBool(res, DatumGetBool(val));
+			break;
+		case NUMERICOID:
+			JsonItemInitNumericDatum(res, val);
+			break;
+		case INT2OID:
+			JsonItemInitNumericDatum(res, DirectFunctionCall1(int2_numeric, val));
+			break;
+		case INT4OID:
+			JsonItemInitNumericDatum(res, DirectFunctionCall1(int4_numeric, val));
+			break;
+		case INT8OID:
+			JsonItemInitNumericDatum(res, DirectFunctionCall1(int8_numeric, val));
+			break;
+		case FLOAT4OID:
+			JsonItemInitNumericDatum(res, DirectFunctionCall1(float4_numeric, val));
+			break;
+		case FLOAT8OID:
+			JsonItemInitNumericDatum(res, DirectFunctionCall1(float8_numeric, val));
+			break;
+		case TEXTOID:
+		case VARCHAROID:
+			JsonItemInitString(res, VARDATA_ANY(val), VARSIZE_ANY_EXHDR(val));
+			break;
+		case DATEOID:
+		case TIMEOID:
+		case TIMETZOID:
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			JsonItemInitDatetime(res, val, typid, typmod, 0);
+			break;
+		case JSONBOID:
+			{
+				JsonbValue *jbv = JsonItemJbv(res);
+				Jsonb	   *jb = DatumGetJsonbP(val);
+
+				if (JsonContainerIsScalar(&jb->root))
+				{
+					bool		res PG_USED_FOR_ASSERTS_ONLY;
+
+					res = JsonbExtractScalar(&jb->root, jbv);
+					Assert(res);
+				}
+				else if (isJsonb)
+				{
+					JsonbInitBinary(jbv, jb);
+				}
+				else
+				{
+					StringInfoData buf;
+					text	   *txt;
+					Json	   *js;
+
+					initStringInfo(&buf);
+					JsonbToCString(&buf, &jb->root, VARSIZE(jb));
+					txt = cstring_to_text_with_len(buf.data, buf.len);
+					pfree(buf.data);
+
+					js = JsonCreate(txt);
+
+					JsonInitBinary(jbv, js);
+				}
+				break;
+			}
+		case JSONOID:
+			{
+				JsonbValue *jbv = JsonItemJbv(res);
+				Json	   *js = DatumGetJsonP(val);
+
+				if (JsonContainerIsScalar(&js->root))
+				{
+					bool		res PG_USED_FOR_ASSERTS_ONLY;
+
+					res = JsonExtractScalar(&js->root, jbv);
+					Assert(res);
+				}
+				else if (isJsonb)
+				{
+					text	   *txt = DatumGetTextP(val);
+					char	   *str = text_to_cstring(txt);
+					Jsonb	   *jb =
+						DatumGetJsonbP(DirectFunctionCall1(jsonb_in, CStringGetDatum(str)));
+
+					pfree(str);
+
+					JsonbInitBinary(jbv, jb);
+				}
+				else
+				{
+					JsonInitBinary(jbv, js);
+				}
+				break;
+			}
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("only bool, numeric and text types could be "
+							"casted to supported jsonpath types.")));
+	}
 }

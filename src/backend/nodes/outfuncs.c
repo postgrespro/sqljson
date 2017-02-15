@@ -1712,6 +1712,64 @@ _outJsonCtorOpts(StringInfo str, const JsonCtorOpts *node)
 }
 
 static void
+_outJsonExpr(StringInfo str, const JsonExpr *node)
+{
+	WRITE_NODE_TYPE("JSONEXPR");
+
+	WRITE_ENUM_FIELD(op, JsonExprOp);
+	WRITE_NODE_FIELD(raw_expr);
+	WRITE_NODE_FIELD(formatted_expr);
+	WRITE_NODE_FIELD(result_coercion);
+	WRITE_ENUM_FIELD(format.type, JsonFormatType);
+	WRITE_ENUM_FIELD(format.encoding, JsonEncoding);
+	WRITE_LOCATION_FIELD(format.location);
+	WRITE_NODE_FIELD(path_spec);
+	WRITE_NODE_FIELD(passing.values);
+	WRITE_NODE_FIELD(passing.names);
+	WRITE_ENUM_FIELD(returning.format.type, JsonFormatType);
+	WRITE_ENUM_FIELD(returning.format.encoding, JsonEncoding);
+	WRITE_LOCATION_FIELD(returning.format.location);
+	WRITE_OID_FIELD(returning.typid);
+	WRITE_INT_FIELD(returning.typmod);
+	WRITE_ENUM_FIELD(on_error.btype, JsonBehaviorType);
+	WRITE_NODE_FIELD(on_error.default_expr);
+	WRITE_ENUM_FIELD(on_empty.btype, JsonBehaviorType);
+	WRITE_NODE_FIELD(on_empty.default_expr);
+	WRITE_NODE_FIELD(coercions);
+	WRITE_ENUM_FIELD(wrapper, JsonWrapper);
+	WRITE_BOOL_FIELD(omit_quotes);
+	WRITE_LOCATION_FIELD(location);
+}
+
+static void
+_outJsonCoercion(StringInfo str, const JsonCoercion *node)
+{
+	WRITE_NODE_TYPE("JSONCOERCION");
+
+	WRITE_NODE_FIELD(expr);
+	WRITE_BOOL_FIELD(via_populate);
+	WRITE_BOOL_FIELD(via_io);
+	WRITE_OID_FIELD(collation);
+}
+
+static void
+_outJsonItemCoercions(StringInfo str, const JsonItemCoercions *node)
+{
+	WRITE_NODE_TYPE("JSONITEMCOERCIONS");
+
+	WRITE_NODE_FIELD(null);
+	WRITE_NODE_FIELD(string);
+	WRITE_NODE_FIELD(numeric);
+	WRITE_NODE_FIELD(boolean);
+	WRITE_NODE_FIELD(date);
+	WRITE_NODE_FIELD(time);
+	WRITE_NODE_FIELD(timetz);
+	WRITE_NODE_FIELD(timestamp);
+	WRITE_NODE_FIELD(timestamptz);
+	WRITE_NODE_FIELD(composite);
+}
+
+static void
 _outJsonIsPredicateOpts(StringInfo str, const JsonIsPredicateOpts *node)
 {
 	WRITE_NODE_TYPE("JSONISOPTS");
@@ -4322,6 +4380,15 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_JsonIsPredicateOpts:
 				_outJsonIsPredicateOpts(str, obj);
+				break;
+			case T_JsonExpr:
+				_outJsonExpr(str, obj);
+				break;
+			case T_JsonCoercion:
+				_outJsonCoercion(str, obj);
+				break;
+			case T_JsonItemCoercions:
+				_outJsonItemCoercions(str, obj);
 				break;
 
 			default:

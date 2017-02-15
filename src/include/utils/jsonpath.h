@@ -16,7 +16,9 @@
 
 #include "fmgr.h"
 #include "utils/jsonb.h"
+#include "utils/jsonapi.h"
 #include "nodes/pg_list.h"
+#include "nodes/primnodes.h"
 
 typedef struct
 {
@@ -245,5 +247,103 @@ typedef struct JsonPathParseResult
 } JsonPathParseResult;
 
 extern JsonPathParseResult *parsejsonpath(const char *str, int len);
+
+/*
+ * Evaluation of jsonpath
+ */
+
+/* External variable passed into jsonpath. */
+typedef struct JsonPathVariableEvalContext
+{
+	char	   *name;
+	Oid			typid;
+	int32		typmod;
+	struct ExprContext *econtext;
+	struct ExprState  *estate;
+	Datum		value;
+	bool		isnull;
+	bool		evaluated;
+} JsonPathVariableEvalContext;
+
+/* Type of SQL/JSON item */
+typedef enum JsonItemType
+{
+	/* Scalar types */
+	jsiNull = jbvNull,
+	jsiString = jbvString,
+	jsiNumeric = jbvNumeric,
+	jsiBool = jbvBool,
+	/* Composite types */
+	jsiArray = jbvArray,
+	jsiObject = jbvObject,
+	/* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
+	jsiBinary = jbvBinary,
+
+	/*
+	 * Virtual types.
+	 *
+	 * These types are used only for in-memory JSON processing and serialized
+	 * into JSON strings when outputted to json/jsonb.
+	 */
+	jsiDatetime = 0x20
+} JsonItemType;
+
+/* SQL/JSON item */
+typedef struct JsonItem
+{
+	struct JsonItem *next;
+
+	union
+	{
+		int			type;	/* XXX JsonItemType */
+
+		JsonbValue	jbv;
+
+		struct
+		{
+			int			type;
+			Datum		value;
+			Oid			typid;
+			int32		typmod;
+			int			tz;
+		}			datetime;
+	} val;
+} JsonItem;
+
+#define JsonItemJbv(jsi)			(&(jsi)->val.jbv)
+#define JsonItemBool(jsi)			(JsonItemJbv(jsi)->val.boolean)
+#define JsonItemNumeric(jsi)		(JsonItemJbv(jsi)->val.numeric)
+#define JsonItemNumericDatum(jsi)	NumericGetDatum(JsonItemNumeric(jsi))
+#define JsonItemString(jsi)			(JsonItemJbv(jsi)->val.string)
+#define JsonItemBinary(jsi)			(JsonItemJbv(jsi)->val.binary)
+#define JsonItemArray(jsi)			(JsonItemJbv(jsi)->val.array)
+#define JsonItemObject(jsi)			(JsonItemJbv(jsi)->val.object)
+#define JsonItemDatetime(jsi)		((jsi)->val.datetime)
+
+#define JsonItemGetType(jsi)		((jsi)->val.type)
+#define JsonItemIsNull(jsi)			(JsonItemGetType(jsi) == jsiNull)
+#define JsonItemIsBool(jsi)			(JsonItemGetType(jsi) == jsiBool)
+#define JsonItemIsNumeric(jsi)		(JsonItemGetType(jsi) == jsiNumeric)
+#define JsonItemIsString(jsi)		(JsonItemGetType(jsi) == jsiString)
+#define JsonItemIsBinary(jsi)		(JsonItemGetType(jsi) == jsiBinary)
+#define JsonItemIsArray(jsi)		(JsonItemGetType(jsi) == jsiArray)
+#define JsonItemIsObject(jsi)		(JsonItemGetType(jsi) == jsiObject)
+#define JsonItemIsDatetime(jsi)		(JsonItemGetType(jsi) == jsiDatetime)
+#define JsonItemIsScalar(jsi)		(IsAJsonbScalar(JsonItemJbv(jsi)) || \
+									 JsonItemIsDatetime(jsi))
+
+extern Jsonb *JsonItemToJsonb(JsonItem *jsi);
+extern Json *JsonItemToJson(JsonItem *jsi);
+extern void JsonItemFromDatum(Datum val, Oid typid, int32 typmod,
+				  JsonItem *res, bool isJsonb);
+
+extern bool  JsonbPathExists(Datum jb, JsonPath *path, List *vars);
+extern Datum JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
+			   bool *empty, List *vars);
+extern JsonItem *JsonbPathValue(Datum jb, JsonPath *jp, bool *empty,
+			   List *vars);
+
+extern int EvalJsonPathVar(void *vars, bool isJsonb, char *varName,
+				int varNameLen, JsonItem *val, JsonbValue *baseObject);
 
 #endif
