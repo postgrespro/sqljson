@@ -213,3 +213,88 @@ FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
 
 SELECT JSON_OBJECTAGG(k: v ABSENT ON NULL WITH UNIQUE KEYS RETURNING jsonb)
 FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
+
+-- IS JSON predicate
+SELECT NULL IS JSON;
+SELECT NULL IS NOT JSON;
+SELECT NULL::json IS JSON;
+SELECT NULL::jsonb IS JSON;
+SELECT NULL::text IS JSON;
+SELECT NULL::bytea IS JSON;
+SELECT NULL::int IS JSON;
+
+SELECT '' IS JSON;
+
+SELECT bytea '\x00' IS JSON;
+
+CREATE TABLE test_is_json (js text);
+
+INSERT INTO test_is_json VALUES
+ (NULL),
+ (''),
+ ('123'),
+ ('"aaa "'),
+ ('true'),
+ ('null'),
+ ('[]'),
+ ('[1, "2", {}]'),
+ ('{}'),
+ ('{ "a": 1, "b": null }'),
+ ('{ "a": 1, "a": null }'),
+ ('{ "a": 1, "b": [{ "a": 1 }, { "a": 2 }] }'),
+ ('{ "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] }'),
+ ('aaa'),
+ ('{a:1}'),
+ ('["a",]');
+
+SELECT
+	js,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE"
+FROM
+	test_is_json;
+
+SELECT
+	js,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE"
+FROM
+	(SELECT js::json FROM test_is_json WHERE js IS JSON) foo(js);
+
+SELECT
+	js0,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE"
+FROM
+	(SELECT js, js::bytea FROM test_is_json WHERE js IS JSON) foo(js0, js);
+
+SELECT
+	js,
+	js IS JSON "IS JSON",
+	js IS NOT JSON "IS NOT JSON",
+	js IS JSON VALUE "IS VALUE",
+	js IS JSON OBJECT "IS OBJECT",
+	js IS JSON ARRAY "IS ARRAY",
+	js IS JSON SCALAR "IS SCALAR",
+	js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	js IS JSON WITH UNIQUE KEYS "WITH UNIQUE"
+FROM
+	(SELECT js::jsonb FROM test_is_json WHERE js IS JSON) foo(js);
