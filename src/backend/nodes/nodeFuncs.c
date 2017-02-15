@@ -262,6 +262,9 @@ exprType(const Node *expr)
 		case T_JsonValueExpr:
 			type = exprType((Node *) ((const JsonValueExpr *) expr)->expr);
 			break;
+		case T_JsonExpr:
+			type = ((const JsonExpr *) expr)->returning.typid;
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -497,6 +500,8 @@ exprTypmod(const Node *expr)
 			return exprTypmod((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 		case T_JsonValueExpr:
 			return exprTypmod((Node *) ((const JsonValueExpr *) expr)->expr);
+		case T_JsonExpr:
+			return ((JsonExpr *) expr)->returning.typmod;
 		default:
 			break;
 	}
@@ -911,6 +916,18 @@ exprCollation(const Node *expr)
 		case T_JsonValueExpr:
 			coll = exprCollation((Node *) ((const JsonValueExpr *) expr)->expr);
 			break;
+		case T_JsonExpr:
+			{
+				JsonExpr *jexpr = (JsonExpr *) expr;
+
+				if (jexpr->result_expr)
+					coll = exprCollation(jexpr->result_expr);
+				else if (jexpr->coerce_via_io)
+					coll = jexpr->coerce_via_io_collation;
+				else
+					coll = InvalidOid;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			coll = InvalidOid;	/* keep compiler quiet */
@@ -1115,6 +1132,18 @@ exprSetCollation(Node *expr, Oid collation)
 		case T_JsonValueExpr:
 			exprSetCollation((Node *) ((const JsonValueExpr *) expr)->expr,
 							 collation);
+			break;
+		case T_JsonExpr:
+			{
+				JsonExpr *jexpr = (JsonExpr *) expr;
+
+				if (jexpr->result_expr)
+					exprSetCollation(jexpr->result_expr, collation);
+				else if (jexpr->coerce_via_io)
+					jexpr->coerce_via_io_collation = collation;
+				else
+					Assert(!OidIsValid(collation));
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -1558,6 +1587,15 @@ exprLocation(const Node *expr)
 			break;
 		case T_JsonValueExpr:
 			loc = exprLocation((Node *) ((const JsonValueExpr *) expr)->expr);
+			break;
+		case T_JsonExpr:
+			{
+				const JsonExpr *jsexpr = (const JsonExpr *) expr;
+
+				/* consider both function name and leftmost arg */
+				loc = leftmostLoc(jsexpr->location,
+								  exprLocation(jsexpr->raw_expr));
+			}
 			break;
 		default:
 			/* for any other node type it's just unknown... */
@@ -2235,6 +2273,25 @@ expression_tree_walker(Node *node,
 			break;
 		case T_JsonValueExpr:
 			return walker(((JsonValueExpr *) node)->expr, context);
+		case T_JsonExpr:
+			{
+				JsonExpr    *jexpr = (JsonExpr *) node;
+
+				if (walker(jexpr->raw_expr, context))
+					return true;
+				if (walker(jexpr->formatted_expr, context))
+					return true;
+				if (walker(jexpr->result_expr, context))
+					return true;
+				if (walker(jexpr->passing.values, context))
+					return true;
+				/* we assume walker doesn't care about passing.names */
+				if (walker(jexpr->on_empty.default_expr, context))
+					return true;
+				if (walker(jexpr->on_error.default_expr, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3062,6 +3119,24 @@ expression_tree_mutator(Node *node,
 
 				return (Node *) newnode;
 			}
+		case T_JsonExpr:
+			{
+				JsonExpr    *xexpr = (JsonExpr *) node;
+				JsonExpr    *newnode;
+
+				FLATCOPY(newnode, xexpr, JsonExpr);
+				MUTATE(newnode->raw_expr, xexpr->raw_expr, Node *);
+				MUTATE(newnode->formatted_expr, xexpr->formatted_expr, Node *);
+				MUTATE(newnode->result_expr, xexpr->result_expr, Node *);
+				MUTATE(newnode->passing.values, xexpr->passing.values, List *);
+				/* assume mutator does not care about passing.names */
+				MUTATE(newnode->on_empty.default_expr,
+					   xexpr->on_empty.default_expr, Node *);
+				MUTATE(newnode->on_error.default_expr,
+					   xexpr->on_error.default_expr, Node *);
+
+				return (Node *) newnode;
+			}
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3784,6 +3859,41 @@ raw_expression_tree_walker(Node *node,
 			break;
 		case T_JsonIsPredicate:
 			return walker(((JsonIsPredicate *) node)->expr, context);
+		case T_JsonArgument:
+			return walker(((JsonArgument *) node)->val, context);
+		case T_JsonCommon:
+			{
+				JsonCommon *jc = (JsonCommon *) node;
+
+				if (walker(jc->expr, context))
+					return true;
+				if (walker(jc->passing, context))
+					return true;
+			}
+			break;
+		case T_JsonBehavior:
+			{
+				JsonBehavior *jb = (JsonBehavior *) node;
+
+				if (jb->btype == JSON_BEHAVIOR_DEFAULT &&
+					walker(jb->default_expr, context))
+					return true;
+			}
+			break;
+		case T_JsonFuncExpr:
+			{
+				JsonFuncExpr *jfe = (JsonFuncExpr *) node;
+
+				if (walker(jfe->common, context))
+					return true;
+				if (jfe->output && walker(jfe->output, context))
+					return true;
+				if (walker(jfe->on_empty, context))
+					return true;
+				if (walker(jfe->on_error, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

@@ -1352,7 +1352,6 @@ static JsonCtorOpts *
 _readJsonCtorOpts(void)
 {
 	READ_LOCALS(JsonCtorOpts);
-
 	READ_ENUM_FIELD(returning.format.type, JsonFormatType);
 	READ_ENUM_FIELD(returning.format.encoding, JsonEncoding);
 	READ_LOCATION_FIELD(returning.format.location);
@@ -1360,6 +1359,42 @@ _readJsonCtorOpts(void)
 	READ_INT_FIELD(returning.typmod);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(absent_on_null);
+
+	READ_DONE();
+}
+
+/*
+ * _readJsonExpr
+ */
+static JsonExpr *
+_readJsonExpr(void)
+{
+	READ_LOCALS(JsonExpr);
+
+	READ_ENUM_FIELD(op, JsonExprOp);
+	READ_NODE_FIELD(raw_expr);
+	READ_NODE_FIELD(formatted_expr);
+	READ_NODE_FIELD(result_expr);
+	READ_BOOL_FIELD(coerce_via_io);
+	READ_OID_FIELD(coerce_via_io_collation);
+	READ_ENUM_FIELD(format.type, JsonFormatType);
+	READ_ENUM_FIELD(format.encoding, JsonEncoding);
+	READ_LOCATION_FIELD(format.location);
+	READ_NODE_FIELD(path_spec);
+	READ_NODE_FIELD(passing.values);
+	READ_NODE_FIELD(passing.names);
+	READ_ENUM_FIELD(returning.format.type, JsonFormatType);
+	READ_ENUM_FIELD(returning.format.encoding, JsonEncoding);
+	READ_LOCATION_FIELD(returning.format.location);
+	READ_OID_FIELD(returning.typid);
+	READ_INT_FIELD(returning.typmod);
+	READ_ENUM_FIELD(on_error.btype, JsonBehaviorType);
+	READ_NODE_FIELD(on_error.default_expr);
+	READ_ENUM_FIELD(on_empty.btype, JsonBehaviorType);
+	READ_NODE_FIELD(on_empty.default_expr);
+	READ_ENUM_FIELD(wrapper, JsonWrapper);
+	READ_BOOL_FIELD(omit_quotes);
+	READ_LOCATION_FIELD(location);
 
 	READ_DONE();
 }
@@ -2729,6 +2764,8 @@ parseNodeString(void)
 		return_value = _readJsonCtorOpts();
 	else if (MATCH("JSONISOPTS", 10))
 		return_value = _readJsonIsPredicateOpts();
+	else if (MATCH("JSONEXPR", 8))
+		return_value = _readJsonExpr();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);
