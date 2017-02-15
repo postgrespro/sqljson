@@ -195,6 +195,9 @@ typedef enum NodeTag
 	T_FromExpr,
 	T_OnConflictExpr,
 	T_IntoClause,
+	T_JsonExpr,
+	T_JsonCoercion,
+	T_JsonItemCoercions,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

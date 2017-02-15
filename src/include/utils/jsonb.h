@@ -401,6 +401,9 @@ extern char *JsonbToCString(StringInfo out, JsonbContainer *in,
 extern char *JsonbToCStringIndent(StringInfo out, JsonbContainer *in,
 					 int estimated_len);
 
+extern Jsonb *JsonbMakeEmptyArray(void);
+extern Jsonb *JsonbMakeEmptyObject(void);
+extern char *JsonbUnquote(Jsonb *jb);
 extern JsonbValue *JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res);
 
 #endif							/* __JSONB_H__ */

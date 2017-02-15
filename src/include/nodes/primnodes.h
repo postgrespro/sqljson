@@ -1279,6 +1279,62 @@ typedef struct JsonPassing
 	List	   *names;			/* parallel list of Value strings */
 } JsonPassing;
 
+/*
+ * JsonCoercion -
+ *		coercion from SQL/JSON item types to SQL types
+ */
+typedef struct JsonCoercion
+{
+	NodeTag		type;
+	Node	   *expr;			/* resulting expression coerced to target type */
+	bool		via_populate;	/* coerce result using json_populate_type()? */
+	bool		via_io;			/* coerce result using type input function? */
+	Oid			collation;		/* collation for coercion via I/O or populate */
+} JsonCoercion;
+
+/*
+ * JsonItemCoercions -
+ *		expressions for coercion from SQL/JSON item types directly to the
+ *		output SQL type
+ */
+typedef struct JsonItemCoercions
+{
+	NodeTag		type;
+	JsonCoercion *null;
+	JsonCoercion *string;
+	JsonCoercion *numeric;
+	JsonCoercion *boolean;
+	JsonCoercion *date;
+	JsonCoercion *time;
+	JsonCoercion *timetz;
+	JsonCoercion *timestamp;
+	JsonCoercion *timestamptz;
+	JsonCoercion *composite;	/* arrays and objects */
+} JsonItemCoercions;
+
+/*
+ * JsonExpr -
+ *		transformed representation of JSON_VALUE(), JSON_QUERY(), JSON_EXISTS()
+ */
+typedef struct JsonExpr
+{
+	Expr		xpr;
+	JsonExprOp	op;				/* json function ID */
+	Node	   *raw_expr;		/* raw context item expression */
+	Node	   *formatted_expr;	/* formatted context item expression */
+	JsonCoercion *result_coercion;	/* resulting coercion to RETURNING type */
+	JsonFormat	format;			/* context item format (JSON/JSONB) */
+	Const	   *path_spec;		/* JSON path specification */
+	JsonPassing	passing;		/* PASSING clause arguments */
+	JsonReturning returning;	/* RETURNING clause type/format info */
+	JsonBehavior on_empty;		/* ON EMPTY behavior */
+	JsonBehavior on_error;		/* ON ERROR behavior */
+	JsonItemCoercions *coercions; /* coercions for JSON_VALUE */
+	JsonWrapper	wrapper;		/* WRAPPER for JSON_QUERY */
+	bool		omit_quotes;	/* KEEP/OMIT QUOTES for JSON_QUERY */
+	int			location;		/* token location, or -1 if unknown */
+} JsonExpr;
+
 /* ----------------
  * NullTest
  *

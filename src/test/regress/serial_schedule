@@ -164,6 +164,8 @@ test: jsonpath
 test: json_jsonpath
 test: jsonb_jsonpath
 test: sqljson
+test: json_sqljson
+test: jsonb_sqljson
 test: indirect_toast
 test: equivclass
 test: plancache

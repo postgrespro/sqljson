@@ -45,6 +45,7 @@
 #include "pgstat.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
@@ -2116,6 +2117,95 @@ ExecInitExprRec(Expr *node, ExprState *state,
 		case T_JsonValueExpr:
 			ExecInitExprRec(((JsonValueExpr *) node)->expr, state, resv,
 							resnull);
+			break;
+
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = castNode(JsonExpr, node);
+				ListCell   *argexprlc;
+				ListCell   *argnamelc;
+
+				scratch.opcode = EEOP_JSONEXPR;
+				scratch.d.jsonexpr.jsexpr = jexpr;
+
+				scratch.d.jsonexpr.raw_expr =
+						palloc(sizeof(*scratch.d.jsonexpr.raw_expr));
+
+				ExecInitExprRec((Expr *) jexpr->raw_expr, state,
+								&scratch.d.jsonexpr.raw_expr->value,
+								&scratch.d.jsonexpr.raw_expr->isnull);
+
+				scratch.d.jsonexpr.formatted_expr =
+						ExecInitExpr((Expr *) jexpr->formatted_expr,
+									 state->parent);
+
+				scratch.d.jsonexpr.result_expr = jexpr->result_coercion
+					? ExecInitExpr((Expr *) jexpr->result_coercion->expr,
+								   state->parent)
+					: NULL;
+
+				scratch.d.jsonexpr.default_on_empty =
+					ExecInitExpr((Expr *) jexpr->on_empty.default_expr,
+								 state->parent);
+
+				scratch.d.jsonexpr.default_on_error =
+					ExecInitExpr((Expr *) jexpr->on_error.default_expr,
+								 state->parent);
+
+				if (jexpr->omit_quotes ||
+					(jexpr->result_coercion && jexpr->result_coercion->via_io))
+				{
+					Oid			typinput;
+
+					/* lookup the result type's input function */
+					getTypeInputInfo(jexpr->returning.typid, &typinput,
+									 &scratch.d.jsonexpr.input.typioparam);
+					fmgr_info(typinput, &scratch.d.jsonexpr.input.func);
+				}
+
+				scratch.d.jsonexpr.args = NIL;
+
+				forboth(argexprlc, jexpr->passing.values,
+						argnamelc, jexpr->passing.names)
+				{
+					Expr	   *argexpr = (Expr *) lfirst(argexprlc);
+					Value	   *argname = (Value *) lfirst(argnamelc);
+					JsonPathVariableEvalContext *var = palloc(sizeof(*var));
+
+					var->var.varName = cstring_to_text(argname->val.str);
+					var->var.typid = exprType((Node *) argexpr);
+					var->var.typmod = exprTypmod((Node *) argexpr);
+					var->var.cb = EvalJsonPathVar;
+					var->var.cb_arg = var;
+					var->estate = ExecInitExpr(argexpr, state->parent);
+					var->econtext = NULL;
+					var->evaluated = false;
+					var->value = (Datum) 0;
+					var->isnull = true;
+
+					scratch.d.jsonexpr.args =
+						lappend(scratch.d.jsonexpr.args, var);
+				}
+
+				if (jexpr->coercions)
+				{
+					JsonCoercion **coercion;
+					struct JsonCoercionState *cstate;
+
+					for (cstate = &scratch.d.jsonexpr.coercions.null,
+						 coercion = &jexpr->coercions->null;
+						 coercion <= &jexpr->coercions->composite;
+						 coercion++, cstate++)
+					{
+						cstate->coercion = *coercion;
+						cstate->estate = *coercion ?
+							ExecInitExpr((Expr *)(*coercion)->expr,
+										 state->parent) : NULL;
+					}
+				}
+
+				ExprEvalPushStep(state, &scratch);
+			}
 			break;
 
 		default:

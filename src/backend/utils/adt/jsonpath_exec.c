@@ -2712,3 +2712,104 @@ wrapItemsInArray(const JsonValueList *items)
 
 	return pushJsonbValue(&ps, WJB_END_ARRAY, NULL);
 }
+
+/********************Interface to pgsql's executor***************************/
+bool
+JsonbPathExists(Datum jb, JsonPath *jp, List *vars)
+{
+	JsonPathExecResult res = executeJsonPath(jp, vars, DatumGetJsonbP(jb),
+											 NULL);
+
+	throwJsonPathError(res);
+
+	return res == jperOk;
+}
+
+Datum
+JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
+			   bool *empty, List *vars)
+{
+	JsonbValue *first;
+	bool		wrap;
+	JsonValueList found = { 0 };
+	JsonPathExecResult jper = executeJsonPath(jp, vars, DatumGetJsonbP(jb),
+											  &found);
+	int			count;
+
+	throwJsonPathError(jper);
+
+	count = JsonValueListLength(&found);
+
+	first = count ? JsonValueListHead(&found) : NULL;
+
+	if (!first)
+		wrap = false;
+	else if (wrapper == JSW_NONE)
+		wrap = false;
+	else if (wrapper == JSW_UNCONDITIONAL)
+		wrap = true;
+	else if (wrapper == JSW_CONDITIONAL)
+		wrap = count > 1 ||
+			IsAJsonbScalar(first) ||
+			(first->type == jbvBinary &&
+			 JsonContainerIsScalar(first->val.binary.data));
+	else
+	{
+		elog(ERROR, "unrecognized json wrapper %d", wrapper);
+		wrap = false;
+	}
+
+	if (wrap)
+		return JsonbPGetDatum(JsonbValueToJsonb(wrapItemsInArray(&found)));
+
+	if (count > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_MORE_THAN_ONE_JSON_ITEM),
+				 errmsg("more than one SQL/JSON item")));
+
+	if (first)
+		return JsonbPGetDatum(JsonbValueToJsonb(first));
+
+	*empty = true;
+	return PointerGetDatum(NULL);
+}
+
+JsonbValue *
+JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
+{
+	JsonbValue *res;
+	JsonValueList found = { 0 };
+	JsonPathExecResult jper = executeJsonPath(jp, vars, DatumGetJsonbP(jb),
+											  &found);
+	int			count;
+
+	throwJsonPathError(jper);
+
+	count = JsonValueListLength(&found);
+
+	*empty = !count;
+
+	if (*empty)
+		return NULL;
+
+	if (count > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_MORE_THAN_ONE_JSON_ITEM),
+				 errmsg("more than one SQL/JSON item")));
+
+	res = JsonValueListHead(&found);
+
+	if (res->type == jbvBinary &&
+		JsonContainerIsScalar(res->val.binary.data))
+		JsonbExtractScalar(res->val.binary.data, res);
+
+	if (!IsAJsonbScalar(res))
+		ereport(ERROR,
+				(errcode(ERRCODE_JSON_SCALAR_REQUIRED),
+				 errmsg("SQL/JSON scalar required")));
+
+	if (res->type == jbvNull)
+		return NULL;
+
+	return res;
+}
