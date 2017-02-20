@@ -2249,3 +2249,56 @@ JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
 
 	return res;
 }
+
+Jsonb *
+JsonbMakeEmptyArray(void)
+{
+	JsonbValue jbv;
+
+	jbv.type = jbvArray;
+	jbv.val.array.elems = NULL;
+	jbv.val.array.nElems = 0;
+	jbv.val.array.rawScalar = false;
+
+	return JsonbValueToJsonb(&jbv);
+}
+
+Jsonb *
+JsonbMakeEmptyObject(void)
+{
+	JsonbValue jbv;
+
+	jbv.type = jbvObject;
+	jbv.val.object.pairs = NULL;
+	jbv.val.object.nPairs = 0;
+
+	return JsonbValueToJsonb(&jbv);
+}
+
+char *
+JsonbUnquote(Jsonb *jb)
+{
+	if (JB_ROOT_IS_SCALAR(jb))
+	{
+		JsonbValue	v;
+
+		JsonbExtractScalar(&jb->root, &v);
+
+		if (v.type == jbvString)
+			return pnstrdup(v.val.string.val, v.val.string.len);
+		else if (v.type == jbvBool)
+			return pstrdup(v.val.boolean ? "true" : "false");
+		else if (v.type == jbvNumeric)
+			return DatumGetCString(DirectFunctionCall1(numeric_out,
+									   PointerGetDatum(v.val.numeric)));
+		else if (v.type == jbvNull)
+			return pstrdup("null");
+		else
+		{
+			elog(ERROR, "unrecognized jsonb value type %d", v.type);
+			return NULL;
+		}
+	}
+	else
+		return JsonbToCString(NULL, &jb->root, VARSIZE(jb));
+}

@@ -1150,6 +1150,99 @@ typedef struct XmlExpr
 	int			location;		/* token location, or -1 if unknown */
 } XmlExpr;
 
+/*
+ * JsonExpr - various SQL/JSON functions requiring special grammar productions
+ */
+typedef enum JsonExprOp
+{
+	IS_JSON_VALUE,				/* JSON_VALUE(item, args, path, behavior) */
+	IS_JSON_QUERY,				/* JSON_QUERY(item, args, path, behavior) */
+	IS_JSON_EXISTS				/* JSON_EXISTS(item, args, path, behavior) */
+} JsonExprOp;
+
+typedef enum JsonEncoding
+{
+	JS_ENC_DEFAULT,
+	JS_ENC_UTF8,
+	JS_ENC_UTF16,
+	JS_ENC_UTF32,
+} JsonEncoding;
+
+typedef enum JsonFormatType
+{
+	JS_FORMAT_DEFAULT,
+	JS_FORMAT_JSON,
+	JS_FORMAT_JSONB,
+	JS_FORMAT_JSONB_ARG,	/* special format for passing json path args */
+} JsonFormatType;
+
+typedef enum
+{
+	JSON_BEHAVIOR_NULL,
+	JSON_BEHAVIOR_ERROR,
+	JSON_BEHAVIOR_EMPTY,
+	JSON_BEHAVIOR_TRUE,
+	JSON_BEHAVIOR_FALSE,
+	JSON_BEHAVIOR_UNKNOWN,
+	JSON_BEHAVIOR_EMPTY_ARRAY,
+	JSON_BEHAVIOR_EMPTY_OBJECT,
+	JSON_BEHAVIOR_DEFAULT,
+} JsonBehaviorType;
+
+typedef enum JsonWrapper
+{
+	JSW_NONE,
+	JSW_CONDITIONAL,
+	JSW_UNCONDITIONAL,
+} JsonWrapper;
+
+typedef struct JsonFormat
+{
+	JsonFormatType	type;
+	JsonEncoding	encoding;
+	int				location;
+} JsonFormat;
+
+typedef struct JsonReturning
+{
+	JsonFormat	format;
+	Oid			typid;
+	int32		typmod;
+} JsonReturning;
+
+typedef struct JsonBehavior
+{
+	NodeTag		type;
+	JsonBehaviorType btype;
+	Node	   *default_expr;
+} JsonBehavior;
+
+typedef struct JsonPassing
+{
+	List	   *values;		/* list of PASSING argument expressions */
+	List	   *names;		/* parallel list of Value strings */
+} JsonPassing;
+
+typedef struct JsonExpr
+{
+	Expr		xpr;
+	JsonExprOp	op;				/* json function ID */
+	Node	   *raw_expr;		/* raw context item expression */
+	Node	   *formatted_expr;	/* formatted context item expression */
+	Node	   *result_expr;	/* resulting expression (coerced to RETURNING type) */
+	bool		coerce_via_io;	/* coerce result using type input function */
+	Oid			coerce_via_io_collation; /* collation for conversion through I/O */
+	JsonFormat	format;			/* context item format (JSON/JSONB) */
+	Const	   *path_spec;		/* JSON path specification */
+	JsonPassing	passing;		/* PASSING clause arguments */
+	JsonReturning returning;	/* RETURNING clause type/format info */
+	JsonBehavior on_empty;		/* ON EMPTY behavior */
+	JsonBehavior on_error;		/* ON ERROR behavior */
+	JsonWrapper	wrapper;		/* WRAPPER for JSON_QUERY */
+	bool		omit_quotes;	/* KEEP/OMIT QUOTES for JSON_QUERY */
+	int			location;		/* token location, or -1 if unknown */
+} JsonExpr;
+
 /* ----------------
  * NullTest
  *

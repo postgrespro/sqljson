@@ -613,15 +613,15 @@ makeGroupingSet(GroupingSetKind kind, List *content, int location)
 	return n;
 }
 
-Node *
-makeJsonBehavior(JsonBehaviorKind kind, Node *expr)
+JsonBehavior *
+makeJsonBehavior(JsonBehaviorType type, Node *expr)
 {
-	JsonBehavior *n = makeNode(JsonBehavior);
+	JsonBehavior *behavior = makeNode(JsonBehavior);
 
-	n->kind = kind;
-	n->expr = expr;
+	behavior->btype = type;
+	behavior->default_expr = expr;
 
-	return (Node *) n;
+	return behavior;
 }
 
 JsonEncoding

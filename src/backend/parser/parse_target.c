@@ -1906,6 +1906,21 @@ FigureColnameInternal(Node *node, char **name)
 		case T_XmlSerialize:
 			*name = "xmlserialize";
 			return 2;
+		case T_JsonExpr:
+			/* make SQL/JSON functions act like a regular function */
+			switch (((JsonExpr *) node)->op)
+			{
+				case IS_JSON_QUERY:
+					*name = "json_query";
+					return 2;
+				case IS_JSON_VALUE:
+					*name = "json_value";
+					return 2;
+				case IS_JSON_EXISTS:
+					*name = "json_exists";
+					return 2;
+			}
+			break;
 		default:
 			break;
 	}

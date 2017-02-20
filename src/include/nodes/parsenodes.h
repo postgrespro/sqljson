@@ -1399,54 +1399,12 @@ typedef struct TriggerTransition
 
 /* Nodes for SQL/JSON support */
 
-typedef enum
+typedef enum JsonQuotes
 {
-	JSON_BEHAVIOR_NULL,
-	JSON_BEHAVIOR_ERROR,
-	JSON_BEHAVIOR_EMPTY,
-	JSON_BEHAVIOR_TRUE,
-	JSON_BEHAVIOR_FALSE,
-	JSON_BEHAVIOR_UNKNOWN,
-	JSON_BEHAVIOR_EMPTY_ARRAY,
-	JSON_BEHAVIOR_EMPTY_OBJECT,
-	JSON_BEHAVIOR_DEFAULT,
-} JsonBehaviorKind;
-
-typedef struct JsonBehavior
-{
-	NodeTag		type;
-	JsonBehaviorKind kind;
-	Node	   *expr;
-} JsonBehavior;
-
-typedef enum
-{
-	JSW_NONE,
-	JSW_CONDITIONAL,
-	JSW_UNCONDITIONAL,
-} JsonWrapper;
-
-typedef enum
-{
-	JS_ENC_UTF8,
-	JS_ENC_UTF16,
-	JS_ENC_UTF32,
-	JS_ENC_DEFAULT,
-} JsonEncoding;
-
-typedef enum JsonFormatType
-{
-	JS_FORMAT_DEFAULT,
-	JS_FORMAT_JSON,
-	JS_FORMAT_JSONB,
-} JsonFormatType;
-
-typedef struct JsonFormat
-{
-	JsonFormatType	type;
-	JsonEncoding	encoding;
-	int				location;
-} JsonFormat;
+	JS_QUOTES_UNSPEC,
+	JS_QUOTES_KEEP,
+	JS_QUOTES_OMIT
+} JsonQuotes;
 
 typedef char *JsonPathSpec;
 
@@ -1454,11 +1412,7 @@ typedef struct JsonOutput
 {
 	NodeTag		type;
 	TypeName   *typename;
-	JsonFormat	format;
-
-	/* These fields are set by transformJsonOutput() */
-	Oid			typid;
-	int32		typmod;
+	JsonReturning returning;
 } JsonOutput;
 
 typedef struct JsonValueExpr
@@ -1485,25 +1439,18 @@ typedef struct JsonCommon
 	int			location;
 } JsonCommon;
 
-typedef struct JsonValueFunc
+typedef struct JsonFuncExpr
 {
 	NodeTag		type;
-	JsonCommon *common;
-	TypeName   *returning;
-	JsonBehavior *on_empty;
-	JsonBehavior *on_error;
-} JsonValueFunc;
-
-typedef struct JsonQueryFunc
-{
-	NodeTag		type;
+	JsonExprOp	op;
 	JsonCommon *common;
 	JsonOutput *output;
 	JsonBehavior *on_empty;
 	JsonBehavior *on_error;
 	JsonWrapper	wrapper;
-	bool		quotes;
-} JsonQueryFunc;
+	bool		omit_quotes;
+	int			location;
+} JsonFuncExpr;
 
 typedef enum JsonValueType
 {
@@ -1522,14 +1469,6 @@ typedef struct JsonIsPredicate
 	bool		unique_keys;
 	int			location;
 } JsonIsPredicate;
-
-typedef struct JsonExistsPredicate
-{
-	NodeTag		type;
-	JsonCommon *common;
-	JsonBehaviorKind on_error;
-	int			location;
-} JsonExistsPredicate;
 
 typedef struct JsonKeyValue
 {

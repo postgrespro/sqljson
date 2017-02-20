@@ -211,6 +211,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	JoinType			jtype;
 	DropBehavior		dbehavior;
 	OnCommitAction		oncommit;
+	JsonFormat			jsformat;
 	List				*list;
 	Node				*node;
 	Value				*value;
@@ -241,11 +242,12 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionSpec		*partspec;
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
-	JsonFormat			 jsformat;
+	JsonBehavior		*jsbehavior;
 	struct {
-		Node 	*on_empty;
-		Node	*on_error;
+		JsonBehavior		*on_empty;
+		JsonBehavior		*on_error;
 	} 					on_behavior;
+	JsonQuotes			js_quotes;
 }
 
 %type <node>	stmt schema_stmt
@@ -584,9 +586,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>		partbound_datum PartitionRangeDatum
 %type <list>		partbound_datum_list range_datum_list
 
-%type <on_behavior> json_value_on_behavior_clause_opt
-					json_query_on_behavior_clause_opt
-
 %type <node>		json_value_expr
 					json_func_expr
 					json_value_func_expr
@@ -595,8 +594,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 					json_api_common_syntax
 					json_context_item
 					json_argument
-					json_value_behavior
-					json_query_behavior
 					json_output_clause_opt
 					json_value_constructor
 					json_object_constructor
@@ -625,18 +622,33 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <ival>		json_encoding
 					json_encoding_clause_opt
 					json_wrapper_clause_opt
-					json_quotes_clause_opt
 					json_wrapper_behavior
 					json_conditional_or_unconditional_opt
 					json_predicate_type_constraint_opt
-					json_exists_error_behavior
-					json_exists_error_clause_opt
 
 %type <jsformat>	json_format_clause_opt
 					json_representation
 
-%type <boolean>		json_quotes_behavior
-					json_key_uniqueness_constraint_opt
+%type <jsbehavior>	json_behavior_error
+					json_behavior_null
+					json_behavior_true
+					json_behavior_false
+					json_behavior_unknown
+					json_behavior_empty_array
+					json_behavior_empty_object
+					json_behavior_default
+					json_value_behavior
+					json_query_behavior
+					json_exists_error_behavior
+					json_exists_error_clause_opt
+
+%type <on_behavior> json_value_on_behavior_clause_opt
+					json_query_on_behavior_clause_opt
+
+%type <js_quotes>	json_quotes_behavior
+					json_quotes_clause_opt
+
+%type <boolean>		json_key_uniqueness_constraint_opt
 					json_object_constructor_null_clause_opt
 					json_array_constructor_null_clause_opt
 
@@ -14337,11 +14349,22 @@ json_value_func_expr:
 				json_value_on_behavior_clause_opt
 			')'
 				{
-					JsonValueFunc *n = makeNode(JsonValueFunc);
+					JsonFuncExpr *n = makeNode(JsonFuncExpr);
+					n->op = IS_JSON_VALUE;
 					n->common = (JsonCommon *) $3;
-					n->returning = $4;
-					n->on_empty = (JsonBehavior *) $5.on_empty;
-					n->on_error = (JsonBehavior *) $5.on_error;
+					if ($4)
+					{
+						n->output = (JsonOutput *) makeNode(JsonOutput);
+						n->output->typename = $4;
+						n->output->returning.format.location = @4;
+						n->output->returning.format.type = JS_FORMAT_DEFAULT;
+						n->output->returning.format.encoding = JS_ENC_DEFAULT;
+					}
+					else
+						n->output = NULL;
+					n->on_empty = $5.on_empty;
+					n->on_error = $5.on_error;
+					n->location = @1;
 					$$ = (Node *) n;
 				}
 		;
@@ -14389,7 +14412,7 @@ json_arguments:
 		;
 
 json_argument:
-			json_value_expr AS name
+			json_value_expr AS ColLabel
 			{
 				JsonArgument *n = makeNode(JsonArgument);
 				n->val = (JsonValueExpr *) $1;
@@ -14431,6 +14454,7 @@ json_representation:
 			| JSONB
 				{
 					$$.type = JS_FORMAT_JSONB;
+					$$.encoding = JS_ENC_DEFAULT;
 				}
 		/*	| implementation_defined_JSON_representation_option (BSON, AVRO etc) */
 		;
@@ -14454,6 +14478,45 @@ json_returning_clause_opt:
 			| /* EMPTY */							{ $$ = NULL; }
 		;
 
+json_behavior_error:
+			ERROR_P		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_ERROR, NULL); }
+		;
+
+json_behavior_null:
+			NULL_P		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_NULL, NULL); }
+		;
+
+json_behavior_true:
+			TRUE_P		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_TRUE, NULL); }
+		;
+
+json_behavior_false:
+			FALSE_P		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_FALSE, NULL); }
+		;
+
+json_behavior_unknown:
+			UNKNOWN		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_UNKNOWN, NULL); }
+		;
+
+json_behavior_empty_array:
+			EMPTY_P ARRAY	{ $$ = makeJsonBehavior(JSON_BEHAVIOR_EMPTY_ARRAY, NULL); }
+		;
+
+json_behavior_empty_object:
+			EMPTY_P OBJECT_P	{ $$ = makeJsonBehavior(JSON_BEHAVIOR_EMPTY_OBJECT, NULL); }
+		;
+
+json_behavior_default:
+			DEFAULT a_expr	{ $$ = makeJsonBehavior(JSON_BEHAVIOR_DEFAULT, $2); }
+		;
+
+
+json_value_behavior:
+			json_behavior_null
+			| json_behavior_error
+			| json_behavior_default
+		;
+
 json_value_on_behavior_clause_opt:
 			json_value_behavior ON EMPTY_P
 									{ $$.on_empty = $1; $$.on_error = NULL; }
@@ -14465,12 +14528,6 @@ json_value_on_behavior_clause_opt:
 									{ $$.on_empty = NULL; $$.on_error = NULL; }
 		;
 
-json_value_behavior:
-			NULL_P					{ $$ = makeJsonBehavior(JSON_BEHAVIOR_NULL, NULL); }
-			| ERROR_P 				{ $$ = makeJsonBehavior(JSON_BEHAVIOR_ERROR, NULL); }
-			| DEFAULT a_expr 		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_DEFAULT, $2); }
-		;
-
 json_query_expr:
 			JSON_QUERY '('
 				json_api_common_syntax
@@ -14480,13 +14537,20 @@ json_query_expr:
 				json_query_on_behavior_clause_opt
 			')'
 				{
-					JsonQueryFunc *n = makeNode(JsonQueryFunc);
+					JsonFuncExpr *n = makeNode(JsonFuncExpr);
+					n->op = IS_JSON_QUERY;
 					n->common = (JsonCommon *) $3;
 					n->output = (JsonOutput *) $4;
 					n->wrapper = $5;
-					n->quotes = $6;
-					n->on_empty = (JsonBehavior *) $7.on_empty;
-					n->on_error = (JsonBehavior *) $7.on_error;
+					if (n->wrapper != JSW_NONE && $6 != JS_QUOTES_UNSPEC)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("SQL/JSON QUOTES behavior shall not be specified when WITH WRAPPER is used"),
+								 parser_errposition(@6)));
+					n->omit_quotes = $6 == JS_QUOTES_OMIT;
+					n->on_empty = $7.on_empty;
+					n->on_error = $7.on_error;
+					n->location = @1;
 					$$ = (Node *) n;
 				}
 		;
@@ -14514,12 +14578,12 @@ json_conditional_or_unconditional_opt:
 
 json_quotes_clause_opt:
 			json_quotes_behavior QUOTES json_on_scalar_string_opt { $$ = $1; }
-			| /* EMPTY */							{ $$ = TRUE; }
+			| /* EMPTY */							{ $$ = JS_QUOTES_UNSPEC; }
 		;
 
 json_quotes_behavior:
-			KEEP									{ $$ = TRUE; }
-			| OMIT									{ $$ = FALSE; }
+			KEEP									{ $$ = JS_QUOTES_KEEP; }
+			| OMIT									{ $$ = JS_QUOTES_OMIT; }
 		;
 
 json_on_scalar_string_opt:
@@ -14528,16 +14592,16 @@ json_on_scalar_string_opt:
 		;
 
 json_query_behavior:
-			ERROR_P				{ $$ = makeJsonBehavior(JSON_BEHAVIOR_ERROR, NULL); }
-			| NULL_P			{ $$ = makeJsonBehavior(JSON_BEHAVIOR_NULL, NULL); }
-			| EMPTY_P ARRAY		{ $$ = makeJsonBehavior(JSON_BEHAVIOR_EMPTY_ARRAY, NULL); }
-			| EMPTY_P OBJECT_P	{ $$ = makeJsonBehavior(JSON_BEHAVIOR_EMPTY_OBJECT, NULL); }
+			json_behavior_error
+			| json_behavior_null
+			| json_behavior_empty_array
+			| json_behavior_empty_object
 		;
 
 json_query_on_behavior_clause_opt:
 			json_query_behavior ON EMPTY_P
 									{ $$.on_empty = $1; $$.on_error = NULL; }
-			| json_query_behavior ON EMPTY_P json_value_behavior ON ERROR_P
+			| json_query_behavior ON EMPTY_P json_query_behavior ON ERROR_P
 									{ $$.on_empty = $1; $$.on_error = $4; }
 			| json_query_behavior ON ERROR_P
 									{ $$.on_empty = NULL; $$.on_error = $1; }
@@ -14551,7 +14615,7 @@ json_output_clause_opt:
 				{
 					JsonOutput *n = makeNode(JsonOutput);
 					n->typename = $2;
-					n->format = $3;
+					n->returning.format = $3;
 					$$ = (Node *) n;
 				}
 			| /* EMPTY */								{ $$ = NULL; }
@@ -14563,23 +14627,25 @@ json_exists_predicate:
 				json_exists_error_clause_opt
 			')'
 				{
-					JsonExistsPredicate *p = makeNode(JsonExistsPredicate);
+					JsonFuncExpr *p = makeNode(JsonFuncExpr);
+					p->op = IS_JSON_EXISTS;
 					p->common = (JsonCommon *) $3;
 					p->on_error = $4;
+					p->location = @1;
 					$$ = (Node *) p;
 				}
 		;
 
 json_exists_error_clause_opt:
-			json_exists_error_behavior ON ERROR_P	{ $$ = $1; }
-			| /* EMPTY */						{ $$ = JSON_BEHAVIOR_FALSE; }
+			json_exists_error_behavior ON ERROR_P		{ $$ = $1; }
+			| /* EMPTY */								{ $$ = NULL; }
 		;
 
 json_exists_error_behavior:
-			TRUE_P 								{ $$ = JSON_BEHAVIOR_TRUE; }
-			| FALSE_P 							{ $$ = JSON_BEHAVIOR_FALSE; }
-			| UNKNOWN 							{ $$ = JSON_BEHAVIOR_UNKNOWN; }
-			| ERROR_P							{ $$ = JSON_BEHAVIOR_ERROR; }
+			json_behavior_error
+			| json_behavior_true
+			| json_behavior_false
+			| json_behavior_unknown
 		;
 
 json_value_constructor:

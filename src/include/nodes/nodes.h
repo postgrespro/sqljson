@@ -191,6 +191,7 @@ typedef enum NodeTag
 	T_FromExpr,
 	T_OnConflictExpr,
 	T_IntoClause,
+	T_JsonExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -208,6 +209,7 @@ typedef enum NodeTag
 	T_SubPlanState,
 	T_AlternativeSubPlanState,
 	T_DomainConstraintState,
+	T_JsonExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
@@ -474,8 +476,7 @@ typedef enum NodeTag
 	T_JsonArrayQueryCtor,
 	T_JsonObjectAgg,
 	T_JsonArrayAgg,
-	T_JsonValueFunc,
-	T_JsonQueryFunc,
+	T_JsonFuncExpr,
 	T_JsonIsPredicate,
 	T_JsonExistsPredicate,
 	T_JsonCommon,

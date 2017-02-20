@@ -86,7 +86,7 @@ extern DefElem *makeDefElemExtended(char *nameSpace, char *name, Node *arg,
 
 extern GroupingSet *makeGroupingSet(GroupingSetKind kind, List *content, int location);
 
-extern Node *makeJsonBehavior(JsonBehaviorKind kind, Node *expr);
+extern JsonBehavior *makeJsonBehavior(JsonBehaviorType type, Node *expr);
 extern Node *makeJsonKeyValue(Node *key, Node *value);
 extern Node *makeJsonPredicate(Node *expr, JsonFormat format,
 							   JsonValueType vtype, bool unique_keys);

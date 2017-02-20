@@ -211,6 +211,7 @@ typedef enum ExprEvalOp
 	EEOP_WINDOW_FUNC,
 	EEOP_SUBPLAN,
 	EEOP_ALTERNATIVE_SUBPLAN,
+	EEOP_JSONEXPR,
 
 	/* non-existent operation, used e.g. to check array lengths */
 	EEOP_LAST
@@ -560,6 +561,31 @@ typedef struct ExprEvalStep
 			/* out-of-line state, created by nodeSubplan.c */
 			AlternativeSubPlanState *asstate;
 		}			alternative_subplan;
+
+		/* for EEOP_JSONEXPR */
+		struct
+		{
+			JsonExpr   *jsexpr;	/* original expression node */
+
+			struct
+			{
+				FmgrInfo	func;
+				Oid			typioparam;
+			} input;
+
+			struct
+			{
+				Datum		value;
+				bool		isnull;
+			}		   *raw_expr;
+
+			ExprState  *formatted_expr;
+			ExprState  *result_expr;
+			ExprState  *default_on_empty;
+			ExprState  *default_on_error;
+			List	   *args;
+		}			jsonexpr;
+
 	}			d;
 } ExprEvalStep;
 
@@ -598,7 +624,6 @@ typedef struct ArrayRefState
 	Datum		prevvalue;
 	bool		prevnull;
 } ArrayRefState;
-
 
 extern void ExecReadyInterpretedExpr(ExprState *state);
 
@@ -647,5 +672,7 @@ extern void ExecEvalAlternativeSubPlan(ExprState *state, ExprEvalStep *op,
 						   ExprContext *econtext);
 extern void ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op,
 					ExprContext *econtext);
+extern void ExecEvalJson(ExprState *state, ExprEvalStep *op,
+						 ExprContext *econtext);
 
 #endif							/* EXEC_EXPR_H */

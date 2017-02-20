@@ -809,6 +809,25 @@ typedef struct DomainConstraintState
 	ExprState  *check_exprstate;	/* check_expr's eval state, or NULL */
 } DomainConstraintState;
 
+/* ----------------
+ *		JsonExprState node
+ * ----------------
+ */
+typedef struct JsonExprState
+{
+	ExprState	xprstate;
+	ExprState  *raw_expr;
+	ExprState  *formatted_expr;
+	ExprState  *result_expr;
+	ExprState  *default_on_empty;
+	ExprState  *default_on_error;
+	struct
+	{
+		FmgrInfo	func;
+		Oid			typioparam;
+	} input;
+	List	   *args;			/* ExprStates for arguments */
+} JsonExprState;
 
 /* ----------------------------------------------------------------
  *				 Executor State Trees

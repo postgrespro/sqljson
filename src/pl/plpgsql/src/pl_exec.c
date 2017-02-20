@@ -6704,6 +6704,26 @@ exec_simple_check_node(Node *node)
 				return TRUE;
 			}
 
+		case T_JsonExpr:
+			{
+				JsonExpr    *expr = (JsonExpr *) node;
+
+				if (!exec_simple_check_node(expr->raw_expr))
+					return FALSE;
+				if (!exec_simple_check_node(expr->formatted_expr))
+					return FALSE;
+				if (!exec_simple_check_node(expr->result_expr))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->passing.values))
+					return FALSE;
+				if (!exec_simple_check_node(expr->on_empty.default_expr))
+					return FALSE;
+				if (!exec_simple_check_node(expr->on_error.default_expr))
+					return FALSE;
+
+				return TRUE;
+			}
+
 		default:
 			return FALSE;
 	}
