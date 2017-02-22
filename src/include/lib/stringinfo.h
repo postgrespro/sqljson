@@ -149,4 +149,10 @@ extern void appendBinaryStringInfo(StringInfo str,
  */
 extern void enlargeStringInfo(StringInfo str, int needed);
 
+/*------------------------
+ * alignStringInfoInt
+ * Add padding zero bytes to align StringInfo
+ */
+extern void alignStringInfoInt(StringInfo buf);
+
 #endif							/* STRINGINFO_H */
