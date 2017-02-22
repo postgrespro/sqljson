@@ -89,6 +89,14 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
 		case jpiRoot:
 		case jpiNull:
 			break;
+		case jpiIndexArray:
+			appendBinaryStringInfo(buf,
+								   (char*)&item->array.nelems,
+								   sizeof(item->array.nelems));
+			appendBinaryStringInfo(buf,
+								   (char*)item->array.elems,
+								   item->array.nelems * sizeof(item->array.elems[0]));
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -157,6 +165,7 @@ static void
 printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracketes)
 {
 	JsonPathItem	elem;
+	int				i;
 
 	check_stack_depth();
 
@@ -235,6 +244,16 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 				appendStringInfoChar(buf, '.');
 			appendStringInfoChar(buf, '*');
 			break;
+		case jpiIndexArray:
+			appendStringInfoChar(buf, '[');
+			for(i = 0; i< v->array.nelems; i++)
+			{
+				if (i)
+					appendStringInfoChar(buf, ',');
+				appendStringInfo(buf, "%d", v->array.elems[i]);
+			}
+			appendStringInfoChar(buf, ']');
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -262,15 +281,20 @@ jsonpath_out(PG_FUNCTION_ARGS)
 /*
  * Support functions for JsonPath
  */
-#define read_byte(v, b, p) do {		\
-	(v) = *(uint8*)((b) + (p));		\
-	(p) += 1;						\
-} while(0)							\
+#define read_byte(v, b, p) do {			\
+	(v) = *(uint8*)((b) + (p));			\
+	(p) += 1;							\
+} while(0)								\
 
-#define read_int32(v, b, p) do {	\
-	(v) = *(uint32*)((b) + (p));	\
-	(p) += sizeof(int32);			\
-} while(0)							\
+#define read_int32(v, b, p) do {		\
+	(v) = *(uint32*)((b) + (p));		\
+	(p) += sizeof(int32);				\
+} while(0)								\
+
+#define read_int32_n(v, b, p, n) do {	\
+	(v) = (int32*)((b) + (p));			\
+	(p) += sizeof(int32) * (n);			\
+} while(0)								\
 
 void
 jspInit(JsonPathItem *v, JsonPath *js)
@@ -326,6 +350,10 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiExpression:
 			read_int32(v->arg, base, pos);
 			break;
+		case jpiIndexArray:
+			read_int32(v->array.nelems, base, pos);
+			read_int32_n(v->array.elems, base, pos, v->array.nelems);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -356,6 +384,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiKey ||
 			v->type == jpiAnyArray ||
 			v->type == jpiAnyKey ||
+			v->type == jpiIndexArray ||
 			v->type == jpiCurrent ||
 			v->type == jpiRoot
 		);

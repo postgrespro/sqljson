@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  *
  * jsonpath_gram.y
- *     Grammar definitions for jsonpath datatype
+ *	 Grammar definitions for jsonpath datatype
  *
  * Copyright (c) 2017, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *    src/backend/utils/adt/jsonpath_gram.y
+ *	src/backend/utils/adt/jsonpath_gram.y
  *
  *-------------------------------------------------------------------------
  */
@@ -158,6 +158,24 @@ makeItemExpression(List *path, JsonPathParseItem *right_expr)
 	return makeItemList(lappend(path, expr));
 }
 
+static JsonPathParseItem*
+makeIndexArray(List *list)
+{
+	JsonPathParseItem	*v = makeItemType(jpiIndexArray);
+	ListCell			*cell;
+	int					i = 0;
+
+	Assert(list_length(list) > 0);
+	v->array.nelems = list_length(list);
+
+	v->array.elems = palloc(sizeof(v->array.elems[0]) * v->array.nelems);
+
+	foreach(cell, list)
+		v->array.elems[i++] = lfirst_int(cell);
+
+	return v;
+}
+
 %}
 
 /* BISON Declarations */
@@ -170,21 +188,24 @@ makeItemExpression(List *path, JsonPathParseItem *right_expr)
 %union {
 	string				str;
 	List				*elems;		/* list of JsonPathParseItem */
+	List				*indexs;
 	JsonPathParseItem	*value;
 }
 
-%token	<str>		TO_P NULL_P TRUE_P FALSE_P 
+%token	<str>		TO_P NULL_P TRUE_P FALSE_P
 %token	<str>		STRING_P NUMERIC_P INT_P
 
 %token	<str>		OR_P AND_P NOT_P
 
-%type	<value>		result scalar_value 
+%type	<value>		result scalar_value
 
 %type	<elems>		joined_key path absolute_path relative_path
 
 %type 	<value>		key any_key right_expr expr jsonpath numeric
 
-%left	OR_P 
+%type	<indexs>	index_elem index_list
+
+%left	OR_P
 %left	AND_P
 %right	NOT_P
 %nonassoc '(' ')'
@@ -192,8 +213,8 @@ makeItemExpression(List *path, JsonPathParseItem *right_expr)
 /* Grammar follows */
 %%
 
-result: 
-	jsonpath						{ *result = $1; } 
+result:
+	jsonpath						{ *result = $1; }
 	| /* EMPTY */					{ *result = NULL; }
 	;
 
@@ -209,9 +230,9 @@ scalar_value:
 	;
 
 numeric:
-	NUMERIC_P                       { $$ = makeItemNumeric(&$1); }
-	| INT_P                         { $$ = makeItemNumeric(&$1); }
-	| '$' STRING_P					{ $$ = makeItemVariable(&$2); } 
+	NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
+	| INT_P							{ $$ = makeItemNumeric(&$1); }
+	| '$' STRING_P					{ $$ = makeItemVariable(&$2); }
 	;
 
 right_expr:
@@ -242,15 +263,36 @@ expr:
 	| NOT_P expr 						{ $$ = makeItemUnary(jpiNot, $2); }
 	;
 
+index_elem:
+	INT_P								{ $$ = list_make1_int(pg_atoi($1.val, 4, 0)); }
+	| INT_P TO_P INT_P					{
+											int start = pg_atoi($1.val, 4, 0),
+												stop = pg_atoi($3.val, 4, 0),
+												i;
+
+											$$ = NIL;
+
+											for(i=start; i<= stop; i++)
+												$$ = lappend_int($$, i);
+										}
+	;
+
+index_list:
+	index_elem						{ $$ = $1; }
+	| index_list ',' index_elem		{ $$ = list_concat($1, $3); }
+	;
+
 any_key:
 	key								{ $$ = $1; }
 	| '*'							{ $$ = makeItemType(jpiAnyKey); }
 	| '[' '*' ']'					{ $$ = makeItemType(jpiAnyArray); }
+	| '[' index_list ']'			{ $$ = makeIndexArray($2); }
 	;
 
 joined_key:
 	any_key							{ $$ = list_make1($1); }
 	| joined_key '[' '*' ']'		{ $$ = lappend($1, makeItemType(jpiAnyArray)); }
+	| joined_key '[' index_list ']'	{ $$ = lappend($1, makeIndexArray($3)); }
 	;
 key:
 	STRING_P						{ $$ = makeItemKey(&$1); }
