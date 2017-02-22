@@ -25,6 +25,8 @@ select '$.g ? (@.a = 1 || !a = 4 && b = 7)'::jsonpath;
 select '$.g ? (@.a = 1 || !(x >= 123 || a = 4) && b = 7)'::jsonpath;
 
 select '$.g ? (zip = $zip)'::jsonpath;
+select '$.a.[1,2, 3 to 16]'::jsonpath;
+select '$.a[1,2, 3 to 16]'::jsonpath;
 
 select '$ ? (a < 1)'::jsonpath;
 select '$ ? (a < -1)'::jsonpath;

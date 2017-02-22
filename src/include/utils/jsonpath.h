@@ -44,6 +44,7 @@ typedef enum JsonPathItemType {
 		jpiGreaterOrEqual,
 		jpiAnyArray,
 		jpiAnyKey,
+		jpiIndexArray,
 		//jpiAny,
 		//jpiAll,
 		//jpiAllArray,
@@ -85,11 +86,8 @@ typedef struct JsonPathItem {
 
 		struct {
 			int		nelems;
-			int		current;
-			int32	*arrayPtr;
+			int32	*elems;
 		} array;
-
-		uint32		arrayIndex;
 	};
 } JsonPathItem;
 
@@ -120,7 +118,6 @@ struct JsonPathParseItem {
 		} args;
 
 		JsonPathParseItem	*arg;
-		int8		isType; /* jbv* values */
 
 		Numeric		numeric;
 		bool		boolean;
@@ -131,10 +128,8 @@ struct JsonPathParseItem {
 
 		struct {
 			int					nelems;
-			JsonPathParseItem	**elems;
+			int32				*elems;
 		} array;
-
-		uint32		arrayIndex;
 	};
 };
 
