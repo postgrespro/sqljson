@@ -146,6 +146,21 @@ typedef enum JsonPathExecResult {
 	jperNotFound
 } JsonPathExecResult;
 
-JsonPathExecResult	executeJsonPath(JsonPath *path, Jsonb *json,
+typedef Datum (*JsonPathVariable_cb)(void *, bool *);
+
+typedef struct JsonPathVariable	{
+	text					*varName;
+	Oid						typid;
+	int32					typmod; /* do we need it here? */
+	JsonPathVariable_cb		cb;
+	void					*cb_arg;
+} JsonPathVariable;
+
+
+
+JsonPathExecResult	executeJsonPath(JsonPath *path,
+									List	*vars, /* list of JsonPathVariable */
+									Jsonb *json,
 									List **foundJson);
+
 #endif

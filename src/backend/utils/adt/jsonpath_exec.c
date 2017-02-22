@@ -13,22 +13,132 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 #include "utils/json.h"
 #include "utils/jsonpath.h"
 
-static int
-compareNumeric(Numeric a, Numeric b)
+/********************Execute functions for JsonPath***************************/
+
+static void
+computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 {
-	return	DatumGetInt32(
-				DirectFunctionCall2(
-					numeric_cmp,
-					PointerGetDatum(a),
-					PointerGetDatum(b)
-				)
-			);
+	ListCell			*cell;
+	JsonPathVariable	*var = NULL;
+	bool				isNull;
+	Datum				computedValue;
+	char				*varName;
+	int					varNameLength;
+
+	Assert(variable->type == jpiVariable);
+	varName = jspGetString(variable, &varNameLength);
+
+	foreach(cell, vars)
+	{
+		var = (JsonPathVariable*)lfirst(cell);
+
+		if (varNameLength == VARSIZE_ANY_EXHDR(var->varName) &&
+			!strncmp(varName, VARDATA_ANY(var->varName), varNameLength))
+			break;
+
+		var = NULL;
+	}
+
+	if (var == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_NO_DATA_FOUND),
+				 errmsg("could not find '%s' passed variable",
+						pnstrdup(varName, varNameLength))));
+
+	computedValue = var->cb(var->cb_arg, &isNull);
+
+	if (isNull)
+	{
+		value->type = jbvNull;
+		return;
+	}
+
+	switch(var->typid)
+	{
+		case BOOLOID:
+			value->type = jbvBool;
+			value->val.boolean = DatumGetBool(computedValue);
+			break;
+		case NUMERICOID:
+			value->type = jbvNumeric;
+			value->val.numeric = DatumGetNumeric(computedValue);
+			break;
+			break;
+		case INT2OID:
+			value->type = jbvNumeric;
+			value->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+												int2_numeric, computedValue));
+			break;
+		case INT4OID:
+			value->type = jbvNumeric;
+			value->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+												int4_numeric, computedValue));
+			break;
+		case INT8OID:
+			value->type = jbvNumeric;
+			value->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+												int8_numeric, computedValue));
+			break;
+		case FLOAT4OID:
+			value->type = jbvNumeric;
+			value->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+												float4_numeric, computedValue));
+			break;
+		case FLOAT8OID:
+			value->type = jbvNumeric;
+			value->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+												float4_numeric, computedValue));
+			break;
+		case TEXTOID:
+		case VARCHAROID:
+			value->type = jbvString;
+			value->val.string.val = VARDATA_ANY(computedValue);
+			value->val.string.len = VARSIZE_ANY_EXHDR(computedValue);
+			break;
+		case (Oid) -1: /* raw JsonbValue */
+			*value = *(JsonbValue *) DatumGetPointer(computedValue);
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("only bool, numeric and text types could be casted to supported jsonpath types")));
+	}
 }
+
+static void
+computeJsonPathItem(JsonPathItem *item, List *vars, JsonbValue *value)
+{
+	switch(item->type)
+	{
+		case jpiNull:
+			value->type = jbvNull;
+			break;
+		case jpiBool:
+			value->type = jbvBool;
+			value->val.boolean = jspGetBool(item);
+			break;
+		case jpiNumeric:
+			value->type = jbvNumeric;
+			value->val.numeric = jspGetNumeric(item);
+			break;
+		case jpiString:
+			value->type = jbvString;
+			value->val.string.val = jspGetString(item, &value->val.string.len);
+			break;
+		case jpiVariable:
+			computeJsonPathVariable(item, vars, value);
+			break;
+		default:
+			elog(ERROR, "Wrong type");
+	}
+}
+
 
 #define jbvScalar jbvBinary
 static int
@@ -53,29 +163,42 @@ JsonbType(JsonbValue *jb)
 	return type;
 }
 
-static bool
-checkScalarEquality(JsonPathItem *jsp,  JsonbValue *jb)
+static int
+compareNumeric(Numeric a, Numeric b)
 {
-	int		len;
-	char	*s;
+	return	DatumGetInt32(
+				DirectFunctionCall2(
+					numeric_cmp,
+					PointerGetDatum(a),
+					PointerGetDatum(b)
+				)
+			);
+}
+static bool
+checkScalarEquality(JsonPathItem *jsp,  List *vars, JsonbValue *jb)
+{
+	JsonbValue		computedValue;
 
 	if (jb->type == jbvBinary)
 		return false;
 
-	if ((int)jb->type != (int)jsp->type /* see enums */)
+	computeJsonPathItem(jsp, vars, &computedValue);
+
+	if (jb->type != computedValue.type)
 		return false;
 
-	switch(jsp->type)
+	switch(computedValue.type)
 	{
-		case jpiNull:
+		case jbvNull:
 			return true;
-		case jpiString:
-			s = jspGetString(jsp, &len);
-			return (len == jb->val.string.len && memcmp(jb->val.string.val, s, len) == 0);
-		case jpiBool:
-			return (jb->val.boolean == jspGetBool(jsp));
-		case jpiNumeric:
-			return (compareNumeric(jspGetNumeric(jsp), jb->val.numeric) == 0);
+		case jbvString:
+			return (computedValue.val.string.len == jb->val.string.len &&
+					memcmp(jb->val.string.val, computedValue.val.string.val,
+						   computedValue.val.string.len) == 0);
+		case jbvBool:
+			return (jb->val.boolean == computedValue.val.boolean);
+		case jbvNumeric:
+			return (compareNumeric(computedValue.val.numeric, jb->val.numeric) == 0);
 		default:
 			elog(ERROR,"Wrong state");
 	}
@@ -84,16 +207,20 @@ checkScalarEquality(JsonPathItem *jsp,  JsonbValue *jb)
 }
 
 static bool
-makeCompare(JsonPathItem *jsp, int32 op, JsonbValue *jb)
+makeCompare(JsonPathItem *jsp, List *vars, int32 op, JsonbValue *jb)
 {
-	int	res;
+	int				res;
+	JsonbValue		computedValue;
 
 	if (jb->type != jbvNumeric)
 		return false;
-	if (jsp->type != jpiNumeric)
+
+	computeJsonPathItem(jsp, vars, &computedValue);
+
+	if (computedValue.type != jbvNumeric)
 		return false;
 
-	res = compareNumeric(jb->val.numeric, jspGetNumeric(jsp));
+	res = compareNumeric(jb->val.numeric, computedValue.val.numeric);
 
 	switch(op)
 	{
@@ -114,27 +241,28 @@ makeCompare(JsonPathItem *jsp, int32 op, JsonbValue *jb)
 	return false;
 }
 
-static bool
-executeExpr(JsonPathItem *jsp, int32 op, JsonbValue *jb)
+static JsonPathExecResult
+executeExpr(JsonPathItem *jsp, List *vars, int32 op, JsonbValue *jb)
 {
-	bool res = false;
+	JsonPathExecResult res = jperNotFound;
 	/*
 	 * read arg type
 	 */
 	Assert(jspGetNext(jsp, NULL) == false);
 	Assert(jsp->type == jpiString || jsp->type == jpiNumeric ||
-		   jsp->type == jpiNull || jsp->type == jpiBool);
+		   jsp->type == jpiNull || jsp->type == jpiBool ||
+		   jsp->type == jpiVariable);
 
 	switch(op)
 	{
 		case jpiEqual:
-			res = checkScalarEquality(jsp, jb);
+			res = checkScalarEquality(jsp, vars, jb) ? jperOk : jperNotFound;
 			break;
 		case jpiLess:
 		case jpiGreater:
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
-			res = makeCompare(jsp, op, jb);
+			res = makeCompare(jsp, vars, op, jb) ? jperOk : jperNotFound;
 			break;
 		default:
 			elog(ERROR, "Unknown operation");
@@ -143,8 +271,18 @@ executeExpr(JsonPathItem *jsp, int32 op, JsonbValue *jb)
 	return res;
 }
 
+static JsonbValue*
+copyJsonbValue(JsonbValue *src)
+{
+	JsonbValue	*dst = palloc(sizeof(*dst));
+
+	*dst = *src;
+
+	return dst;
+}
+
 static JsonPathExecResult
-recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
+recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 {
 	JsonPathItem		elem;
 	JsonPathExecResult	res = jperNotFound;
@@ -154,25 +292,25 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 	switch(jsp->type) {
 		case jpiAnd:
 			jspGetLeftArg(jsp, &elem);
-			res = recursiveExecute(&elem, jb, NULL);
+			res = recursiveExecute(&elem, vars, jb, NULL);
 			if (res == jperOk)
 			{
 				jspGetRightArg(jsp, &elem);
-				res = recursiveExecute(&elem, jb, NULL);
+				res = recursiveExecute(&elem, vars, jb, NULL);
 			}
 			break;
 		case jpiOr:
 			jspGetLeftArg(jsp, &elem);
-			res = recursiveExecute(&elem, jb, NULL);
+			res = recursiveExecute(&elem, vars, jb, NULL);
 			if (res == jperNotFound)
 			{
 				jspGetRightArg(jsp, &elem);
-				res = recursiveExecute(&elem, jb, NULL);
+				res = recursiveExecute(&elem, vars, jb, NULL);
 			}
 			break;
 		case jpiNot:
 			jspGetArg(jsp, &elem);
-			switch((res = recursiveExecute(&elem, jb, NULL)))
+			switch((res = recursiveExecute(&elem, vars, jb, NULL)))
 			{
 				case jperOk:
 					res = jperNotFound;
@@ -198,7 +336,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 				{
 					if (jspGetNext(jsp, &elem))
 					{
-						res = recursiveExecute(&elem, v, found);
+						res = recursiveExecute(&elem, vars, v, found);
 						pfree(v);
 					}
 					else
@@ -220,11 +358,11 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 
 				JsonbExtractScalar(jb->val.binary.data, &v);
 
-				res = recursiveExecute(&elem, &v, NULL);
+				res = recursiveExecute(&elem, vars, &v, NULL);
 			}
 			else
 			{
-				res = recursiveExecute(&elem, jb, NULL);
+				res = recursiveExecute(&elem, vars, jb, NULL);
 			}
 			break;
 		case jpiAnyArray:
@@ -232,7 +370,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 			{
 				JsonbIterator	*it;
 				int32			r;
-				JsonbValue		v, *pv;
+				JsonbValue		v;
 				bool			hasNext;
 
 				hasNext = jspGetNext(jsp, &elem);
@@ -244,7 +382,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 					{
 						if (hasNext == true)
 						{
-							res = recursiveExecute(&elem, &v, found);
+							res = recursiveExecute(&elem, vars, &v, found);
 
 							if (res == jperError)
 								break;
@@ -259,9 +397,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 							if (found == NULL)
 								break;
 
-							pv = palloc(sizeof(*pv));
-							*pv = v;
-							*found = lappend(*found, pv);
+							*found = lappend(*found, copyJsonbValue(&v));
 						}
 					}
 				}
@@ -288,7 +424,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 
 					if (hasNext == true)
 					{
-						res = recursiveExecute(&elem, v, found);
+						res = recursiveExecute(&elem, vars, v, found);
 
 						if (res == jperError || found == NULL)
 							break;
@@ -313,7 +449,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 			{
 				JsonbIterator	*it;
 				int32			r;
-				JsonbValue		v, *pv;
+				JsonbValue		v;
 				bool			hasNext;
 
 				hasNext = jspGetNext(jsp, &elem);
@@ -325,7 +461,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 					{
 						if (hasNext == true)
 						{
-							res = recursiveExecute(&elem, &v, found);
+							res = recursiveExecute(&elem, vars, &v, found);
 
 							if (res == jperError)
 								break;
@@ -340,9 +476,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 							if (found == NULL)
 								break;
 
-							pv = palloc(sizeof(*pv));
-							*pv = v;
-							*found = lappend(*found, pv);
+							*found = lappend(*found, copyJsonbValue(&v));
 						}
 					}
 				}
@@ -354,17 +488,27 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
 			jspGetArg(jsp, &elem);
-			res = executeExpr(&elem, jsp->type, jb);
+			res = executeExpr(&elem, vars, jsp->type, jb);
 			break;
 		case jpiRoot:
-			/* no-op actually */
-			jspGetNext(jsp, &elem);
-			res = recursiveExecute(&elem, jb, found);
+			if (jspGetNext(jsp, &elem))
+			{
+				res = recursiveExecute(&elem, vars, jb, found);
+			}
+			else
+			{
+				res = jperOk;
+				if (found)
+					*found = lappend(*found, copyJsonbValue(jb));
+			}
+
 			break;
 		case jpiExpression:
 			/* no-op actually */
-			jspGetNext(jsp, &elem);
-			res = recursiveExecute(&elem, jb, NULL);
+			jspGetArg(jsp, &elem);
+			res = recursiveExecute(&elem, vars, jb, NULL);
+			if (res == jperOk && found)
+				*found = lappend(*found, copyJsonbValue(jb));
 			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
@@ -374,7 +518,7 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 }
 
 JsonPathExecResult
-executeJsonPath(JsonPath *path, Jsonb *json, List **foundJson)
+executeJsonPath(JsonPath *path, List *vars, Jsonb *json, List **foundJson)
 {
 	JsonPathItem	jsp;
 	JsonbValue		jbv;
@@ -385,17 +529,98 @@ executeJsonPath(JsonPath *path, Jsonb *json, List **foundJson)
 
 	jspInit(&jsp, path);
 
-	return recursiveExecute(&jsp, &jbv, foundJson);
+	return recursiveExecute(&jsp, vars, &jbv, foundJson);
 }
 
-Datum
+static Datum
+returnDATUM(void *arg, bool *isNull)
+{
+	*isNull = false;
+	return	PointerGetDatum(arg);
+}
+
+static Datum
+returnNULL(void *arg, bool *isNull)
+{
+	*isNull = true;
+	return Int32GetDatum(0);
+}
+
+static List*
+makePassingVars(Jsonb *jb)
+{
+	JsonbValue		v;
+	JsonbIterator	*it;
+	int32			r;
+	List			*vars = NIL;
+
+	it = JsonbIteratorInit(&jb->root);
+
+	r =  JsonbIteratorNext(&it, &v, true);
+
+	if (r != WJB_BEGIN_OBJECT)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("passing variable json is not a object")));
+
+	while((r = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
+	{
+		if (r == WJB_KEY)
+		{
+			JsonPathVariable	*jpv = palloc0(sizeof(*jpv));
+
+			jpv->varName = cstring_to_text_with_len(v.val.string.val,
+													v.val.string.len);
+
+			JsonbIteratorNext(&it, &v, true);
+
+			jpv->cb = returnDATUM;
+
+			switch(v.type)
+			{
+				case jbvBool:
+					jpv->typid = BOOLOID;
+					jpv->cb_arg = DatumGetPointer(BoolGetDatum(v.val.boolean));
+					break;
+				case jbvNull:
+					jpv->cb = returnNULL;
+					break;
+				case jbvString:
+					jpv->typid = TEXTOID;
+					jpv->cb_arg = cstring_to_text_with_len(v.val.string.val,
+														   v.val.string.len);
+					break;
+				case jbvNumeric:
+					jpv->typid = NUMERICOID;
+					jpv->cb_arg = v.val.numeric;
+					break;
+				case jbvBinary:
+					jpv->typid = JSONBOID;
+					jpv->cb_arg = DatumGetPointer(JsonbPGetDatum(JsonbValueToJsonb(&v)));
+					break;
+				default:
+					elog(ERROR, "unsupported type in passing variable json");
+			}
+
+			vars = lappend(vars, jpv);
+		}
+	}
+
+	return vars;
+}
+
+static Datum
 jsonb_jsonpath_exists(PG_FUNCTION_ARGS)
 {
 	Jsonb				*jb = PG_GETARG_JSONB_P(0);
 	JsonPath			*jp = PG_GETARG_JSONPATH_P(1);
 	JsonPathExecResult	res;
+	List				*vars = NIL;
 
-	res = executeJsonPath(jp, jb, NULL);
+	if (PG_NARGS() == 3)
+		vars = makePassingVars(PG_GETARG_JSONB_P(2));
+
+	res = executeJsonPath(jp, vars, jb, NULL);
 
 	PG_FREE_IF_COPY(jb, 0);
 	PG_FREE_IF_COPY(jp, 1);
@@ -407,6 +632,18 @@ jsonb_jsonpath_exists(PG_FUNCTION_ARGS)
 }
 
 Datum
+jsonb_jsonpath_exists2(PG_FUNCTION_ARGS)
+{
+	return jsonb_jsonpath_exists(fcinfo);
+}
+
+Datum
+jsonb_jsonpath_exists3(PG_FUNCTION_ARGS)
+{
+	return jsonb_jsonpath_exists(fcinfo);
+}
+
+static Datum
 jsonb_jsonpath_query(PG_FUNCTION_ARGS)
 {
 	FuncCallContext	*funcctx;
@@ -420,12 +657,16 @@ jsonb_jsonpath_query(PG_FUNCTION_ARGS)
 		Jsonb				*jb;
 		JsonPathExecResult	res;
 		MemoryContext		oldcontext;
+		List				*vars = NIL;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		jb = PG_GETARG_JSONB_P_COPY(0);
-		res = executeJsonPath(jp, jb, &found);
+		if (PG_NARGS() == 3)
+			vars = makePassingVars(PG_GETARG_JSONB_P(2));
+
+		res = executeJsonPath(jp, vars, jb, &found);
 
 		if (res == jperError)
 			elog(ERROR, "Something wrong");
@@ -449,4 +690,16 @@ jsonb_jsonpath_query(PG_FUNCTION_ARGS)
 	funcctx->user_fctx = list_delete_first(found);
 
 	SRF_RETURN_NEXT(funcctx, JsonbPGetDatum(JsonbValueToJsonb(v)));
+}
+
+Datum
+jsonb_jsonpath_query2(PG_FUNCTION_ARGS)
+{
+	return jsonb_jsonpath_query(fcinfo);
+}
+
+Datum
+jsonb_jsonpath_query3(PG_FUNCTION_ARGS)
+{
+	return jsonb_jsonpath_query(fcinfo);
 }

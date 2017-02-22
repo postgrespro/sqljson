@@ -61,6 +61,7 @@ fprintf_to_ereport(const char *fmt, const char *msg)
 
 %x xQUOTED
 %x xNONQUOTED
+%x xVARQUOTED
 %x xCOMMENT
 
 special		 [\?\%\$\.\[\]\(\)\|\&\=\<\>\@\#\,\*:]
@@ -75,6 +76,18 @@ unicode		\\u[0-9A-Fa-f]{4}
 <INITIAL>\|\|					{ return OR_P; }
 
 <INITIAL>\!						{ return NOT_P; }
+
+<INITIAL>\${any}+				{
+									addstring(true, yytext + 1, yyleng - 1);
+									addchar(false, '\0');
+									yylval->str = scanstring;
+									return VARIABLE_P;
+								}
+
+<INITIAL>\$\"					{
+									addchar(true, '\0');
+									BEGIN xVARQUOTED;
+								}
 
 <INITIAL>{special}				{ return *yytext; }
 
@@ -166,35 +179,40 @@ unicode		\\u[0-9A-Fa-f]{4}
 									return checkSpecialVal();
 								}
 
-<xNONQUOTED,xQUOTED>\\[\"\\]	{ addchar(false, yytext[1]); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\[\"\\]	{ addchar(false, yytext[1]); }
 
-<xNONQUOTED,xQUOTED>\\b			{ addchar(false, '\b'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\b			{ addchar(false, '\b'); }
 
-<xNONQUOTED,xQUOTED>\\f			{ addchar(false, '\f'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\f			{ addchar(false, '\f'); }
 
-<xNONQUOTED,xQUOTED>\\n			{ addchar(false, '\n'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\n			{ addchar(false, '\n'); }
 
-<xNONQUOTED,xQUOTED>\\r			{ addchar(false, '\r'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\r			{ addchar(false, '\r'); }
 
-<xNONQUOTED,xQUOTED>\\t			{ addchar(false, '\t'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\t			{ addchar(false, '\t'); }
 
-<xNONQUOTED,xQUOTED>{unicode}+	{ parseUnicode(yytext, yyleng); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>{unicode}+	{ parseUnicode(yytext, yyleng); }
 
-<xNONQUOTED,xQUOTED>\\u			{ yyerror(NULL, "Unicode sequence is invalid"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\u			{ yyerror(NULL, "Unicode sequence is invalid"); }
 
-<xNONQUOTED,xQUOTED>\\.			{ yyerror(NULL, "Escape sequence is invalid"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\.			{ yyerror(NULL, "Escape sequence is invalid"); }
 
-<xNONQUOTED,xQUOTED>\\			{ yyerror(NULL, "Unexpected end after backslesh"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED>\\			{ yyerror(NULL, "Unexpected end after backslash"); }
 
-<xQUOTED><<EOF>>				{ yyerror(NULL, "Unexpected end of quoted string"); }
+<xQUOTED,xVARQUOTED><<EOF>>					{ yyerror(NULL, "Unexpected end of quoted string"); }
 
 <xQUOTED>\"						{
 									yylval->str = scanstring;
 									BEGIN INITIAL;
 									return STRING_P;
 								}
+<xVARQUOTED>\"						{
+									yylval->str = scanstring;
+									BEGIN INITIAL;
+									return VARIABLE_P;
+								}
 
-<xQUOTED>[^\\\"]+				{ addstring(false, yytext, yyleng); }
+<xQUOTED,xVARQUOTED>[^\\\"]+	{ addstring(false, yytext, yyleng); }
 
 <INITIAL><<EOF>>				{ yyterminate(); }
 
