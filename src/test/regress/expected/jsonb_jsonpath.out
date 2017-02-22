@@ -1,0 +1,92 @@
+select _jsonpath_exists(jsonb '{"a": 12}', '$.a.b');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": 12}', '$.b');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": {"a": 12}}', '$.a.a');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": {"a": 12}}', '$.*.a');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"b": {"a": 12}}', '$.*.a');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{}', '$.*');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": 1}', '$.*');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '[]', '$.[*]');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '[1]', '$.[*]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.a');
+ _jsonpath_query 
+-----------------
+ 12
+(1 row)
+
+select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.b');
+ _jsonpath_query 
+-----------------
+ {"a": 13}
+(1 row)
+
+select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.*');
+ _jsonpath_query 
+-----------------
+ 12
+ {"a": 13}
+(2 rows)
+
+select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.*.a');
+ _jsonpath_query 
+-----------------
+ 13
+(1 row)
+
+select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', '$.[*].a');
+ _jsonpath_query 
+-----------------
+ 13
+(1 row)
+
+select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', '$.[*].*');
+ _jsonpath_query 
+-----------------
+ 13
+ 14
+(2 rows)
+
