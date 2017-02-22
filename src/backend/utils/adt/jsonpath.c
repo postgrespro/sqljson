@@ -18,6 +18,7 @@
 #include "utils/json.h"
 #include "utils/jsonpath.h"
 
+/*****************************INPUT/OUTPUT************************************/
 static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
 {
@@ -278,9 +279,8 @@ jsonpath_out(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(buf.data);
 }
 
-/*
- * Support functions for JsonPath
- */
+/********************Support functions for JsonPath****************************/
+
 #define read_byte(v, b, p) do {			\
 	(v) = *(uint8*)((b) + (p));			\
 	(p) += 1;							\
