@@ -246,7 +246,10 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 						{
 							res = recursiveExecute(&elem, &v, found);
 
-							if (res == jperError || found == NULL)
+							if (res == jperError)
+								break;
+
+							if (res == jperOk && found == NULL)
 								break;
 						}
 						else
@@ -264,21 +267,47 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 				}
 			}
 			break;
-			/*
+
 		case jpiIndexArray:
 			if (JsonbType(jb) == jbvArray)
 			{
 				JsonbValue		*v;
+				bool			hasNext;
+				int				i;
 
-				jspGetNext(jsp, &elem);
+				hasNext = jspGetNext(jsp, &elem);
 
-				v = getIthJsonbValueFromContainer(jb->val.binary.data,
-												  jsp->arrayIndex);
+				for(i=0; i<jsp->array.nelems; i++)
+				{
+					/* TODO for future: array index can be expression */
+					v = getIthJsonbValueFromContainer(jb->val.binary.data,
+													  jsp->array.elems[i]);
 
-				res = v && recursiveExecute(&elem, v, found);
+					if (v == NULL)
+						continue;
+
+					if (hasNext == true)
+					{
+						res = recursiveExecute(&elem, v, found);
+
+						if (res == jperError || found == NULL)
+							break;
+
+						if (res == jperOk && found == NULL)
+								break;
+					}
+					else
+					{
+						res = jperOk;
+
+						if (found == NULL)
+							break;
+
+						*found = lappend(*found, v);
+					}
+				}
 			}
 			break;
-			*/
 		case jpiAnyKey:
 			if (JsonbType(jb) == jbvObject)
 			{
@@ -298,7 +327,10 @@ recursiveExecute(JsonPathItem *jsp, JsonbValue *jb, List **found)
 						{
 							res = recursiveExecute(&elem, &v, found);
 
-							if (res == jperError || found == NULL)
+							if (res == jperError)
+								break;
+
+							if (res == jperOk && found == NULL)
 								break;
 						}
 						else
