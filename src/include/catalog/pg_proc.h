@@ -5522,6 +5522,16 @@ DESCR("list files in the log directory");
 DATA(insert OID = 3354 (  pg_ls_waldir				 PGNSP PGUID 12 10 20 0 0 f f f f t t v s 0 0 2249 "" "{25,20,1184}" "{o,o,o}" "{name,size,modification}" _null_ _null_ pg_ls_waldir _null_ _null_ _null_ ));
 DESCR("list of files in the WAL directory");
 
+/* jsonpath */
+DATA(insert OID =  6052 (  jsonpath_in			PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 6050 "2275" _null_ _null_ _null_ _null_ _null_ jsonpath_in _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID =  6053 (  jsonpath_out			PGNSP PGUID 12 1 0 0 0 f f f f t f i s 1 0 2275 "6050" _null_ _null_ _null_ _null_ _null_ jsonpath_out _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID =  6054 (  _jsonpath_exists		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "3802 6050" _null_ _null_ _null_ _null_ _null_ jsonb_jsonpath_exists _null_ _null_ _null_ ));
+DESCR("jsonpath exists test");
+DATA(insert OID =  6055 (  _jsonpath_query		PGNSP PGUID 12 1 1000 0 0 f f f f t t i s 2 0 3802 "3802 6050" _null_ _null_ _null_ _null_ _null_ jsonb_jsonpath_query _null_ _null_ _null_ ));
+DESCR("jsonpath query");
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,
