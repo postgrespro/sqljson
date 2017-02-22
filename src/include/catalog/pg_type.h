@@ -638,6 +638,12 @@ DESCR("Binary JSON");
 #define JSONBOID 3802
 DATA(insert OID = 3807 ( _jsonb			PGNSP PGUID -1 f b A f t \054 0 3802 0 array_in array_out array_recv array_send - - array_typanalyze i x f 0 -1 0 0 _null_ _null_ _null_ ));
 
+/* jsonpath */
+DATA(insert OID = 6050 ( jsonpath		PGNSP PGUID -1 f b U f t \054 0 0 6051 jsonpath_in jsonpath_out - - - - - i x f 0 -1 0 0 _null_ _null_ _null_ ));
+DESCR("JSON Path");
+#define JSONPATHOID 6050
+DATA(insert OID = 6051 ( _jsonpath		PGNSP PGUID -1 f b A f t \054 0 6050 0 array_in array_out array_recv array_send - - array_typanalyze i x f 0 -1 0 0 _null_ _null_ _null_ ));
+
 DATA(insert OID = 2970 ( txid_snapshot	PGNSP PGUID -1 f b U f t \054 0 0 2949 txid_snapshot_in txid_snapshot_out txid_snapshot_recv txid_snapshot_send - - - d x f 0 -1 0 0 _null_ _null_ _null_ ));
 DESCR("txid snapshot");
 DATA(insert OID = 2949 ( _txid_snapshot PGNSP PGUID -1 f b A f t \054 0 2970 0 array_in array_out array_recv array_send - - array_typanalyze d x f 0 -1 0 0 _null_ _null_ _null_ ));

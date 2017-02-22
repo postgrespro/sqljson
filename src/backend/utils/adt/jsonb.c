@@ -1897,3 +1897,24 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 
 	PG_RETURN_POINTER(out);
 }
+
+JsonbValue *
+JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
+{
+	JsonbIterator *it = JsonbIteratorInit(jbc);
+	JsonbIteratorToken tok PG_USED_FOR_ASSERTS_ONLY;
+	JsonbValue	tmp;
+
+	tok = JsonbIteratorNext(&it, &tmp, true);
+	Assert(tok == WJB_BEGIN_ARRAY);
+	Assert(tmp.val.array.nElems == 1 && tmp.val.array.rawScalar);
+
+	tok = JsonbIteratorNext(&it, res, true);
+	Assert (tok == WJB_ELEM);
+	Assert(IsAJsonbScalar(res));
+
+	tok = JsonbIteratorNext(&it, &tmp, true);
+	Assert (tok == WJB_END_ARRAY);
+
+	return res;
+}
