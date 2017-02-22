@@ -190,8 +190,7 @@ makeIndexArray(List *list)
 }
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P
-%token	<str>		STRING_P NUMERIC_P INT_P
-
+%token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 
 %type	<value>		result scalar_value
@@ -223,13 +222,13 @@ scalar_value:
 	| FALSE_P						{ $$ = makeItemBool(false); }
 	| NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
-	| '$' STRING_P					{ $$ = makeItemVariable(&$2); }
+	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
 	;
 
 numeric:
 	NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
-	| '$' STRING_P					{ $$ = makeItemVariable(&$2); }
+	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
 	;
 
 right_expr:
