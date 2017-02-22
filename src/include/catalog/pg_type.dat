@@ -770,6 +770,16 @@
   typelem => 'jsonb', typinput => 'array_in', typoutput => 'array_out',
   typreceive => 'array_recv', typsend => 'array_send',
   typanalyze => 'array_typanalyze', typalign => 'i', typstorage => 'x' },
+{ oid =>  '6050',
+  typname => 'jsonpath', typlen => '-1', typbyval => 'f', typcategory => 'U',
+  typarray => '_jsonpath', typinput => 'jsonpath_in',
+  typoutput => 'jsonpath_out', typreceive => '-', typsend => '-',
+  typalign => 'i', typstorage => 'x' }
+{ oid =>  '6051',
+  typname => '_jsonpath', typlen => '-1', typbyval => 'f', typcategory => 'A',
+  typelem => 'jsonpath',  typinput => 'array_in', typoutput => 'array_out',
+  typreceive => 'array_recv', typsend => 'array_send',
+  typanalyze => 'array_typanalyze', typalign => 'i', typstorage => 'x' },
 
 { oid => '2970', descr => 'txid snapshot',
   typname => 'txid_snapshot', typlen => '-1', typbyval => 'f',

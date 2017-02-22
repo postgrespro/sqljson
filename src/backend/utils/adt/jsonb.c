@@ -1857,7 +1857,7 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 /*
  * Extract scalar value from raw-scalar pseudo-array jsonb.
  */
-static bool
+JsonbValue *
 JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
 {
 	JsonbIterator *it;
@@ -1868,7 +1868,7 @@ JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
 	{
 		/* inform caller about actual type of container */
 		res->type = (JsonContainerIsArray(jbc)) ? jbvArray : jbvObject;
-		return false;
+		return NULL;
 	}
 
 	/*
@@ -1891,7 +1891,7 @@ JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res)
 	tok = JsonbIteratorNext(&it, &tmp, true);
 	Assert(tok == WJB_DONE);
 
-	return true;
+	return res;
 }
 
 /*
