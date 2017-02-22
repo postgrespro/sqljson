@@ -21,3 +21,14 @@ select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', '$.[1].a');
 select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', '$.[2].a');
 select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', '$.[0,1].a');
 select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', '$.[0 to 10].a');
+
+select * from _jsonpath_query(jsonb '{"a": 10}', '$');
+select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (a < $value)');
+select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (a < $value)', '{"value" : 13}');
+select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (a < $value)', '{"value" : 8}');
+select * from _jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value" : 13}');
+select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
+select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
+select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
+select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ = "1")');
+select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ = $value)', '{"value" : "1"}');
