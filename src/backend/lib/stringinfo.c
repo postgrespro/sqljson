@@ -312,3 +312,24 @@ enlargeStringInfo(StringInfo str, int needed)
 
 	str->maxlen = newlen;
 }
+
+/*
+ * alignStringInfoInt - aling StringInfo to int by adding
+ * zero padding bytes
+ */
+void
+alignStringInfoInt(StringInfo buf)
+{
+	switch(INTALIGN(buf->len) - buf->len)
+	{
+		case 3:
+			appendStringInfoCharMacro(buf, 0);
+		case 2:
+			appendStringInfoCharMacro(buf, 0);
+		case 1:
+			appendStringInfoCharMacro(buf, 0);
+		default:
+			break;
+	}
+}
+

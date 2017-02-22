@@ -9103,6 +9103,21 @@
   proname => 'jsonb_insert', prorettype => 'jsonb',
   proargtypes => 'jsonb _text jsonb bool', prosrc => 'jsonb_insert' },
 
+# jsonpath
+{ oid => '6052', descr => 'I/O',
+  proname => 'jsonpath_in', prorettype => 'jsonpath', proargtypes => 'cstring',
+  prosrc => 'jsonpath_in' },
+{ oid => '6053', descr => 'I/O',
+  proname => 'jsonpath_out', prorettype => 'cstring', proargtypes => 'jsonpath',
+  prosrc => 'jsonpath_out' },
+{ oid => '6054', descr => 'jsonpath exists test',
+  proname => '_jsonpath_exists', prorettype => 'bool',
+  proargtypes => 'jsonb jsonpath', prosrc => 'jsonb_jsonpath_exists' },
+{ oid => '6055', descr => 'jsonpath query',
+  proname => '_jsonpath_query', prorows => '1000', proretset => 't',
+  prorettype => 'jsonb', proargtypes => 'jsonb jsonpath',
+  prosrc => 'jsonb_jsonpath_query' },
+
 # txid
 { oid => '2939', descr => 'I/O',
   proname => 'txid_snapshot_in', prorettype => 'txid_snapshot',
