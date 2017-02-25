@@ -101,6 +101,20 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 			value->val.string.val = VARDATA_ANY(computedValue);
 			value->val.string.len = VARSIZE_ANY_EXHDR(computedValue);
 			break;
+		case JSONBOID:
+			{
+				Jsonb	   *jb = DatumGetJsonb(computedValue);
+
+				if (JB_ROOT_IS_SCALAR(jb))
+					JsonbExtractScalar(&jb->root, value);
+				else
+				{
+					value->type = jbvBinary;
+					value->val.binary.data = &jb->root;
+					value->val.binary.len = VARSIZE_ANY_EXHDR(jb);
+				}
+			}
+			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
