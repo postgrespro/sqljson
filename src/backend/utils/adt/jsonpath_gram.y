@@ -198,9 +198,9 @@ makeIndexArray(List *list)
 
 %type	<value>		result scalar_value
 
-%type	<elems>		joined_key path absolute_path relative_path
+%type	<elems>		joined_key path absolute_path relative_path array_accessors
 
-%type 	<value>		key any_key right_expr expr jsonpath numeric
+%type 	<value>		key any_key right_expr expr jsonpath numeric array_accessor
 
 %type	<indexs>	index_elem index_list
 
@@ -281,18 +281,27 @@ index_list:
 	| index_list ',' index_elem		{ $$ = list_concat($1, $3); }
 	;
 
+array_accessor:
+	'[' '*' ']'						{ $$ = makeItemType(jpiAnyArray); }
+	| '[' index_list ']'			{ $$ = makeIndexArray($2); }
+	;
+
+array_accessors:
+	array_accessor						{ $$ = list_make1($1); }
+	| array_accessors array_accessor	{ $$ = lappend($1, $2); }
+	;
+
 any_key:
 	key								{ $$ = $1; }
+	| array_accessor				{ $$ = $1; }
 	| '*'							{ $$ = makeItemType(jpiAnyKey); }
-	| '[' '*' ']'					{ $$ = makeItemType(jpiAnyArray); }
-	| '[' index_list ']'			{ $$ = makeIndexArray($2); }
 	;
 
 joined_key:
 	any_key							{ $$ = list_make1($1); }
-	| joined_key '[' '*' ']'		{ $$ = lappend($1, makeItemType(jpiAnyArray)); }
-	| joined_key '[' index_list ']'	{ $$ = lappend($1, makeIndexArray($3)); }
+	| joined_key array_accessor		{ $$ = lappend($1, $2); }
 	;
+
 key:
 	STRING_P						{ $$ = makeItemKey(&$1); }
 	| TO_P							{ $$ = makeItemKey(&$1); }
@@ -303,8 +312,10 @@ key:
 
 absolute_path:
 	'$' '.' 						{ $$ = list_make1(makeItemType(jpiRoot)); }
-	| '$'  							{ $$ = list_make1(makeItemType(jpiRoot)); }
+	| '$'	 						{ $$ = list_make1(makeItemType(jpiRoot)); }
 	| '$' '.' path					{ $$ = lcons(makeItemType(jpiRoot), $3); }
+	| '$' array_accessors			{ $$ = lcons(makeItemType(jpiRoot), $2); }
+	| '$' array_accessors '.' path	{ $$ = lcons(makeItemType(jpiRoot), list_concat($2, $4)); }
 	;
 
 relative_path:
@@ -312,6 +323,7 @@ relative_path:
 	| '.' joined_key '.' joined_key		{ $$ = list_concat($2, $4); }
 	| '@' '.' joined_key '.' joined_key	{ $$ = list_concat($3, $5); }
 	| relative_path '.' joined_key		{ $$ = list_concat($1, $3); }
+	;
 
 path:
 	joined_key						{ $$ = $1; }
