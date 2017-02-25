@@ -75,6 +75,36 @@ select '$.a[*].[*]'::jsonpath;
  $."a"[*][*]
 (1 row)
 
+select '$[*]'::jsonpath;
+ jsonpath 
+----------
+ $[*]
+(1 row)
+
+select '$[0]'::jsonpath;
+ jsonpath 
+----------
+ $[0]
+(1 row)
+
+select '$[*][0]'::jsonpath;
+ jsonpath 
+----------
+ $[*][0]
+(1 row)
+
+select '$[*].a'::jsonpath;
+ jsonpath 
+----------
+ $[*]."a"
+(1 row)
+
+select '$[*][0].a.b'::jsonpath;
+    jsonpath     
+-----------------
+ $[*][0]."a"."b"
+(1 row)
+
 select '$.g ? (@ = 1)'::jsonpath;
    jsonpath    
 ---------------
