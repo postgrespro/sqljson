@@ -102,6 +102,20 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 			value->val.string.val = VARDATA_ANY(computedValue);
 			value->val.string.len = VARSIZE_ANY_EXHDR(computedValue);
 			break;
+		case JSONBOID:
+			{
+				Jsonb	   *jb = DatumGetJsonbP(computedValue);
+
+				if (JB_ROOT_IS_SCALAR(jb))
+					JsonbExtractScalar(&jb->root, value);
+				else
+				{
+					value->type = jbvBinary;
+					value->val.binary.data = &jb->root;
+					value->val.binary.len = VARSIZE_ANY_EXHDR(jb);
+				}
+			}
+			break;
 		case (Oid) -1: /* raw JsonbValue */
 			*value = *(JsonbValue *) DatumGetPointer(computedValue);
 			break;
