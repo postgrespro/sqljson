@@ -13,6 +13,11 @@ select '$.a.[*][*]'::jsonpath;
 select '$.a.[*].[*]'::jsonpath;
 select '$.a[*][*]'::jsonpath;
 select '$.a[*].[*]'::jsonpath;
+select '$[*]'::jsonpath;
+select '$[0]'::jsonpath;
+select '$[*][0]'::jsonpath;
+select '$[*].a'::jsonpath;
+select '$[*][0].a.b'::jsonpath;
 
 select '$.g ? (@ = 1)'::jsonpath;
 select '$.g ? (a = 1)'::jsonpath;
