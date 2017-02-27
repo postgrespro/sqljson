@@ -77,6 +77,8 @@ unicode		\\u[0-9A-Fa-f]{4}
 
 <INITIAL>\!						{ return NOT_P; }
 
+<INITIAL>\*\*					{ return ANY_P; }
+
 <INITIAL>\${any}+				{
 									addstring(true, yytext + 1, yyleng - 1);
 									addchar(false, '\0');
@@ -98,28 +100,21 @@ unicode		\\u[0-9A-Fa-f]{4}
 									BEGIN xCOMMENT;
 								}
 
-<INITIAL>[+-]?[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+  /* float */  {
+<INITIAL>[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+  /* float */  {
 									addstring(true, yytext, yyleng);
 									addchar(false, '\0');
 									yylval->str = scanstring;
 									return NUMERIC_P;
 								}
 
-<INITIAL>[+-]?\.[0-9]+[eE][+-]?[0-9]+  /* float */  {
+<INITIAL>\.[0-9]+[eE][+-]?[0-9]+  /* float */  {
 									addstring(true, yytext, yyleng);
 									addchar(false, '\0');
 									yylval->str = scanstring;
 									return NUMERIC_P;
 								}
 
-<INITIAL>[+-]?([0-9]+)?\.[0-9]+ {
-									addstring(true, yytext, yyleng);
-									addchar(false, '\0');
-									yylval->str = scanstring;
-									return NUMERIC_P;
-								}
-
-<INITIAL>[+-][0-9]+ 			{
+<INITIAL>([0-9]+)?\.[0-9]+		{
 									addstring(true, yytext, yyleng);
 									addchar(false, '\0');
 									yylval->str = scanstring;
