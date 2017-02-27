@@ -82,3 +82,30 @@ select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{2,3}.b ? (@
 select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.x))');
 select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.y))');
 select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.x ? (@ >= 2) ))');
+
+--test ternary logic
+select
+	x, y,
+	_jsonpath_query(
+		jsonb '[true, false, null]',
+		'$[*] ? (@ == true  &&  ($x == true && $y == true) ||
+				 @ == false && !($x == true && $y == true) ||
+				 @ == null  &&  ($x == true && $y == true) is unknown)',
+		jsonb_build_object('x', x, 'y', y)
+	) as "x && y"
+from
+	(values (jsonb 'true'), ('false'), ('"null"')) x(x),
+	(values (jsonb 'true'), ('false'), ('"null"')) y(y);
+
+select
+	x, y,
+	_jsonpath_query(
+		jsonb '[true, false, null]',
+		'$[*] ? (@ == true  &&  ($x == true || $y == true) ||
+				 @ == false && !($x == true || $y == true) ||
+				 @ == null  &&  ($x == true || $y == true) is unknown)',
+		jsonb_build_object('x', x, 'y', y)
+	) as "x || y"
+from
+	(values (jsonb 'true'), ('false'), ('"null"')) x(x),
+	(values (jsonb 'true'), ('false'), ('"null"')) y(y);
