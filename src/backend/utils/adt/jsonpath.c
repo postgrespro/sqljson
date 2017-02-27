@@ -288,6 +288,12 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			printJsonPathItem(buf, &elem, false, false);
 			appendStringInfoChar(buf, ')');
 			break;
+		case jpiIsUnknown:
+			appendStringInfoChar(buf, '(');
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendBinaryStringInfo(buf, ") is unknown", 12);
+			break;
 		case jpiCurrent:
 			Assert(!inKey);
 			appendStringInfoChar(buf, '@');

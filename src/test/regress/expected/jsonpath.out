@@ -225,6 +225,12 @@ select '$.g ? (.x >= @[*]?(@.a > "abc"))'::jsonpath;
  $."g"?(@."x" >= @[*]?(@."a" > "abc"))
 (1 row)
 
+select '$.g ? ((x >= 123 || a == 4) is unknown)'::jsonpath;
+                  jsonpath                   
+---------------------------------------------
+ $."g"?(("x" >= 123 || "a" == 4) is unknown)
+(1 row)
+
 select '$.g ? (zip == $zip)'::jsonpath;
         jsonpath         
 -------------------------
