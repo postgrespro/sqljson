@@ -207,7 +207,7 @@ makeAny(int first, int last)
 	int					optype;
 }
 
-%token	<str>		TO_P NULL_P TRUE_P FALSE_P
+%token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P
 %token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
@@ -241,6 +241,8 @@ result:
 scalar_value:
 	STRING_P						{ $$ = makeItemString(&$1); }
 	| TO_P							{ $$ = makeItemString(&$1); }
+	| IS_P							{ $$ = makeItemString(&$1); }
+	| UNKNOWN_P						{ $$ = makeItemString(&$1); }
 	| NULL_P						{ $$ = makeItemString(NULL); }
 	| TRUE_P						{ $$ = makeItemBool(true); }
 	| FALSE_P						{ $$ = makeItemBool(false); }
@@ -283,7 +285,7 @@ predicate:
 //	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
 //	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
 //	| '.' any_key right_expr		{ $$ = makeItemList(list_make2($2, $3)); }
-//	| '(' predicate ')' IS UNKNOWN	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
+	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
 	| predicate AND_P predicate		{ $$ = makeItemBinary(jpiAnd, $1, $3); }
 	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
 	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }

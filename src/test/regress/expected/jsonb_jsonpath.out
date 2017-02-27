@@ -106,6 +106,18 @@ select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,null]}', '$ ? (@.a[*] >=
  t
 (1 row)
 
+select _jsonpath_exists(jsonb '1', '$ ? ((@ == "1") is unknown)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '1', '$ ? ((@ == 1) is unknown)');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
 select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.a');
  _jsonpath_query 
 -----------------
