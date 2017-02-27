@@ -78,3 +78,7 @@ select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{0,}.b ? (@ 
 select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1,}.b ? (@ > 0)');
 select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1,2}.b ? (@ > 0)');
 select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{2,3}.b ? (@ > 0)');
+
+select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.x))');
+select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.y))');
+select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.x ? (@ >= 2) ))');

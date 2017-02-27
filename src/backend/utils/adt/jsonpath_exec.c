@@ -740,6 +740,10 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 								   jsp->anybounds.last);
 			break;
 		}
+		case jpiExists:
+			jspGetArg(jsp, &elem);
+			res = recursiveExecute(&elem, vars, jb, NULL);
+			break;
 		case jpiNull:
 		case jpiBool:
 		case jpiNumeric:
