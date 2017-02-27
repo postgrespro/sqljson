@@ -18,6 +18,12 @@ select '$[0]'::jsonpath;
 select '$[*][0]'::jsonpath;
 select '$[*].a'::jsonpath;
 select '$[*][0].a.b'::jsonpath;
+select '$.a.**.b'::jsonpath;
+select '$.a.**{2}.b'::jsonpath;
+select '$.a.**{2,2}.b'::jsonpath;
+select '$.a.**{2,5}.b'::jsonpath;
+select '$.a.**{,5}.b'::jsonpath;
+select '$.a.**{5,}.b'::jsonpath;
 
 select '$.g ? (@ = 1)'::jsonpath;
 select '$.g ? (a = 1)'::jsonpath;
