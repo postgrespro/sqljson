@@ -493,6 +493,18 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 					break;
 			}
 			break;
+		case jpiIsUnknown:
+			jspGetArg(jsp, &elem);
+			switch ((res = recursiveExecute(&elem, vars, jb, NULL)))
+			{
+				case jperError:
+					res = jperOk;
+					break;
+				default:
+					res = jperNotFound;
+					break;
+			}
+			break;
 		case jpiKey:
 			if (JsonbType(jb) == jbvObject)
 			{
