@@ -207,7 +207,7 @@ makeAny(int first, int last)
 	int					optype;
 }
 
-%token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P
+%token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P EXISTS_P
 %token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
@@ -215,7 +215,7 @@ makeAny(int first, int last)
 
 %type	<value>		result jsonpath scalar_value path_primary expr
 					array_accessor any_path accessor_op key unary_expr
-					predicate delimited_predicate // numeric
+					predicate delimited_predicate
 
 %type	<elems>		accessor_expr /* path absolute_path relative_path */
 
@@ -240,9 +240,6 @@ result:
 
 scalar_value:
 	STRING_P						{ $$ = makeItemString(&$1); }
-	| TO_P							{ $$ = makeItemString(&$1); }
-	| IS_P							{ $$ = makeItemString(&$1); }
-	| UNKNOWN_P						{ $$ = makeItemString(&$1); }
 	| NULL_P						{ $$ = makeItemString(NULL); }
 	| TRUE_P						{ $$ = makeItemBool(true); }
 	| FALSE_P						{ $$ = makeItemBool(false); }
@@ -250,14 +247,6 @@ scalar_value:
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
 	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
 	;
-
-/*
-numeric:
-	NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
-	| INT_P							{ $$ = makeItemNumeric(&$1); }
-	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
-	;
-*/
 
 jsonpath:
 	expr
@@ -273,8 +262,8 @@ comp_op:
 	;
 
 delimited_predicate:
-	'(' predicate ')'				{ $$ = $2; }
-//	| EXISTS '(' relative_path ')'	{ $$ = makeItemUnary(jpiExists, $2); }
+	'(' predicate ')'					{ $$ = $2; }
+	| EXISTS_P '(' expr ')'			{ $$ = makeItemUnary(jpiExists, $3); }
 	;
 
 predicate:
@@ -308,8 +297,6 @@ unary_expr:
 	| '+' unary_expr				{ $$ = makeItemUnary(jpiPlus, $2); }
 	| '-' unary_expr				{ $$ = makeItemUnary(jpiMinus, $2); }
 	;
-
-//	| '(' expr ')'					{ $$ = $2; }
 
 expr:
 	unary_expr						{ $$ = $1; }
@@ -369,6 +356,9 @@ key:
 	| NULL_P						{ $$ = makeItemKey(&$1); }
 	| TRUE_P						{ $$ = makeItemKey(&$1); }
 	| FALSE_P						{ $$ = makeItemKey(&$1); }
+	| IS_P							{ $$ = makeItemKey(&$1); }
+	| UNKNOWN_P						{ $$ = makeItemKey(&$1); }
+	| EXISTS_P						{ $$ = makeItemKey(&$1); }
 	;
 /*
 absolute_path:
