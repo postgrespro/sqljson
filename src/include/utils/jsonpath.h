@@ -45,7 +45,7 @@ typedef enum JsonPathItemType {
 		jpiAnyArray,
 		jpiAnyKey,
 		jpiIndexArray,
-		//jpiAny,
+		jpiAny,
 		//jpiAll,
 		//jpiAllArray,
 		//jpiAllKey,
@@ -74,7 +74,7 @@ typedef struct JsonPathItem {
 	union {
 		struct {
 			char		*data;  /* for bool, numeric and string/key */
-			int			datalen; /* filled only for string/key */
+			int32		datalen; /* filled only for string/key */
 		} value;
 
 		struct {
@@ -85,9 +85,14 @@ typedef struct JsonPathItem {
 		int32		arg;
 
 		struct {
-			int		nelems;
+			int32		nelems;
 			int32	*elems;
 		} array;
+
+		struct {
+			uint32	first;
+			uint32	last;
+		} anybounds;
 	};
 } JsonPathItem;
 
@@ -122,14 +127,19 @@ struct JsonPathParseItem {
 		Numeric		numeric;
 		bool		boolean;
 		struct {
-			uint32		len;
-			char		*val; /* could not be not null-terminated */
+			uint32	len;
+			char	*val; /* could not be not null-terminated */
 		} string;
 
 		struct {
-			int					nelems;
-			int32				*elems;
+			int		nelems;
+			int32	*elems;
 		} array;
+
+		struct {
+			uint32	first;
+			uint32	last;
+		} anybounds;
 	};
 };
 
