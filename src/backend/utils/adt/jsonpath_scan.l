@@ -63,8 +63,8 @@ fprintf_to_ereport(const char *fmt, const char *msg)
 %x xNONQUOTED
 %x xCOMMENT
 
-special		 [\?\%\$\.\[\]\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/]
-any			[^\?\%\$\.\[\]\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\" \t\n\r\f]
+special		 [\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/]
+any			[^\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\" \t\n\r\f]
 blank		[ \t\n\r\f]
 unicode		\\u[0-9A-Fa-f]{4}
 
