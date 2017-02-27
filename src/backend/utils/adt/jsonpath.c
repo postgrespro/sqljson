@@ -159,7 +159,7 @@ printOperation(StringInfo buf, JsonPathItemType type)
 		case jpiOr:
 			appendBinaryStringInfo(buf, " || ", 4); break;
 		case jpiEqual:
-			appendBinaryStringInfo(buf, " = ", 3); break; /* FIXME == */
+			appendBinaryStringInfo(buf, " == ", 4); break;
 		case jpiNotEqual:
 			appendBinaryStringInfo(buf, " != ", 4); break;
 		case jpiLess:
@@ -240,8 +240,8 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			break;
 		case jpiNumeric:
 			appendStringInfoString(buf,
-									DatumGetCString(DirectFunctionCall1(numeric_out,
-										PointerGetDatum(jspGetNumeric(v)))));
+								   DatumGetCString(DirectFunctionCall1(numeric_out,
+								   PointerGetDatum(jspGetNumeric(v)))));
 			break;
 		case jpiBool:
 			if (jspGetBool(v))

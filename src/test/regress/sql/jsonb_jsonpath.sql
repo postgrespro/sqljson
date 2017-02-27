@@ -38,8 +38,8 @@ select * from _jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value"
 select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
 select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
 select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ = "1")');
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ = $value)', '{"value" : "1"}');
+select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
+select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
 select * from _jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ != null)');
 select * from _jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ == null)');
 
