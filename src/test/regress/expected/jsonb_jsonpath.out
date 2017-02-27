@@ -448,3 +448,20 @@ select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{2,3}.b ? (@
  t
 (1 row)
 
+select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.x))');
+ _jsonpath_query 
+-----------------
+ {"x": 2}
+(1 row)
+
+select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.y))');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(jsonb '{"g": {"x": 2}}', '$.g ? (exists (@.x ? (@ >= 2) ))');
+ _jsonpath_query 
+-----------------
+ {"x": 2}
+(1 row)
+
