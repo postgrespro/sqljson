@@ -40,6 +40,10 @@ select '$.g ? (@.a == 1 || !(a == 4) && b == 7)'::jsonpath;
 select '$.g ? (@.a == 1 || !(x >= 123 || a == 4) && b == 7)'::jsonpath;
 select '$.g ? (.x >= @[*]?(@.a > "abc"))'::jsonpath;
 select '$.g ? ((x >= 123 || a == 4) is unknown)'::jsonpath;
+select '$.g ? (exists (.x))'::jsonpath;
+select '$.g ? (exists (@.x ? (@ == 14)))'::jsonpath;
+select '$.g ? (exists (.x ? (@ == 14)))'::jsonpath;
+select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
 
 select '$.g ? (zip == $zip)'::jsonpath;
 select '$.a.[1,2, 3 to 16]'::jsonpath;
