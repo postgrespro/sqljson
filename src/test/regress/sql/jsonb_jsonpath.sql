@@ -17,6 +17,8 @@ select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,5]}', '$ ? (@.a[*] >  @.
 select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,5]}', '$ ? (@.a[*] >= @.b[*])');
 select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,"5"]}', '$ ? (@.a[*] >= @.b[*])');
 select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,null]}', '$ ? (@.a[*] >= @.b[*])');
+select _jsonpath_exists(jsonb '1', '$ ? ((@ == "1") is unknown)');
+select _jsonpath_exists(jsonb '1', '$ ? ((@ == 1) is unknown)');
 
 select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.a');
 select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.b');
