@@ -173,6 +173,17 @@ makeIndexArray(List *list)
 	return v;
 }
 
+static JsonPathParseItem*
+makeAny(int first, int last)
+{
+	JsonPathParseItem *v = makeItemType(jpiAny);
+
+	v->anybounds.first = (first > 0) ? first : 0;
+	v->anybounds.last = (last >= 0) ? last : PG_UINT32_MAX;
+
+	return v;
+}
+
 %}
 
 /* BISON Declarations */
@@ -289,9 +300,16 @@ array_accessors:
 	;
 
 any_key:
-	key								{ $$ = $1; }
-	| array_accessor				{ $$ = $1; }
-	| '*'							{ $$ = makeItemType(jpiAnyKey); }
+	key									{ $$ = $1; }
+	| array_accessor					{ $$ = $1; }
+	| '*'								{ $$ = makeItemType(jpiAnyKey); }
+	| '*' '*'							{ $$ = makeAny(-1, -1); }
+	| '*' '*' '{' INT_P '}'				{ $$ = makeAny(pg_atoi($4.val, 4, 0),
+													   pg_atoi($4.val, 4, 0)); }
+	| '*' '*' '{' ',' INT_P '}'			{ $$ = makeAny(-1, pg_atoi($5.val, 4, 0)); }
+	| '*' '*' '{' INT_P ',' '}'			{ $$ = makeAny(pg_atoi($4.val, 4, 0), -1); }
+	| '*' '*' '{' INT_P ',' INT_P '}'	{ $$ = makeAny(pg_atoi($4.val, 4, 0),
+													   pg_atoi($6.val, 4, 0)); }
 	;
 
 joined_key:

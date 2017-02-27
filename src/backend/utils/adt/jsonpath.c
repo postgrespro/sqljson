@@ -95,6 +95,14 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
 								   (char*)item->array.elems,
 								   item->array.nelems * sizeof(item->array.elems[0]));
 			break;
+		case jpiAny:
+			appendBinaryStringInfo(buf,
+								   (char*)&item->anybounds.first,
+								   sizeof(item->anybounds.first));
+			appendBinaryStringInfo(buf,
+								   (char*)&item->anybounds.last,
+								   sizeof(item->anybounds.last));
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -249,6 +257,23 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			}
 			appendStringInfoChar(buf, ']');
 			break;
+		case jpiAny:
+			if (inKey)
+				appendStringInfoChar(buf, '.');
+
+			if (v->anybounds.first == 0 &&
+					v->anybounds.last == PG_UINT32_MAX)
+				appendBinaryStringInfo(buf, "**", 2);
+			else if (v->anybounds.first == 0)
+				appendStringInfo(buf, "**{,%u}", v->anybounds.last);
+			else if (v->anybounds.last == PG_UINT32_MAX)
+				appendStringInfo(buf, "**{%u,}", v->anybounds.first);
+			else if (v->anybounds.first == v->anybounds.last)
+				appendStringInfo(buf, "**{%u}", v->anybounds.first);
+			else
+				appendStringInfo(buf, "**{%u,%u}", v->anybounds.first,
+												   v->anybounds.last);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -348,6 +373,10 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32(v->array.nelems, base, pos);
 			read_int32_n(v->array.elems, base, pos, v->array.nelems);
 			break;
+		case jpiAny:
+			read_int32(v->anybounds.first, base, pos);
+			read_int32(v->anybounds.last, base, pos);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -376,6 +405,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 	{
 		Assert(
 			v->type == jpiKey ||
+			v->type == jpiAny ||
 			v->type == jpiAnyArray ||
 			v->type == jpiAnyKey ||
 			v->type == jpiIndexArray ||
