@@ -29,18 +29,18 @@ select '$-1'::jsonpath;
 select '$--+1'::jsonpath;
 select '$.a/+-1'::jsonpath;
 
-select '$.g ? (@ = 1)'::jsonpath;
-select '$.g ? (a = 1)'::jsonpath;
-select '$.g ? (.a = 1)'::jsonpath;
-select '$.g ? (@.a = 1)'::jsonpath;
-select '$.g ? (@.a = 1 || a = 4)'::jsonpath;
-select '$.g ? (@.a = 1 && a = 4)'::jsonpath;
-select '$.g ? (@.a = 1 || a = 4 && b = 7)'::jsonpath;
-select '$.g ? (@.a = 1 || !(a = 4) && b = 7)'::jsonpath;
-select '$.g ? (@.a = 1 || !(x >= 123 || a = 4) && b = 7)'::jsonpath;
+select '$.g ? (@ == 1)'::jsonpath;
+select '$.g ? (a == 1)'::jsonpath;
+select '$.g ? (.a == 1)'::jsonpath;
+select '$.g ? (@.a == 1)'::jsonpath;
+select '$.g ? (@.a == 1 || a == 4)'::jsonpath;
+select '$.g ? (@.a == 1 && a == 4)'::jsonpath;
+select '$.g ? (@.a == 1 || a == 4 && b == 7)'::jsonpath;
+select '$.g ? (@.a == 1 || !(a == 4) && b == 7)'::jsonpath;
+select '$.g ? (@.a == 1 || !(x >= 123 || a == 4) && b == 7)'::jsonpath;
 select '$.g ? (.x >= @[*]?(@.a > "abc"))'::jsonpath;
 
-select '$.g ? (zip = $zip)'::jsonpath;
+select '$.g ? (zip == $zip)'::jsonpath;
 select '$.a.[1,2, 3 to 16]'::jsonpath;
 select '$.a[1,2, 3 to 16]'::jsonpath;
 
