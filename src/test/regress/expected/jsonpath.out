@@ -231,6 +231,30 @@ select '$.g ? ((x >= 123 || a == 4) is unknown)'::jsonpath;
  $."g"?(("x" >= 123 || "a" == 4) is unknown)
 (1 row)
 
+select '$.g ? (exists (.x))'::jsonpath;
+        jsonpath        
+------------------------
+ $."g"?(exists (@."x"))
+(1 row)
+
+select '$.g ? (exists (@.x ? (@ == 14)))'::jsonpath;
+             jsonpath             
+----------------------------------
+ $."g"?(exists (@."x"?(@ == 14)))
+(1 row)
+
+select '$.g ? (exists (.x ? (@ == 14)))'::jsonpath;
+             jsonpath             
+----------------------------------
+ $."g"?(exists (@."x"?(@ == 14)))
+(1 row)
+
+select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
+                           jsonpath                           
+--------------------------------------------------------------
+ $."g"?(("x" >= 123 || "a" == 4) && exists (@."x"?(@ == 14)))
+(1 row)
+
 select '$.g ? (zip == $zip)'::jsonpath;
         jsonpath         
 -------------------------
