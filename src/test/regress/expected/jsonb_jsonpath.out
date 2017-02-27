@@ -220,13 +220,13 @@ select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $v
  12
 (3 rows)
 
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ = "1")');
+select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
  _jsonpath_query 
 -----------------
  "1"
 (1 row)
 
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ = $value)', '{"value" : "1"}');
+select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
  _jsonpath_query 
 -----------------
  "1"
