@@ -105,6 +105,42 @@ select '$[*][0].a.b'::jsonpath;
  $[*][0]."a"."b"
 (1 row)
 
+select '$.a.**.b'::jsonpath;
+   jsonpath   
+--------------
+ $."a".**."b"
+(1 row)
+
+select '$.a.**{2}.b'::jsonpath;
+    jsonpath     
+-----------------
+ $."a".**{2}."b"
+(1 row)
+
+select '$.a.**{2,2}.b'::jsonpath;
+    jsonpath     
+-----------------
+ $."a".**{2}."b"
+(1 row)
+
+select '$.a.**{2,5}.b'::jsonpath;
+     jsonpath      
+-------------------
+ $."a".**{2,5}."b"
+(1 row)
+
+select '$.a.**{,5}.b'::jsonpath;
+     jsonpath     
+------------------
+ $."a".**{,5}."b"
+(1 row)
+
+select '$.a.**{5,}.b'::jsonpath;
+     jsonpath     
+------------------
+ $."a".**{5,}."b"
+(1 row)
+
 select '$.g ? (@ = 1)'::jsonpath;
    jsonpath    
 ---------------

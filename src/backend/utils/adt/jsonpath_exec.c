@@ -297,6 +297,67 @@ copyJsonbValue(JsonbValue *src)
 }
 
 static JsonPathExecResult
+recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found);
+
+static JsonPathExecResult
+recursiveAny(JsonPathItem *jsp, List *vars, JsonbValue *jb,
+			 List **found, uint32 level, uint32 first, uint32 last)
+{
+	JsonPathExecResult	res = jperNotFound;
+	JsonbIterator		*it;
+	int32				r;
+	JsonbValue			v;
+
+	check_stack_depth();
+
+	if (level > last)
+		return res;
+
+	it = JsonbIteratorInit(jb->val.binary.data);
+
+	while((r = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
+	{
+		if (r == WJB_KEY)
+		{
+			r = JsonbIteratorNext(&it, &v, true);
+			Assert(r == WJB_VALUE);
+		}
+
+		if (r == WJB_VALUE || r == WJB_ELEM)
+		{
+
+			if (level >= first)
+			{
+				/* check expression */
+				if (jsp)
+				{
+					res = recursiveExecute(jsp, vars, &v, found);
+					if (res == jperOk && !found)
+						break;
+				}
+				else
+				{
+					res = jperOk;
+					if (!found)
+						break;
+					*found = lappend(*found, copyJsonbValue(&v));
+				}
+			}
+
+			if (level < last && v.type == jbvBinary)
+			{
+				res = recursiveAny(jsp, vars, &v, found, level + 1, first, last);
+
+				if (res == jperOk && found == NULL)
+					break;
+			}
+		}
+	}
+
+	return res;
+}
+
+static JsonPathExecResult
 recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 {
 	JsonPathItem		elem;
@@ -526,6 +587,35 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 			if (res == jperOk && found)
 				*found = lappend(*found, copyJsonbValue(jb));
 			break;
+		case jpiAny:
+		{
+			bool hasNext = jspGetNext(jsp, &elem);
+
+			/* first try without any intermediate steps */
+			if (jsp->anybounds.first == 0)
+			{
+				if (hasNext)
+				{
+					res = recursiveExecute(&elem, vars, jb, found);
+					if (res == jperOk && !found)
+						break;
+				}
+				else
+				{
+					res = jperOk;
+					if (!found)
+						break;
+					*found = lappend(*found, copyJsonbValue(jb));
+				}
+			}
+
+			if (jb->type == jbvBinary)
+				res = recursiveAny(hasNext ? &elem : NULL, vars, jb, found,
+								   1,
+								   jsp->anybounds.first,
+								   jsp->anybounds.last);
+			break;
+		}
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
