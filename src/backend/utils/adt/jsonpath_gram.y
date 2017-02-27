@@ -119,7 +119,21 @@ makeItemBinary(int type, JsonPathParseItem* la, JsonPathParseItem *ra)
 static JsonPathParseItem*
 makeItemUnary(int type, JsonPathParseItem* a)
 {
-	JsonPathParseItem  *v = makeItemType(type);
+	JsonPathParseItem  *v;
+
+	if (type == jpiPlus && a->type == jpiNumeric && !a->next)
+		return a;
+
+	if (type == jpiMinus && a->type == jpiNumeric && !a->next)
+	{
+		v = makeItemType(jpiNumeric);
+		v->numeric =
+			DatumGetNumeric(DirectFunctionCall1(numeric_uminus,
+												NumericGetDatum(a->numeric)));
+		return v;
+	}
+
+	v = makeItemType(type);
 
 	v->arg = a;
 
@@ -145,14 +159,6 @@ makeItemList(List *list) {
 	}
 
 	return head;
-}
-
-static JsonPathParseItem*
-makeItemExpression(List *path, JsonPathParseItem *right_expr)
-{
-	JsonPathParseItem	*expr = makeItemUnary(jpiExpression, right_expr);
-
-	return makeItemList(lappend(path, expr));
 }
 
 static JsonPathParseItem*
@@ -198,23 +204,29 @@ makeAny(int first, int last)
 	List				*elems;		/* list of JsonPathParseItem */
 	List				*indexs;
 	JsonPathParseItem	*value;
+	int					optype;
 }
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P
 %token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
+%token	<str>		ANY_P
 
-%type	<value>		result scalar_value
+%type	<value>		result jsonpath scalar_value path_primary expr
+					array_accessor any_path accessor_op key unary_expr
+					predicate delimited_predicate // numeric
 
-%type	<elems>		joined_key path absolute_path relative_path array_accessors
-
-%type 	<value>		key any_key right_expr expr jsonpath numeric array_accessor
+%type	<elems>		accessor_expr /* path absolute_path relative_path */
 
 %type	<indexs>	index_elem index_list
+
+%type	<optype>	comp_op
 
 %left	OR_P
 %left	AND_P
 %right	NOT_P
+%left	'+' '-'
+%left	'*' '/' '%'
 %nonassoc '(' ')'
 
 /* Grammar follows */
@@ -236,52 +248,87 @@ scalar_value:
 	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
 	;
 
+/*
 numeric:
 	NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
 	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
 	;
-
-right_expr:
-	'='	scalar_value				{ $$ = makeItemUnary(jpiEqual, $2); }
-	| '<' numeric					{ $$ = makeItemUnary(jpiLess, $2); }
-	| '>' numeric					{ $$ = makeItemUnary(jpiGreater, $2); }
-	| '<' '=' numeric				{ $$ = makeItemUnary(jpiLessOrEqual, $3); }
-	| '>' '=' numeric				{ $$ = makeItemUnary(jpiGreaterOrEqual, $3); }
-	;
+*/
 
 jsonpath:
-	absolute_path						{ $$ = makeItemList($1); }
-	| absolute_path '?' '(' expr ')'	{ $$ = makeItemExpression($1, $4); }
-	| relative_path '?' '(' expr ')'	{ $$ = makeItemExpression($1, $4); }
+	expr
 	;
 
+comp_op:
+	'='								{ $$ = jpiEqual; }
+	| '<' '>'						{ $$ = jpiNotEqual; }
+	| '<'							{ $$ = jpiLess; }
+	| '>'							{ $$ = jpiGreater; }
+	| '<' '='						{ $$ = jpiLessOrEqual; }
+	| '>' '='						{ $$ = jpiGreaterOrEqual; }
+	;
+
+delimited_predicate:
+	'(' predicate ')'				{ $$ = $2; }
+//	| EXISTS '(' relative_path ')'	{ $$ = makeItemUnary(jpiExists, $2); }
+	;
+
+predicate:
+	delimited_predicate				{ $$ = $1; }
+	| expr comp_op expr				{ $$ = makeItemBinary($2, $1, $3); }
+//	| expr LIKE_REGEX pattern		{ $$ = ...; }
+//	| expr STARTS WITH STRING_P		{ $$ = ...; }
+//	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
+//	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
+//	| '.' any_key right_expr		{ $$ = makeItemList(list_make2($2, $3)); }
+//	| '(' predicate ')' IS UNKNOWN	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
+	| predicate AND_P predicate		{ $$ = makeItemBinary(jpiAnd, $1, $3); }
+	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
+	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }
+	;
+
+path_primary:
+	scalar_value					{ $$ = $1; }
+	| '$'							{ $$ = makeItemType(jpiRoot); }
+	| '@'							{ $$ = makeItemType(jpiCurrent); }
+	;
+
+accessor_expr:
+	path_primary					{ $$ = list_make1($1); }
+	| '.' key						{ $$ = list_make2(makeItemType(jpiCurrent), $2); }
+	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
+	;
+
+unary_expr:
+	accessor_expr					{ $$ = makeItemList($1); }
+	| '+' unary_expr				{ $$ = makeItemUnary(jpiPlus, $2); }
+	| '-' unary_expr				{ $$ = makeItemUnary(jpiMinus, $2); }
+	;
+
+//	| '(' expr ')'					{ $$ = $2; }
+
 expr:
-	any_key right_expr					{ $$ = makeItemList(list_make2($1, $2)); }
-	| '.' any_key right_expr			{ $$ = makeItemList(list_make2($2, $3)); }
-	| '@' right_expr					
-						{ $$ = makeItemList(list_make2(makeItemType(jpiCurrent), $2)); }
-	| '@' '.' any_key right_expr
-						{ $$ = makeItemList(list_make3(makeItemType(jpiCurrent),$3, $4)); }
-	| relative_path '?' '(' expr ')'	{ $$ = makeItemExpression($1, $4); }
-	| '(' expr ')'						{ $$ = $2; }
-	| expr AND_P expr					{ $$ = makeItemBinary(jpiAnd, $1, $3); }
-	| expr OR_P expr					{ $$ = makeItemBinary(jpiOr, $1, $3); }
-	| NOT_P expr 						{ $$ = makeItemUnary(jpiNot, $2); }
+	unary_expr						{ $$ = $1; }
+	| expr '+' expr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
+	| expr '-' expr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
+	| expr '*' expr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
+	| expr '/' expr					{ $$ = makeItemBinary(jpiDiv, $1, $3); }
+	| expr '%' expr					{ $$ = makeItemBinary(jpiMod, $1, $3); }
 	;
 
 index_elem:
-	INT_P								{ $$ = list_make1_int(pg_atoi($1.val, 4, 0)); }
-	| INT_P TO_P INT_P					{
-											int start = pg_atoi($1.val, 4, 0),
-												stop = pg_atoi($3.val, 4, 0),
-												i;
+	INT_P							{ $$ = list_make1_int(pg_atoi($1.val, 4, 0)); }
+	| INT_P TO_P INT_P				{
+										int start = pg_atoi($1.val, 4, 0),
+											stop = pg_atoi($3.val, 4, 0),
+											i;
 
-											$$ = NIL;
+										$$ = NIL;
 
-											for(i=start; i<= stop; i++)
-												$$ = lappend_int($$, i);
-										}
+										for(i=start; i<= stop; i++)
+											$$ = lappend_int($$, i);
+									}
 	;
 
 index_list:
@@ -294,27 +341,23 @@ array_accessor:
 	| '[' index_list ']'			{ $$ = makeIndexArray($2); }
 	;
 
-array_accessors:
-	array_accessor						{ $$ = list_make1($1); }
-	| array_accessors array_accessor	{ $$ = lappend($1, $2); }
+any_path:
+	ANY_P							{ $$ = makeAny(-1, -1); }
+	| ANY_P '{' INT_P '}'			{ $$ = makeAny(pg_atoi($3.val, 4, 0),
+												   pg_atoi($3.val, 4, 0)); }
+	| ANY_P '{' ',' INT_P '}'		{ $$ = makeAny(-1, pg_atoi($4.val, 4, 0)); }
+	| ANY_P '{' INT_P ',' '}'		{ $$ = makeAny(pg_atoi($3.val, 4, 0), -1); }
+	| ANY_P '{' INT_P ',' INT_P '}'	{ $$ = makeAny(pg_atoi($3.val, 4, 0),
+												   pg_atoi($5.val, 4, 0)); }
 	;
 
-any_key:
-	key									{ $$ = $1; }
-	| array_accessor					{ $$ = $1; }
-	| '*'								{ $$ = makeItemType(jpiAnyKey); }
-	| '*' '*'							{ $$ = makeAny(-1, -1); }
-	| '*' '*' '{' INT_P '}'				{ $$ = makeAny(pg_atoi($4.val, 4, 0),
-													   pg_atoi($4.val, 4, 0)); }
-	| '*' '*' '{' ',' INT_P '}'			{ $$ = makeAny(-1, pg_atoi($5.val, 4, 0)); }
-	| '*' '*' '{' INT_P ',' '}'			{ $$ = makeAny(pg_atoi($4.val, 4, 0), -1); }
-	| '*' '*' '{' INT_P ',' INT_P '}'	{ $$ = makeAny(pg_atoi($4.val, 4, 0),
-													   pg_atoi($6.val, 4, 0)); }
-	;
-
-joined_key:
-	any_key							{ $$ = list_make1($1); }
-	| joined_key array_accessor		{ $$ = lappend($1, $2); }
+accessor_op:
+	'.' key							{ $$ = $2; }
+	| '.' '*'						{ $$ = makeItemType(jpiAnyKey); }
+	| array_accessor				{ $$ = $1; }
+	| '.' array_accessor			{ $$ = $2; }
+	| '.' any_path					{ $$ = $2; }
+	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
 	;
 
 key:
@@ -324,26 +367,23 @@ key:
 	| TRUE_P						{ $$ = makeItemKey(&$1); }
 	| FALSE_P						{ $$ = makeItemKey(&$1); }
 	;
-
+/*
 absolute_path:
-	'$' '.' 						{ $$ = list_make1(makeItemType(jpiRoot)); }
-	| '$'	 						{ $$ = list_make1(makeItemType(jpiRoot)); }
-	| '$' '.' path					{ $$ = lcons(makeItemType(jpiRoot), $3); }
-	| '$' array_accessors			{ $$ = lcons(makeItemType(jpiRoot), $2); }
-	| '$' array_accessors '.' path	{ $$ = lcons(makeItemType(jpiRoot), list_concat($2, $4)); }
+	'$'	 							{ $$ = list_make1(makeItemType(jpiRoot)); }
+	| '$' path						{ $$ = lcons(makeItemType(jpiRoot), $2); }
 	;
 
 relative_path:
-	joined_key '.' joined_key			{ $$ = list_concat($1, $3); }
-	| '.' joined_key '.' joined_key		{ $$ = list_concat($2, $4); }
-	| '@' '.' joined_key '.' joined_key	{ $$ = list_concat($3, $5); }
-	| relative_path '.' joined_key		{ $$ = list_concat($1, $3); }
+	key								{ $$ = list_make1(makeItemType(jpiCurrent), $1); }
+	| key path						{ $$ = lcons(makeItemType(jpiCurrent), lcons($1, $2)); }
+	| '@'							{ $$ = list_make1(makeItemType(jpiCurrent)); }
+	| '@' path						{ $$ = lcons(makeItemType(jpiCurrent), $2); }
 	;
 
 path:
-	joined_key						{ $$ = $1; }
-	| path '.' joined_key			{ $$ = list_concat($1, $3); }
+	accessor_op						{ $$ = list_make($1); }
+	| path accessor_op				{ $$ = lappend($1, $2); }
 	;
-
+*/
 %%
 

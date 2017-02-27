@@ -19,6 +19,9 @@
 #include "utils/json.h"
 #include "utils/jsonpath.h"
 
+static JsonPathExecResult
+recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found);
+
 /********************Execute functions for JsonPath***************************/
 
 static void
@@ -188,101 +191,192 @@ compareNumeric(Numeric a, Numeric b)
 				)
 			);
 }
+
 static bool
-checkScalarEquality(JsonPathItem *jsp,  List *vars, JsonbValue *jb)
+checkScalarEquality(JsonbValue *jb1, JsonbValue *jb2)
 {
-	JsonbValue		computedValue;
-
-	if (jb->type == jbvBinary)
-		return false;
-
-	computeJsonPathItem(jsp, vars, &computedValue);
-
-	if (jb->type != computedValue.type)
-		return false;
-
-	switch(computedValue.type)
+	switch (jb1->type)
 	{
 		case jbvNull:
 			return true;
 		case jbvString:
-			return (computedValue.val.string.len == jb->val.string.len &&
-					memcmp(jb->val.string.val, computedValue.val.string.val,
-						   computedValue.val.string.len) == 0);
+			return (jb1->val.string.len == jb2->val.string.len &&
+					memcmp(jb2->val.string.val, jb1->val.string.val,
+						   jb1->val.string.len) == 0);
 		case jbvBool:
-			return (jb->val.boolean == computedValue.val.boolean);
+			return (jb2->val.boolean == jb1->val.boolean);
 		case jbvNumeric:
-			return (compareNumeric(computedValue.val.numeric, jb->val.numeric) == 0);
+			return (compareNumeric(jb1->val.numeric, jb2->val.numeric) == 0);
 		default:
 			elog(ERROR,"Wrong state");
+			return false;
 	}
-
-	return false;
-}
-
-static bool
-makeCompare(JsonPathItem *jsp, List *vars, int32 op, JsonbValue *jb)
-{
-	int				res;
-	JsonbValue		computedValue;
-
-	if (jb->type != jbvNumeric)
-		return false;
-
-	computeJsonPathItem(jsp, vars, &computedValue);
-
-	if (computedValue.type != jbvNumeric)
-		return false;
-
-	res = compareNumeric(jb->val.numeric, computedValue.val.numeric);
-
-	switch(op)
-	{
-		case jpiEqual:
-			return (res == 0);
-		case jpiLess:
-			return (res < 0);
-		case jpiGreater:
-			return (res > 0);
-		case jpiLessOrEqual:
-			return (res <= 0);
-		case jpiGreaterOrEqual:
-			return (res >= 0);
-		default:
-			elog(ERROR, "Unknown operation");
-	}
-
-	return false;
 }
 
 static JsonPathExecResult
-executeExpr(JsonPathItem *jsp, List *vars, int32 op, JsonbValue *jb)
+checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 {
-	JsonPathExecResult res = jperNotFound;
-	/*
-	 * read arg type
-	 */
-	Assert(jspGetNext(jsp, NULL) == false);
-	Assert(jsp->type == jpiString || jsp->type == jpiNumeric ||
-		   jsp->type == jpiNull || jsp->type == jpiBool ||
-		   jsp->type == jpiVariable);
+	bool	eq;
 
-	switch(op)
+	if (jb1->type != jb2->type)
+	{
+		if (jb1->type == jbvNull || jb2->type == jbvNull)
+			return not ? jperOk : jperNotFound;
+
+		return jperError;
+	}
+
+	if (jb1->type == jbvBinary)
+		return jperError;
+	/*
+		eq = compareJsonbContainers(jb1->val.binary.data,
+									jb2->val.binary.data) == 0;
+	*/
+	else
+		eq = checkScalarEquality(jb1, jb2);
+
+	return !!not ^ !!eq ? jperOk : jperNotFound;
+}
+
+static JsonPathExecResult
+makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
+{
+	int			cmp;
+	bool		res;
+
+	if (jb1->type != jb2->type)
+	{
+		if (jb1->type != jbvNull && jb2->type != jbvNull)
+			/* non-null items of different types are not order-comparable */
+			return jperError;
+
+		if (jb1->type != jbvNull || jb2->type != jbvNull)
+			/* comparison of nulls to non-nulls returns always false */
+			return jperNotFound;
+
+		/* both values are JSON nulls */
+	}
+
+	switch (jb1->type)
+	{
+		case jbvNull:
+			cmp = 0;
+			break;
+		case jbvNumeric:
+			cmp = compareNumeric(jb1->val.numeric, jb2->val.numeric);
+			break;
+		/*
+		case jbvString:
+			cmp = varstr_cmp(jb1->val.string.val, jb1->val.string.len,
+							 jb2->val.string.val, jb2->val.string.len,
+							 collationId);
+			break;
+		*/
+		default:
+			return jperError;
+	}
+
+	switch (op)
 	{
 		case jpiEqual:
-			res = checkScalarEquality(jsp, vars, jb) ? jperOk : jperNotFound;
+			res = (cmp == 0);
+			break;
+		case jpiNotEqual:
+			res = (cmp != 0);
 			break;
 		case jpiLess:
+			res = (cmp < 0);
+			break;
 		case jpiGreater:
+			res = (cmp > 0);
+			break;
 		case jpiLessOrEqual:
+			res = (cmp <= 0);
+			break;
 		case jpiGreaterOrEqual:
-			res = makeCompare(jsp, vars, op, jb) ? jperOk : jperNotFound;
+			res = (cmp >= 0);
 			break;
 		default:
 			elog(ERROR, "Unknown operation");
+			return jperError;
 	}
 
-	return res;
+	return res ? jperOk : jperNotFound;
+}
+
+static JsonPathExecResult
+executeExpr(JsonPathItem *jsp, List *vars, JsonbValue *jb)
+{
+	JsonPathExecResult res;
+	JsonPathItem elem;
+	List	   *lseq = NIL;
+	List	   *rseq = NIL;
+	ListCell   *llc;
+	ListCell   *rlc;
+	bool		strict = true; /* FIXME pass */
+	bool		error = false;
+	bool		found = false;
+
+	jspGetLeftArg(jsp, &elem);
+	res = recursiveExecute(&elem, vars, jb, &lseq);
+	if (res != jperOk)
+		return res;
+
+	jspGetRightArg(jsp, &elem);
+	res = recursiveExecute(&elem, vars, jb, &rseq);
+	if (res != jperOk)
+		return res;
+
+	foreach(llc, lseq)
+	{
+		JsonbValue *lval = lfirst(llc);
+
+		foreach(rlc, rseq)
+		{
+			JsonbValue *rval = lfirst(rlc);
+
+			switch (jsp->type)
+			{
+				case jpiEqual:
+					res = checkEquality(lval, rval, false);
+					break;
+				case jpiNotEqual:
+					res = checkEquality(lval, rval, true);
+					break;
+				case jpiLess:
+				case jpiGreater:
+				case jpiLessOrEqual:
+				case jpiGreaterOrEqual:
+					res = makeCompare(jsp->type, lval, rval);
+					break;
+				default:
+					elog(ERROR, "Unknown operation");
+			}
+
+			if (res == jperOk)
+			{
+				if (!strict)
+					return jperOk;
+
+				found = true;
+			}
+			else if (res == jperError)
+			{
+				if (strict)
+					return jperError;
+
+				error = true;
+			}
+		}
+	}
+
+	if (found) /* possible only in strict mode */
+		return jperOk;
+
+	if (error) /* possible only in non-strict mode */
+		return jperError;
+
+	return jperNotFound;
 }
 
 static JsonbValue*
@@ -426,18 +520,33 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 			}
 			break;
 		case jpiCurrent:
-			jspGetNext(jsp, &elem);
-			if (JsonbType(jb) == jbvScalar)
+			if (!jspGetNext(jsp, &elem))
+			{
+				res = jperOk;
+				if (found)
+				{
+					JsonbValue *v;
+
+					if (JsonbType(jb) == jbvScalar)
+						v = JsonbExtractScalar(jb->val.binary.data,
+											   palloc(sizeof(*v)));
+					else
+						v = copyJsonbValue(jb); /* FIXME */
+
+					*found = lappend(*found, v);
+				}
+			}
+			else if (JsonbType(jb) == jbvScalar)
 			{
 				JsonbValue	v;
 
 				JsonbExtractScalar(jb->val.binary.data, &v);
 
-				res = recursiveExecute(&elem, vars, &v, NULL);
+				res = recursiveExecute(&elem, vars, &v, found);
 			}
 			else
 			{
-				res = recursiveExecute(&elem, vars, jb, NULL);
+				res = recursiveExecute(&elem, vars, jb, found);
 			}
 			break;
 		case jpiAnyArray:
@@ -558,12 +667,12 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 			}
 			break;
 		case jpiEqual:
+		case jpiNotEqual:
 		case jpiLess:
 		case jpiGreater:
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
-			jspGetArg(jsp, &elem);
-			res = executeExpr(&elem, vars, jsp->type, jb);
+			res = executeExpr(jsp, vars, jb);
 			break;
 		case jpiRoot:
 			if (jspGetNext(jsp, &elem))
@@ -578,11 +687,14 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 			}
 
 			break;
-		case jpiExpression:
-			/* no-op actually */
+		case jpiFilter:
 			jspGetArg(jsp, &elem);
 			res = recursiveExecute(&elem, vars, jb, NULL);
-			if (res == jperOk && found)
+			if (res != jperOk)
+				res = jperNotFound;
+			else if (jspGetNext(jsp, &elem))
+				res = recursiveExecute(&elem, vars, jb, found);
+			else if (found)
 				*found = lappend(*found, copyJsonbValue(jb));
 			break;
 		case jpiAny:
@@ -614,6 +726,19 @@ recursiveExecute(JsonPathItem *jsp, List *vars, JsonbValue *jb, List **found)
 								   jsp->anybounds.last);
 			break;
 		}
+		case jpiNull:
+		case jpiBool:
+		case jpiNumeric:
+		case jpiString:
+		case jpiVariable:
+			res = jperOk;
+			if (found)
+			{
+				JsonbValue *jbv = palloc(sizeof(*jbv));
+				computeJsonPathItem(jsp, vars, jbv);
+				*found = lappend(*found, jbv);
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
