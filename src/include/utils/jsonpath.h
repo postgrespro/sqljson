@@ -37,11 +37,20 @@ typedef enum JsonPathItemType {
 		jpiAnd,
 		jpiOr,
 		jpiNot,
+		jpiIsUnknown,
 		jpiEqual,
+		jpiNotEqual,
 		jpiLess,
 		jpiGreater,
 		jpiLessOrEqual,
 		jpiGreaterOrEqual,
+		jpiAdd,
+		jpiSub,
+		jpiMul,
+		jpiDiv,
+		jpiMod,
+		jpiPlus,
+		jpiMinus,
 		jpiAnyArray,
 		jpiAnyKey,
 		jpiIndexArray,
@@ -53,7 +62,7 @@ typedef enum JsonPathItemType {
 		jpiCurrent,
 		jpiRoot,
 		jpiVariable,
-		jpiExpression
+		jpiFilter,
 } JsonPathItemType;
 
 
