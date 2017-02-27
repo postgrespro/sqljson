@@ -20,7 +20,8 @@
 
 /*****************************INPUT/OUTPUT************************************/
 static int
-flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
+flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
+						 bool forbiddenRoot)
 {
 	int32	pos = buf->len - VARHDRSZ; /* position from begining of jsonpath data */
 	int32	chld, next;
@@ -35,17 +36,29 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
 
 	switch(item->type)
 	{
-		case jpiKey:
 		case jpiString:
 		case jpiVariable:
+			/* scalars aren't checked during grammar parse */
+			if (item->next != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("scalar could not be a part of path")));
+		case jpiKey:
 			appendBinaryStringInfo(buf, (char*)&item->string.len, sizeof(item->string.len));
 			appendBinaryStringInfo(buf, item->string.val, item->string.len);
 			appendStringInfoChar(buf, '\0');
 			break;
 		case jpiNumeric:
+			if (item->next != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("scalar could not be a part of path")));
 			appendBinaryStringInfo(buf, (char*)item->numeric, VARSIZE(item->numeric));
 			break;
 		case jpiBool:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("scalar could not be a part of path")));
 			appendBinaryStringInfo(buf, (char*)&item->boolean, sizeof(item->boolean));
 			break;
 		case jpiAnd:
@@ -64,37 +77,49 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
 			{
 				int32	left, right;
 
+				forbiddenRoot = true;
 				left = buf->len;
 				appendBinaryStringInfo(buf, (char*)&left /* fake value */, sizeof(left));
 				right = buf->len;
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
-				chld = flattenJsonPathParseItem(buf, item->args.left);
+				chld = flattenJsonPathParseItem(buf, item->args.left, true);
 				*(int32*)(buf->data + left) = chld;
-				chld = flattenJsonPathParseItem(buf, item->args.right);
+				chld = flattenJsonPathParseItem(buf, item->args.right, true);
 				*(int32*)(buf->data + right) = chld;
 			}
 			break;
-		case jpiNot:
+		case jpiFilter:
 		case jpiIsUnknown:
+		case jpiNot:
 		case jpiPlus:
 		case jpiMinus:
-		case jpiFilter:
+		case jpiExists:
 			{
 				int32 arg;
 
 				arg = buf->len;
 				appendBinaryStringInfo(buf, (char*)&arg /* fake value */, sizeof(arg));
 
-				chld = flattenJsonPathParseItem(buf, item->arg);
+				forbiddenRoot = true;
+				chld = flattenJsonPathParseItem(buf, item->arg, true);
 				*(int32*)(buf->data + arg) = chld;
 			}
 			break;
+		case jpiNull:
+			if (item->next != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("scalar could not be a part of path")));
+			break;
+		case jpiRoot:
+			if (forbiddenRoot)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("root is not allowed in expression")));
 		case jpiAnyArray:
 		case jpiAnyKey:
 		case jpiCurrent:
-		case jpiRoot:
-		case jpiNull:
 			break;
 		case jpiIndexArray:
 			appendBinaryStringInfo(buf,
@@ -117,7 +142,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item)
 	}
 
 	if (item->next)
-		*(int32*)(buf->data + next) = flattenJsonPathParseItem(buf, item->next);
+		*(int32*)(buf->data + next) =
+			flattenJsonPathParseItem(buf, item->next, forbiddenRoot);
 
 	return  pos;
 }
@@ -138,7 +164,7 @@ jsonpath_in(PG_FUNCTION_ARGS)
 
 	if (jsonpath != NULL)
 	{
-		flattenJsonPathParseItem(&buf, jsonpath);
+		flattenJsonPathParseItem(&buf, jsonpath, false);
 
 		res = (JsonPath*)buf.data;
 		SET_VARSIZE(res, buf.len);
@@ -294,6 +320,12 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			printJsonPathItem(buf, &elem, false, false);
 			appendBinaryStringInfo(buf, ") is unknown", 12);
 			break;
+		case jpiExists:
+			appendBinaryStringInfo(buf,"exists (", 8);
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
 		case jpiCurrent:
 			Assert(!inKey);
 			appendStringInfoChar(buf, '@');
@@ -435,6 +467,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32(v->args.right, base, pos);
 			break;
 		case jpiNot:
+		case jpiExists:
 		case jpiIsUnknown:
 		case jpiMinus:
 		case jpiPlus:
@@ -461,6 +494,7 @@ jspGetArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiFilter ||
 		v->type == jpiNot ||
 		v->type == jpiIsUnknown ||
+		v->type == jpiExists ||
 		v->type == jpiPlus ||
 		v->type == jpiMinus
 	);
@@ -481,6 +515,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiIndexArray ||
 			v->type == jpiFilter ||
 			v->type == jpiCurrent ||
+			v->type == jpiExists ||
 			v->type == jpiRoot
 		);
 

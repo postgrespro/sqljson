@@ -55,14 +55,12 @@ typedef enum JsonPathItemType {
 		jpiAnyKey,
 		jpiIndexArray,
 		jpiAny,
-		//jpiAll,
-		//jpiAllArray,
-		//jpiAllKey,
 		jpiKey,
 		jpiCurrent,
 		jpiRoot,
 		jpiVariable,
 		jpiFilter,
+		jpiExists
 } JsonPathItemType;
 
 
