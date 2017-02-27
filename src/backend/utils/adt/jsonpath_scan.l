@@ -270,10 +270,12 @@ typedef struct keyword
  */
 
 static keyword keywords[] = {
+	{ 2, true,	IS_P,		"is"},
 	{ 2, false,	TO_P,		"to"},
 	{ 4, true,	NULL_P,		"null"},
 	{ 4, true,	TRUE_P,		"true"},
-	{ 5, true,	FALSE_P,	"false"}
+	{ 5, true,	FALSE_P,	"false"},
+	{ 7, true,	UNKNOWN_P,	"unknown"},
 };
 
 static int
