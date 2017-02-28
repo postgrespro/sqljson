@@ -1,6 +1,8 @@
 --jsonpath io
 
 select '$'::jsonpath;
+select 'strict $'::jsonpath;
+select 'lax $'::jsonpath;
 select '$.a'::jsonpath;
 select '$.a.v'::jsonpath;
 select '$.a.*'::jsonpath;
