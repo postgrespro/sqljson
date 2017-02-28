@@ -23,7 +23,8 @@ static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 						 bool forbiddenRoot)
 {
-	int32	pos = buf->len - VARHDRSZ; /* position from begining of jsonpath data */
+	/* position from begining of jsonpath data */
+	int32	pos = buf->len - JSONPATH_HDRSZ;
 	int32	chld, next;
 
 	check_stack_depth();
@@ -171,7 +172,7 @@ jsonpath_in(PG_FUNCTION_ARGS)
 	initStringInfo(&buf);
 	enlargeStringInfo(&buf, 4 * len /* estimation */);
 
-	appendStringInfoSpaces(&buf, VARHDRSZ);
+	appendStringInfoSpaces(&buf, JSONPATH_HDRSZ);
 
 	if (!jsonpath)
 		ereport(ERROR,
@@ -182,6 +183,7 @@ jsonpath_in(PG_FUNCTION_ARGS)
 
 	res = (JsonPath*)buf.data;
 	SET_VARSIZE(res, buf.len);
+	res->header = JSONPATH_VERSION;
 
 	PG_RETURN_JSONPATH_P(res);
 }
@@ -424,7 +426,8 @@ jsonpath_out(PG_FUNCTION_ARGS)
 void
 jspInit(JsonPathItem *v, JsonPath *js)
 {
-	jspInitByBuffer(v, VARDATA(js), 0);
+	Assert(js->header == JSONPATH_VERSION);
+	jspInitByBuffer(v, js->data, 0);
 }
 
 void
