@@ -552,3 +552,69 @@ select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.** ? (.a == .b)');
  t
 (1 row)
 
+select _jsonpath_query(jsonb '{"c": {"a": 2, "b":1}}', '$.** ? (.a == 1 + 1)');
+ _jsonpath_query  
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select _jsonpath_query(jsonb '{"c": {"a": 2, "b":1}}', '$.** ? (.a == (1 + 1))');
+ _jsonpath_query  
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select _jsonpath_query(jsonb '{"c": {"a": 2, "b":1}}', '$.** ? (.a == .b + 1)');
+ _jsonpath_query  
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select _jsonpath_query(jsonb '{"c": {"a": 2, "b":1}}', '$.** ? (.a == (.b + 1))');
+ _jsonpath_query  
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": -1, "b":1}}', '$.** ? (.a == - 1)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": -1, "b":1}}', '$.** ? (.a == -1)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": -1, "b":1}}', '$.** ? (.a == -.b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": -1, "b":1}}', '$.** ? (.a == - .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 0, "b":1}}', '$.** ? (.a == 1 - .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 2, "b":1}}', '$.** ? (.a == 1 - - .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 0, "b":1}}', '$.** ? (.a == 1 - +.b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
