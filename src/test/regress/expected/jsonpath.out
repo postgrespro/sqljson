@@ -9,6 +9,18 @@ select '$'::jsonpath;
  $
 (1 row)
 
+select 'strict $'::jsonpath;
+ jsonpath 
+----------
+ strict $
+(1 row)
+
+select 'lax $'::jsonpath;
+ jsonpath 
+----------
+ $
+(1 row)
+
 select '$.a'::jsonpath;
  jsonpath 
 ----------
