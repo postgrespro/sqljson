@@ -756,11 +756,11 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 
 				hasNext = jspGetNext(jsp, &elem);
 
-				for(i=0; i<jsp->array.nelems; i++)
+				for(i=0; i<jsp->content.array.nelems; i++)
 				{
 					/* TODO for future: array index can be expression */
 					v = getIthJsonbValueFromContainer(jb->val.binary.data,
-													  jsp->array.elems[i]);
+													  jsp->content.array.elems[i]);
 
 					if (v == NULL)
 						continue;
@@ -872,7 +872,7 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			bool hasNext = jspGetNext(jsp, &elem);
 
 			/* first try without any intermediate steps */
-			if (jsp->anybounds.first == 0)
+			if (jsp->content.anybounds.first == 0)
 			{
 				if (hasNext)
 				{
@@ -892,8 +892,8 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			if (jb->type == jbvBinary)
 				res = recursiveAny(cxt, hasNext ? &elem : NULL, jb, found,
 								   1,
-								   jsp->anybounds.first,
-								   jsp->anybounds.last);
+								   jsp->content.anybounds.first,
+								   jsp->content.anybounds.last);
 			break;
 		}
 		case jpiExists:
