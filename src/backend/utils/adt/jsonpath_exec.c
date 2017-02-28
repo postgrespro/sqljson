@@ -386,6 +386,84 @@ executeExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 	return jperNotFound;
 }
 
+static JsonPathExecResult
+executeArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+				  List **found)
+{
+	JsonPathExecResult jper;
+	JsonPathItem elem;
+	List	   *lseq = NIL;
+	List	   *rseq = NIL;
+	JsonbValue *lval;
+	JsonbValue *rval;
+	JsonbValue	lvalbuf;
+	JsonbValue	rvalbuf;
+	Datum		ldatum;
+	Datum		rdatum;
+	Datum		res;
+
+	jspGetLeftArg(jsp, &elem);
+	jper = recursiveExecute(cxt, &elem, jb, &lseq);
+	if (jper == jperOk)
+	{
+		jspGetRightArg(jsp, &elem);
+		jper = recursiveExecute(cxt, &elem, jb, &rseq);
+	}
+
+	if (jper != jperOk || list_length(lseq) != 1 || list_length(rseq) != 1)
+		return jperError; /* ERRCODE_SINGLETON_JSON_ITEM_REQUIRED; */
+
+	lval = linitial(lseq);
+	rval = linitial(rseq);
+
+	if (JsonbType(lval) == jbvScalar)
+		lval = JsonbExtractScalar(lval->val.binary.data, &lvalbuf);
+
+	if (lval->type != jbvNumeric)
+		return jperError; /* ERRCODE_SINGLETON_JSON_ITEM_REQUIRED; */
+
+	if (JsonbType(rval) == jbvScalar)
+		rval = JsonbExtractScalar(rval->val.binary.data, &rvalbuf);
+
+	if (rval->type != jbvNumeric)
+		return jperError; /* ERRCODE_SINGLETON_JSON_ITEM_REQUIRED; */
+
+	if (!found)
+		return jperOk;
+
+	ldatum = NumericGetDatum(lval->val.numeric);
+	rdatum = NumericGetDatum(rval->val.numeric);
+
+	switch (jsp->type)
+	{
+		case jpiAdd:
+			res = DirectFunctionCall2(numeric_add, ldatum, rdatum);
+			break;
+		case jpiSub:
+			res = DirectFunctionCall2(numeric_sub, ldatum, rdatum);
+			break;
+		case jpiMul:
+			res = DirectFunctionCall2(numeric_mul, ldatum, rdatum);
+			break;
+		case jpiDiv:
+			res = DirectFunctionCall2(numeric_div, ldatum, rdatum);
+			break;
+		case jpiMod:
+			res = DirectFunctionCall2(numeric_mod, ldatum, rdatum);
+			break;
+		default:
+			elog(ERROR, "unknown jsonpath arithmetic operation %d", jsp->type);
+	}
+
+	lval = palloc(sizeof(*lval));
+	lval->type = jbvNumeric;
+	lval->val.numeric = DatumGetNumeric(res);
+
+	*found = lappend(*found, lval);
+
+	return jperOk;
+}
+
 static JsonbValue*
 copyJsonbValue(JsonbValue *src)
 {
@@ -692,6 +770,13 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
 			res = executeExpr(cxt, jsp, jb);
+			break;
+		case jpiAdd:
+		case jpiSub:
+		case jpiMul:
+		case jpiDiv:
+		case jpiMod:
+			res = executeArithmExpr(cxt, jsp, jb, found);
 			break;
 		case jpiRoot:
 			if (jspGetNext(jsp, &elem))
