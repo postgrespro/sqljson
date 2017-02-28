@@ -516,3 +516,39 @@ from
  "null" | "null" | null
 (9 rows)
 
+select _jsonpath_exists(jsonb '{"a": 1, "b":1}', '$ ? (.a == .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$ ? (.a == .b)');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.c ? (.a == .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.* ? (.a == .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": 1, "b":1}', '$.** ? (.a == .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.** ? (.a == .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
