@@ -55,8 +55,8 @@ makeItemString(string *s)
 	else
 	{
 		v = makeItemType(jpiString);
-		v->string.val = s->val;
-		v->string.len = s->len;
+		v->value.string.val = s->val;
+		v->value.string.len = s->len;
 	}
 
 	return v;
@@ -68,8 +68,8 @@ makeItemVariable(string *s)
 	JsonPathParseItem *v;
 
 	v = makeItemType(jpiVariable);
-	v->string.val = s->val;
-	v->string.len = s->len;
+	v->value.string.val = s->val;
+	v->value.string.len = s->len;
 
 	return v;
 }
@@ -91,7 +91,8 @@ makeItemNumeric(string *s)
 	JsonPathParseItem		*v;
 
 	v = makeItemType(jpiNumeric);
-	v->numeric = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(s->val), 0, -1));
+	v->value.numeric =
+		DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(s->val), 0, -1));
 
 	return v;
 }
@@ -100,7 +101,7 @@ static JsonPathParseItem*
 makeItemBool(bool val) {
 	JsonPathParseItem *v = makeItemType(jpiBool);
 
-	v->boolean = val;
+	v->value.boolean = val;
 
 	return v;
 }
@@ -110,8 +111,8 @@ makeItemBinary(int type, JsonPathParseItem* la, JsonPathParseItem *ra)
 {
 	JsonPathParseItem  *v = makeItemType(type);
 
-	v->args.left = la;
-	v->args.right = ra;
+	v->value.args.left = la;
+	v->value.args.right = ra;
 
 	return v;
 }
@@ -127,15 +128,15 @@ makeItemUnary(int type, JsonPathParseItem* a)
 	if (type == jpiMinus && a->type == jpiNumeric && !a->next)
 	{
 		v = makeItemType(jpiNumeric);
-		v->numeric =
+		v->value.numeric =
 			DatumGetNumeric(DirectFunctionCall1(numeric_uminus,
-												NumericGetDatum(a->numeric)));
+												NumericGetDatum(a->value.numeric)));
 		return v;
 	}
 
 	v = makeItemType(type);
 
-	v->arg = a;
+	v->value.arg = a;
 
 	return v;
 }
@@ -169,12 +170,12 @@ makeIndexArray(List *list)
 	int					i = 0;
 
 	Assert(list_length(list) > 0);
-	v->array.nelems = list_length(list);
+	v->value.array.nelems = list_length(list);
 
-	v->array.elems = palloc(sizeof(v->array.elems[0]) * v->array.nelems);
+	v->value.array.elems = palloc(sizeof(v->value.array.elems[0]) * v->value.array.nelems);
 
 	foreach(cell, list)
-		v->array.elems[i++] = lfirst_int(cell);
+		v->value.array.elems[i++] = lfirst_int(cell);
 
 	return v;
 }
@@ -184,8 +185,8 @@ makeAny(int first, int last)
 {
 	JsonPathParseItem *v = makeItemType(jpiAny);
 
-	v->anybounds.first = (first > 0) ? first : 0;
-	v->anybounds.last = (last >= 0) ? last : PG_UINT32_MAX;
+	v->value.anybounds.first = (first > 0) ? first : 0;
+	v->value.anybounds.last = (last >= 0) ? last : PG_UINT32_MAX;
 
 	return v;
 }
@@ -202,7 +203,7 @@ makeAny(int first, int last)
 %union {
 	string				str;
 	List				*elems;		/* list of JsonPathParseItem */
-	List				*indexs;
+	List				*indexs;	/* list of integers */
 	JsonPathParseItem	*value;
 	int					optype;
 }
@@ -213,11 +214,10 @@ makeAny(int first, int last)
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
 %token	<str>		ANY_P
 
-%type	<value>		result jsonpath scalar_value path_primary expr pexpr
-					array_accessor any_path accessor_op key
-					predicate delimited_predicate
+%type	<value>		result scalar_value path_primary expr pexpr array_accessor
+					any_path accessor_op key predicate delimited_predicate
 
-%type	<elems>		accessor_expr /* path absolute_path relative_path */
+%type	<elems>		accessor_expr
 
 %type	<indexs>	index_elem index_list
 
@@ -235,7 +235,7 @@ makeAny(int first, int last)
 %%
 
 result:
-	jsonpath						{ *result = $1; }
+	expr							{ *result = $1; }
 	| /* EMPTY */					{ *result = NULL; }
 	;
 
@@ -247,10 +247,6 @@ scalar_value:
 	| NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
 	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
-	;
-
-jsonpath:
-	expr
 	;
 
 comp_op:
@@ -269,16 +265,18 @@ delimited_predicate:
 
 predicate:
 	delimited_predicate				{ $$ = $1; }
-	| pexpr comp_op pexpr				{ $$ = makeItemBinary($2, $1, $3); }
-//	| expr LIKE_REGEX pattern		{ $$ = ...; }
-//	| expr STARTS WITH STRING_P		{ $$ = ...; }
-//	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
-//	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
-//	| '.' any_key right_expr		{ $$ = makeItemList(list_make2($2, $3)); }
-	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
+	| pexpr comp_op pexpr			{ $$ = makeItemBinary($2, $1, $3); }
 	| predicate AND_P predicate		{ $$ = makeItemBinary(jpiAnd, $1, $3); }
 	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
 	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }
+	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
+/*
+   Left for the future
+	| pexpr LIKE_REGEX pattern			{ $$ = ...; }
+	| pexpr STARTS WITH STRING_P		{ $$ = ...; }
+	| pexpr STARTS WITH '$' STRING_P	{ $$ = ...; }
+	| pexpr STARTS WITH '$' STRING_P	{ $$ = ...; }
+*/
 	;
 
 path_primary:
@@ -362,23 +360,5 @@ key:
 	| UNKNOWN_P						{ $$ = makeItemKey(&$1); }
 	| EXISTS_P						{ $$ = makeItemKey(&$1); }
 	;
-/*
-absolute_path:
-	'$'	 							{ $$ = list_make1(makeItemType(jpiRoot)); }
-	| '$' path						{ $$ = lcons(makeItemType(jpiRoot), $2); }
-	;
-
-relative_path:
-	key								{ $$ = list_make1(makeItemType(jpiCurrent), $1); }
-	| key path						{ $$ = lcons(makeItemType(jpiCurrent), lcons($1, $2)); }
-	| '@'							{ $$ = list_make1(makeItemType(jpiCurrent)); }
-	| '@' path						{ $$ = lcons(makeItemType(jpiCurrent), $2); }
-	;
-
-path:
-	accessor_op						{ $$ = list_make($1); }
-	| path accessor_op				{ $$ = lappend($1, $2); }
-	;
-*/
 %%
 

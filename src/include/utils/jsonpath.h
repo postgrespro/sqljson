@@ -20,8 +20,12 @@
 
 typedef struct
 {
-	int32	vl_len_;	/* varlena header (do not touch directly!) */
+	int32	vl_len_;/* varlena header (do not touch directly!) */
+	uint32	header;	/* just version, other bits are reservedfor future use */
+	char	data[FLEXIBLE_ARRAY_MEMBER];
 } JsonPath;
+
+#define JSONPATH_VERSION	(0x01)
 
 #define DatumGetJsonPathP(d)			((JsonPath *) DatumGetPointer(PG_DETOAST_DATUM(d)))
 #define DatumGetJsonPathPCopy(d)		((JsonPath *) DatumGetPointer(PG_DETOAST_DATUM_COPY(d)))
@@ -29,6 +33,9 @@ typedef struct
 #define PG_GETARG_JSONPATH_P_COPY(x)	DatumGetJsonPathPCopy(PG_GETARG_DATUM(x))
 #define PG_RETURN_JSONPATH_P(p)			PG_RETURN_POINTER(p)
 
+/*
+ * All node's type of jsonpath expression
+ */
 typedef enum JsonPathItemType {
 		jpiNull = jbvNull,
 		jpiString = jbvString,
@@ -69,8 +76,7 @@ typedef enum JsonPathItemType {
  * Unlike many other representation of expression the first/main
  * node is not an operation but left operand of expression. That
  * allows to implement cheep follow-path descending in jsonb
- * structure and then execute operator with right operand which
- * is always a constant.
+ * structure and then execute operator with right operand
  */
 
 typedef struct JsonPathItem {
@@ -79,27 +85,31 @@ typedef struct JsonPathItem {
 	char			*base;
 
 	union {
-		struct {
-			char		*data;  /* for bool, numeric and string/key */
-			int32		datalen; /* filled only for string/key */
-		} value;
-
+		/* classic operator with two operands: and, or etc */
 		struct {
 			int32	left;
 			int32	right;
 		} args;
 
+		/* any unary operation */
 		int32		arg;
 
+		/* storage for jpiIndexArray: indexes of array */
 		struct {
-			int32		nelems;
+			int32	nelems;
 			int32	*elems;
 		} array;
 
+		/* jpiAny: levels */
 		struct {
 			uint32	first;
 			uint32	last;
 		} anybounds;
+
+		struct {
+			char		*data;  /* for bool, numeric and string/key */
+			int32		datalen; /* filled only for string/key */
+		} value;
 	};
 } JsonPathItem;
 
@@ -124,36 +134,42 @@ struct JsonPathParseItem {
 	JsonPathParseItem	*next; /* next in path */
 
 	union {
+
+		/* classic operator with two operands: and, or etc */
 		struct {
 			JsonPathParseItem	*left;
 			JsonPathParseItem	*right;
 		} args;
 
+		/* any unary operation */
 		JsonPathParseItem	*arg;
 
+		/* storage for jpiIndexArray: indexes of array */
+		struct {
+			int		nelems;
+			int32	*elems;
+		} array;
+
+		/* jpiAny: levels */
+		struct {
+			uint32	first;
+			uint32	last;
+		} anybounds;
+
+		/* scalars */
 		Numeric		numeric;
 		bool		boolean;
 		struct {
 			uint32	len;
 			char	*val; /* could not be not null-terminated */
 		} string;
-
-		struct {
-			int		nelems;
-			int32	*elems;
-		} array;
-
-		struct {
-			uint32	first;
-			uint32	last;
-		} anybounds;
-	};
+	} value;
 };
 
 extern JsonPathParseItem* parsejsonpath(const char *str, int len);
 
 /*
- * Execution
+ * Evaluation of jsonpath
  */
 
 typedef enum JsonPathExecResult {
@@ -168,7 +184,7 @@ typedef Datum (*JsonPathVariable_cb)(void *, bool *);
 typedef struct JsonPathVariable	{
 	text					*varName;
 	Oid						typid;
-	int32					typmod; /* do we need it here? */
+	int32					typmod;
 	JsonPathVariable_cb		cb;
 	void					*cb_arg;
 } JsonPathVariable;
