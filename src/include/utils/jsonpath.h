@@ -82,7 +82,14 @@ typedef enum JsonPathItemType {
 
 typedef struct JsonPathItem {
 	JsonPathItemType	type;
+
+	/* position form base to next node */
 	int32			nextPos;
+
+	/*
+	 * pointer into JsonPath value to current node, all
+	 * positions of current are relative to this base
+	 */
 	char			*base;
 
 	union {
@@ -111,7 +118,7 @@ typedef struct JsonPathItem {
 			char		*data;  /* for bool, numeric and string/key */
 			int32		datalen; /* filled only for string/key */
 		} value;
-	};
+	} content;
 } JsonPathItem;
 
 extern void jspInit(JsonPathItem *v, JsonPath *js);
