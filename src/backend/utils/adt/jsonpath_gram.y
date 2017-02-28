@@ -216,7 +216,7 @@ makeAny(int first, int last)
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
 %token	<str>		ANY_P
 
-%type	<value>		result jsonpath scalar_value path_primary expr
+%type	<value>		result jsonpath scalar_value path_primary expr pexpr
 					array_accessor any_path accessor_op key unary_expr
 					predicate delimited_predicate
 
@@ -271,7 +271,7 @@ delimited_predicate:
 
 predicate:
 	delimited_predicate				{ $$ = $1; }
-	| expr comp_op expr				{ $$ = makeItemBinary($2, $1, $3); }
+	| pexpr comp_op pexpr				{ $$ = makeItemBinary($2, $1, $3); }
 //	| expr LIKE_REGEX pattern		{ $$ = ...; }
 //	| expr STARTS WITH STRING_P		{ $$ = ...; }
 //	| expr STARTS WITH '$' STRING_P	{ $$ = ...; }
@@ -301,13 +301,18 @@ unary_expr:
 	| '-' unary_expr				{ $$ = makeItemUnary(jpiMinus, $2); }
 	;
 
+pexpr:
+	expr							{ $$ = $1; }
+	| '(' expr ')'					{ $$ = $2; }
+	;
+
 expr:
 	unary_expr						{ $$ = $1; }
-	| expr '+' expr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
-	| expr '-' expr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
-	| expr '*' expr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
-	| expr '/' expr					{ $$ = makeItemBinary(jpiDiv, $1, $3); }
-	| expr '%' expr					{ $$ = makeItemBinary(jpiMod, $1, $3); }
+	| pexpr '+' pexpr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
+	| pexpr '-' pexpr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
+	| pexpr '*' pexpr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
+	| pexpr '/' pexpr					{ $$ = makeItemBinary(jpiDiv, $1, $3); }
+	| pexpr '%' pexpr					{ $$ = makeItemBinary(jpiMod, $1, $3); }
 	;
 
 index_elem:

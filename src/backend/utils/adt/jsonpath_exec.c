@@ -216,7 +216,7 @@ checkScalarEquality(JsonbValue *jb1, JsonbValue *jb2)
 		case jbvNumeric:
 			return (compareNumeric(jb1->val.numeric, jb2->val.numeric) == 0);
 		default:
-			elog(ERROR,"Wrong state");
+			elog(ERROR,"1Wrong state");
 			return false;
 	}
 }
