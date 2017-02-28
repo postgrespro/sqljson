@@ -109,3 +109,10 @@ select
 from
 	(values (jsonb 'true'), ('false'), ('"null"')) x(x),
 	(values (jsonb 'true'), ('false'), ('"null"')) y(y);
+
+select _jsonpath_exists(jsonb '{"a": 1, "b":1}', '$ ? (.a == .b)');
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$ ? (.a == .b)');
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.c ? (.a == .b)');
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.* ? (.a == .b)');
+select _jsonpath_exists(jsonb '{"a": 1, "b":1}', '$.** ? (.a == .b)');
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.** ? (.a == .b)');
