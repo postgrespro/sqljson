@@ -618,3 +618,27 @@ select _jsonpath_exists(jsonb '{"c": {"a": 0, "b":1}}', '$.** ? (.a == 1 - +.b)'
  t
 (1 row)
 
+select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (+@[*] > +2)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (+@[*] > +3)');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (-@[*] < -2)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (-@[*] < -3)');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
