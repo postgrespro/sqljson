@@ -235,7 +235,7 @@ unicode		\\u[0-9A-Fa-f]{4}
 %%
 
 void
-jsonpath_yyerror(JsonPathParseItem **result, const char *message)
+jsonpath_yyerror(JsonPathParseResult **result, const char *message)
 {
 	if (*yytext == YY_END_OF_BUFFER_CHAR)
 	{
@@ -271,10 +271,12 @@ typedef struct keyword
 static keyword keywords[] = {
 	{ 2, false,	IS_P,		"is"},
 	{ 2, false,	TO_P,		"to"},
+	{ 3, false,	LAX_P,		"lax"},
 	{ 4, true,	NULL_P,		"null"},
 	{ 4, true,	TRUE_P,		"true"},
 	{ 5, true,	FALSE_P,	"false"},
 	{ 6, false,	EXISTS_P,	"exists"},
+	{ 6, false,	STRICT_P,	"strict"},
 	{ 7, false,	UNKNOWN_P,	"unknown"}
 };
 
@@ -394,9 +396,9 @@ addchar(bool init, char s) {
 		scanstring.len++;
 }
 
-JsonPathParseItem* 
+JsonPathParseResult *
 parsejsonpath(const char *str, int len) {
-	JsonPathParseItem		*parseresult;
+	JsonPathParseResult	*parseresult;
 
 	jsonpath_scanner_init(str, len);
 
