@@ -179,8 +179,8 @@ jsonpath_in(PG_FUNCTION_ARGS)
 {
 	char				*in = PG_GETARG_CSTRING(0);
 	int32				len = strlen(in);
-	JsonPathParseItem	*jsonpath = parsejsonpath(in, len);
-	JsonPath				*res;
+	JsonPathParseResult	*jsonpath = parsejsonpath(in, len);
+	JsonPath			*res;
 	StringInfoData		buf;
 
 	initStringInfo(&buf);
@@ -193,11 +193,13 @@ jsonpath_in(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for jsonpath: \"%s\"", in)));
 
-	flattenJsonPathParseItem(&buf, jsonpath, false);
+	flattenJsonPathParseItem(&buf, jsonpath->expr, false);
 
 	res = (JsonPath*)buf.data;
 	SET_VARSIZE(res, buf.len);
 	res->header = JSONPATH_VERSION;
+	if (jsonpath->lax)
+		res->header |= JSONPATH_LAX;
 
 	PG_RETURN_JSONPATH_P(res);
 }
@@ -414,6 +416,9 @@ jsonpath_out(PG_FUNCTION_ARGS)
 	initStringInfo(&buf);
 	enlargeStringInfo(&buf, VARSIZE(in) /* estimation */);
 
+	if (!(in->header & JSONPATH_LAX))
+		appendBinaryStringInfo(&buf, "strict ", 7);
+
 	jspInit(&v, in);
 	printJsonPathItem(&buf, &v, false, true);
 
@@ -447,7 +452,7 @@ jsonpath_out(PG_FUNCTION_ARGS)
 void
 jspInit(JsonPathItem *v, JsonPath *js)
 {
-	Assert(js->header == JSONPATH_VERSION);
+	Assert((js->header & ~JSONPATH_LAX) == JSONPATH_VERSION);
 	jspInitByBuffer(v, js->data, 0);
 }
 
