@@ -19,6 +19,10 @@
 #include "utils/jsonpath.h"
 
 /*****************************INPUT/OUTPUT************************************/
+
+/*
+ * Convert AST to flat jsonpath type representation
+ */
 static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 						 bool forbiddenRoot)
@@ -35,6 +39,11 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 	alignStringInfoInt(buf);
 
 	next = (item->next) ? buf->len : 0;
+
+	/*
+	 * actual value will be recorded later, after next and
+	 * children processing
+	 */
 	appendBinaryStringInfo(buf, (char*)&next /* fake value */, sizeof(next));
 
 	switch(item->type)
@@ -85,6 +94,11 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				int32	left, right;
 
 				left = buf->len;
+
+				/*
+				 * first, reserve place for left/right arg's positions, then
+				 * record both args and sets actual position in reserved places
+				 */
 				appendBinaryStringInfo(buf, (char*)&left /* fake value */, sizeof(left));
 				right = buf->len;
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
@@ -412,6 +426,10 @@ jsonpath_out(PG_FUNCTION_ARGS)
 
 /********************Support functions for JsonPath****************************/
 
+/*
+ * Support macroses to read stored values
+ */
+
 #define read_byte(v, b, p) do {			\
 	(v) = *(uint8*)((b) + (p));			\
 	(p) += 1;							\
@@ -427,6 +445,9 @@ jsonpath_out(PG_FUNCTION_ARGS)
 	(p) += sizeof(int32) * (n);			\
 } while(0)								\
 
+/*
+ * Read root node and fill root node representation
+ */
 void
 jspInit(JsonPathItem *v, JsonPath *js)
 {
@@ -434,6 +455,9 @@ jspInit(JsonPathItem *v, JsonPath *js)
 	jspInitByBuffer(v, js->data, 0);
 }
 
+/*
+ * Read node from buffer and fill its representation
+ */
 void
 jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 {

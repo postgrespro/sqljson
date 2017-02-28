@@ -13,12 +13,14 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/json.h"
 #include "utils/jsonpath.h"
+#include "utils/varlena.h"
 
 typedef struct JsonPathExecContext
 {
@@ -32,6 +34,9 @@ static JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 
 /********************Execute functions for JsonPath***************************/
 
+/*
+ * Find value of jsonpath variable in a list of passing params
+ */
 static void
 computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 {
@@ -136,6 +141,9 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 	}
 }
 
+/*
+ * Convert jsonpath's scalar or variable node to actual jsonb value
+ */
 static void
 computeJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item, JsonbValue *value)
 {
@@ -165,6 +173,12 @@ computeJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item, JsonbValue *va
 }
 
 
+/*
+ * Returns jbv* type of of JsonbValue. Note, it never returns
+ * jbvBinary as is - jbvBinary is used as mark of store naked
+ * scalar value. To improve readability it defines jbvScalar
+ * as alias to jbvBinary
+ */
 #define jbvScalar jbvBinary
 static int
 JsonbType(JsonbValue *jb)
@@ -200,31 +214,10 @@ compareNumeric(Numeric a, Numeric b)
 			);
 }
 
-static bool
-checkScalarEquality(JsonbValue *jb1, JsonbValue *jb2)
-{
-	switch (jb1->type)
-	{
-		case jbvNull:
-			return true;
-		case jbvString:
-			return (jb1->val.string.len == jb2->val.string.len &&
-					memcmp(jb2->val.string.val, jb1->val.string.val,
-						   jb1->val.string.len) == 0);
-		case jbvBool:
-			return (jb2->val.boolean == jb1->val.boolean);
-		case jbvNumeric:
-			return (compareNumeric(jb1->val.numeric, jb2->val.numeric) == 0);
-		default:
-			elog(ERROR,"1Wrong state");
-			return false;
-	}
-}
-
 static JsonPathExecResult
 checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 {
-	bool	eq;
+	bool	eq = false;
 
 	if (jb1->type != jb2->type)
 	{
@@ -236,14 +229,28 @@ checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 
 	if (jb1->type == jbvBinary)
 		return jperError;
-	/*
-		eq = compareJsonbContainers(jb1->val.binary.data,
-									jb2->val.binary.data) == 0;
-	*/
-	else
-		eq = checkScalarEquality(jb1, jb2);
 
-	return !!not ^ !!eq ? jperOk : jperNotFound;
+	switch (jb1->type)
+	{
+		case jbvNull:
+			eq = true;
+			break;
+		case jbvString:
+			eq = (jb1->val.string.len == jb2->val.string.len &&
+					memcmp(jb2->val.string.val, jb1->val.string.val,
+						   jb1->val.string.len) == 0);
+			break;
+		case jbvBool:
+			eq = (jb2->val.boolean == jb1->val.boolean);
+			break;
+		case jbvNumeric:
+			eq = (compareNumeric(jb1->val.numeric, jb2->val.numeric) == 0);
+			break;
+		default:
+			elog(ERROR,"1Wrong state");
+	}
+
+	return (not ^ eq) ? jperOk : jperNotFound;
 }
 
 static JsonPathExecResult
@@ -273,13 +280,11 @@ makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 		case jbvNumeric:
 			cmp = compareNumeric(jb1->val.numeric, jb2->val.numeric);
 			break;
-		/*
 		case jbvString:
 			cmp = varstr_cmp(jb1->val.string.val, jb1->val.string.len,
 							 jb2->val.string.val, jb2->val.string.len,
-							 collationId);
+							 DEFAULT_COLLATION_OID);
 			break;
-		*/
 		default:
 			return jperError;
 	}
@@ -536,6 +541,9 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return jper;
 }
 
+/*
+ * implements jpiAny node (** operator)
+ */
 static JsonPathExecResult
 recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			 List **found, uint32 level, uint32 first, uint32 last)
@@ -552,6 +560,9 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 
 	it = JsonbIteratorInit(jb->val.binary.data);
 
+	/*
+	 * Recursively iterate over jsonb objects/arrays
+	 */
 	while((r = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
 	{
 		if (r == WJB_KEY)
@@ -594,12 +605,23 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	return res;
 }
 
+/*
+ * Main executor function: walks on jsonpath structure and tries to find
+ * correspoding parts of jsonb. Note, jsonb and jsonpath values should be
+ * avaliable and untoasted during work because JsonPathItem, JsonbValue
+ * and found could have pointers into input values. If caller wants just to
+ * check matching of json by jsonpath then it doesn't provide a found arg.
+ * In this case executor works till first positive result and does not check
+ * the rest if it is possible. In other case it tries to find all satisfied
+ * results
+ */
 static JsonPathExecResult
 recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				 List **found)
 {
 	JsonPathItem		elem;
 	JsonPathExecResult	res = jperNotFound;
+	bool				hasNext;
 
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
@@ -612,10 +634,15 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			{
 				JsonPathExecResult res2;
 
+				/*
+				 * SQL/JSON says that we should check second arg
+				 * in case of jperError
+				 */
+
 				jspGetRightArg(jsp, &elem);
 				res2 = recursiveExecute(cxt, &elem, jb, NULL);
 
-				res = res2 == jperOk ? res : res2;
+				res = (res2 == jperOk) ? res : res2;
 			}
 			break;
 		case jpiOr:
@@ -628,7 +655,7 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				jspGetRightArg(jsp, &elem);
 				res2 = recursiveExecute(cxt, &elem, jb, NULL);
 
-				res = res2 == jperNotFound ? res : res2;
+				res = (res2 == jperNotFound) ? res : res2;
 			}
 			break;
 		case jpiNot:
@@ -648,7 +675,7 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 		case jpiIsUnknown:
 			jspGetArg(jsp, &elem);
 			res = recursiveExecute(cxt, &elem, jb, NULL);
-			res = res == jperError ? jperOk : jperNotFound;
+			res = (res == jperError) ? jperOk : jperNotFound;
 			break;
 		case jpiKey:
 			if (JsonbType(jb) == jbvObject)
@@ -681,6 +708,7 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 		case jpiCurrent:
 			if (!jspGetNext(jsp, &elem))
 			{
+				/* we are last in chain of node */
 				res = jperOk;
 				if (found)
 				{
@@ -690,7 +718,7 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 						v = JsonbExtractScalar(jb->val.binary.data,
 											   palloc(sizeof(*v)));
 					else
-						v = copyJsonbValue(jb); /* FIXME */
+						v = copyJsonbValue(jb);
 
 					*found = lappend(*found, v);
 				}
@@ -714,7 +742,6 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				JsonbIterator	*it;
 				int32			r;
 				JsonbValue		v;
-				bool			hasNext;
 
 				hasNext = jspGetNext(jsp, &elem);
 				it = JsonbIteratorInit(jb->val.binary.data);
@@ -751,7 +778,6 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			if (JsonbType(jb) == jbvArray)
 			{
 				JsonbValue		*v;
-				bool			hasNext;
 				int				i;
 
 				hasNext = jspGetNext(jsp, &elem);
@@ -793,7 +819,6 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				JsonbIterator	*it;
 				int32			r;
 				JsonbValue		v;
-				bool			hasNext;
 
 				hasNext = jspGetNext(jsp, &elem);
 				it = JsonbIteratorInit(jb->val.binary.data);
@@ -920,6 +945,9 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	return res;
 }
 
+/*
+ * Public interface to jsonpath executor
+ */
 JsonPathExecResult
 executeJsonPath(JsonPath *path, List *vars, Jsonb *json, List **foundJson)
 {
@@ -953,6 +981,9 @@ returnNULL(void *arg, bool *isNull)
 	return Int32GetDatum(0);
 }
 
+/*
+ * Convert jsonb object into list of vars for executor
+ */
 static List*
 makePassingVars(Jsonb *jb)
 {
