@@ -25,6 +25,6 @@ typedef struct string {
 
 /* flex 2.5.4 doesn't bother with a decl for this */
 extern int jsonpath_yylex(YYSTYPE * yylval_param);
-extern void jsonpath_yyerror(JsonPathParseItem **result, const char *message);
+extern void jsonpath_yyerror(JsonPathParseResult **result, const char *message);
 
 #endif
