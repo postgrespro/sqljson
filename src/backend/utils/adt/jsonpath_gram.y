@@ -214,7 +214,7 @@ makeAny(int first, int last)
 %token	<str>		ANY_P
 
 %type	<value>		result jsonpath scalar_value path_primary expr pexpr
-					array_accessor any_path accessor_op key unary_expr
+					array_accessor any_path accessor_op key
 					predicate delimited_predicate
 
 %type	<elems>		accessor_expr /* path absolute_path relative_path */
@@ -228,6 +228,7 @@ makeAny(int first, int last)
 %right	NOT_P
 %left	'+' '-'
 %left	'*' '/' '%'
+%left	UMINUS
 %nonassoc '(' ')'
 
 /* Grammar follows */
@@ -292,19 +293,15 @@ accessor_expr:
 	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
 	;
 
-unary_expr:
-	accessor_expr					{ $$ = makeItemList($1); }
-	| '+' unary_expr				{ $$ = makeItemUnary(jpiPlus, $2); }
-	| '-' unary_expr				{ $$ = makeItemUnary(jpiMinus, $2); }
-	;
-
 pexpr:
 	expr							{ $$ = $1; }
 	| '(' expr ')'					{ $$ = $2; }
 	;
 
 expr:
-	unary_expr						{ $$ = $1; }
+	accessor_expr						{ $$ = makeItemList($1); }
+	| '+' pexpr %prec UMINUS			{ $$ = $2; }
+	| '-' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiMinus, $2); }
 	| pexpr '+' pexpr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
 	| pexpr '-' pexpr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
 	| pexpr '*' pexpr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
