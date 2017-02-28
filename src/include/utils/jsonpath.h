@@ -26,6 +26,7 @@ typedef struct
 } JsonPath;
 
 #define JSONPATH_VERSION	(0x01)
+#define JSONPATH_HDRSZ		(offsetof(JsonPath, data))
 
 #define DatumGetJsonPathP(d)			((JsonPath *) DatumGetPointer(PG_DETOAST_DATUM(d)))
 #define DatumGetJsonPathPCopy(d)		((JsonPath *) DatumGetPointer(PG_DETOAST_DATUM_COPY(d)))
