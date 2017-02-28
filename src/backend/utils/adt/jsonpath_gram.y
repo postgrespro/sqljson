@@ -201,23 +201,27 @@ makeAny(int first, int last)
 %expect 0
 %name-prefix="jsonpath_yy"
 %error-verbose
-%parse-param {JsonPathParseItem **result}
+%parse-param {JsonPathParseResult **result}
 
 %union {
 	string				str;
 	List				*elems;		/* list of JsonPathParseItem */
 	List				*indexs;	/* list of integers */
 	JsonPathParseItem	*value;
+	JsonPathParseResult *result;
 	int					optype;
+	bool				boolean;
 }
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P EXISTS_P
 %token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
-%token	<str>		ANY_P
+%token	<str>		ANY_P STRICT_P LAX_P
 
-%type	<value>		result scalar_value path_primary expr pexpr array_accessor
+%type	<result>	result
+
+%type	<value>		scalar_value path_primary expr pexpr array_accessor
 					any_path accessor_op key predicate delimited_predicate
 
 %type	<elems>		accessor_expr
@@ -225,6 +229,8 @@ makeAny(int first, int last)
 %type	<indexs>	index_elem index_list
 
 %type	<optype>	comp_op
+
+%type	<boolean>	mode
 
 %left	OR_P
 %left	AND_P
@@ -238,8 +244,18 @@ makeAny(int first, int last)
 %%
 
 result:
-	expr							{ *result = $1; }
+	mode expr						{
+										*result = palloc(sizeof(JsonPathParseResult));
+										(*result)->expr = $2;
+										(*result)->lax = $1;
+									}
 	| /* EMPTY */					{ *result = NULL; }
+	;
+
+mode:
+	STRICT_P						{ $$ = false; }
+	| LAX_P							{ $$ = true; }
+	| /* EMPTY */					{ $$ = true; }
 	;
 
 scalar_value:
@@ -362,6 +378,8 @@ key:
 	| IS_P							{ $$ = makeItemKey(&$1); }
 	| UNKNOWN_P						{ $$ = makeItemKey(&$1); }
 	| EXISTS_P						{ $$ = makeItemKey(&$1); }
+	| STRICT_P						{ $$ = makeItemKey(&$1); }
+	| LAX_P							{ $$ = makeItemKey(&$1); }
 	;
 %%
 

@@ -20,12 +20,13 @@
 
 typedef struct
 {
-	int32	vl_len_;/* varlena header (do not touch directly!) */
-	uint32	header;	/* just version, other bits are reservedfor future use */
+	int32	vl_len_;	/* varlena header (do not touch directly!) */
+	uint32	header;		/* version and flags (see below) */
 	char	data[FLEXIBLE_ARRAY_MEMBER];
 } JsonPath;
 
 #define JSONPATH_VERSION	(0x01)
+#define JSONPATH_LAX		(0x80000000)
 #define JSONPATH_HDRSZ		(offsetof(JsonPath, data))
 
 #define DatumGetJsonPathP(d)			((JsonPath *) DatumGetPointer(PG_DETOAST_DATUM(d)))
@@ -174,18 +175,33 @@ struct JsonPathParseItem {
 	} value;
 };
 
-extern JsonPathParseItem* parsejsonpath(const char *str, int len);
+typedef struct JsonPathParseResult
+{
+	JsonPathParseItem *expr;
+	bool		lax;
+} JsonPathParseResult;
+
+extern JsonPathParseResult* parsejsonpath(const char *str, int len);
 
 /*
  * Evaluation of jsonpath
  */
 
-typedef enum JsonPathExecResult {
+typedef enum JsonPathExecStatus
+{
 	jperOk = 0,
 	jperError,
 	jperFatalError,
 	jperNotFound
-} JsonPathExecResult;
+} JsonPathExecStatus;
+
+typedef uint64 JsonPathExecResult;
+
+#define jperStatus(jper)	((JsonPathExecStatus)(uint32)(jper))
+#define jperIsError(jper)	(jperStatus(jper) == jperError)
+#define jperGetError(jper)	((uint32)((jper) >> 32))
+#define jperMakeError(err)	(((uint64)(err) << 32) | jperError)
+#define jperFree(jper)		((void) 0)
 
 typedef Datum (*JsonPathVariable_cb)(void *, bool *);
 
