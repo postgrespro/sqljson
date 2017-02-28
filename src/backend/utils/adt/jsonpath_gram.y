@@ -303,7 +303,7 @@ pexpr:
 
 expr:
 	accessor_expr						{ $$ = makeItemList($1); }
-	| '+' pexpr %prec UMINUS			{ $$ = $2; }
+	| '+' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiPlus, $2); }
 	| '-' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiMinus, $2); }
 	| pexpr '+' pexpr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
 	| pexpr '-' pexpr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
