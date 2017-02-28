@@ -47,8 +47,9 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("scalar could not be a part of path")));
 		case jpiKey:
-			appendBinaryStringInfo(buf, (char*)&item->string.len, sizeof(item->string.len));
-			appendBinaryStringInfo(buf, item->string.val, item->string.len);
+			appendBinaryStringInfo(buf, (char*)&item->value.string.len,
+								   sizeof(item->value.string.len));
+			appendBinaryStringInfo(buf, item->value.string.val, item->value.string.len);
 			appendStringInfoChar(buf, '\0');
 			break;
 		case jpiNumeric:
@@ -56,14 +57,16 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("scalar could not be a part of path")));
-			appendBinaryStringInfo(buf, (char*)item->numeric, VARSIZE(item->numeric));
+			appendBinaryStringInfo(buf, (char*)item->value.numeric,
+								   VARSIZE(item->value.numeric));
 			break;
 		case jpiBool:
 			if (item->next != NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("scalar could not be a part of path")));
-			appendBinaryStringInfo(buf, (char*)&item->boolean, sizeof(item->boolean));
+			appendBinaryStringInfo(buf, (char*)&item->value.boolean,
+								   sizeof(item->value.boolean));
 			break;
 		case jpiAnd:
 		case jpiOr:
@@ -86,9 +89,9 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				right = buf->len;
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
-				chld = flattenJsonPathParseItem(buf, item->args.left, forbiddenRoot);
+				chld = flattenJsonPathParseItem(buf, item->value.args.left, forbiddenRoot);
 				*(int32*)(buf->data + left) = chld;
-				chld = flattenJsonPathParseItem(buf, item->args.right, forbiddenRoot);
+				chld = flattenJsonPathParseItem(buf, item->value.args.right, forbiddenRoot);
 				*(int32*)(buf->data + right) = chld;
 			}
 			break;
@@ -104,7 +107,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				arg = buf->len;
 				appendBinaryStringInfo(buf, (char*)&arg /* fake value */, sizeof(arg));
 
-				chld = flattenJsonPathParseItem(buf, item->arg,
+				chld = flattenJsonPathParseItem(buf, item->value.arg,
 												item->type == jpiFilter ||
 												forbiddenRoot);
 				*(int32*)(buf->data + arg) = chld;
@@ -133,19 +136,20 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			break;
 		case jpiIndexArray:
 			appendBinaryStringInfo(buf,
-								   (char*)&item->array.nelems,
-								   sizeof(item->array.nelems));
+								   (char*)&item->value.array.nelems,
+								   sizeof(item->value.array.nelems));
 			appendBinaryStringInfo(buf,
-								   (char*)item->array.elems,
-								   item->array.nelems * sizeof(item->array.elems[0]));
+								   (char*)item->value.array.elems,
+								   item->value.array.nelems *
+										sizeof(item->value.array.elems[0]));
 			break;
 		case jpiAny:
 			appendBinaryStringInfo(buf,
-								   (char*)&item->anybounds.first,
-								   sizeof(item->anybounds.first));
+								   (char*)&item->value.anybounds.first,
+								   sizeof(item->value.anybounds.first));
 			appendBinaryStringInfo(buf,
-								   (char*)&item->anybounds.last,
-								   sizeof(item->anybounds.last));
+								   (char*)&item->value.anybounds.last,
+								   sizeof(item->value.anybounds.last));
 			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
