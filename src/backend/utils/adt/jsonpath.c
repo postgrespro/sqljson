@@ -92,7 +92,6 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiFilter:
 		case jpiIsUnknown:
 		case jpiNot:
-		case jpiPlus:
 		case jpiMinus:
 		case jpiExists:
 			{
@@ -477,7 +476,6 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiExists:
 		case jpiIsUnknown:
 		case jpiMinus:
-		case jpiPlus:
 		case jpiFilter:
 			read_int32(v->arg, base, pos);
 			break;
@@ -502,7 +500,6 @@ jspGetArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiNot ||
 		v->type == jpiIsUnknown ||
 		v->type == jpiExists ||
-		v->type == jpiPlus ||
 		v->type == jpiMinus
 	);
 
