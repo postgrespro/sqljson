@@ -206,7 +206,7 @@ makeAny(int first, int last)
 	List				*indexs;	/* list of integers */
 	JsonPathParseItem	*value;
 	JsonPathParseResult *result;
-	int					optype;
+	JsonPathItemType	optype;
 	bool				boolean;
 }
 
@@ -215,6 +215,8 @@ makeAny(int first, int last)
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
 %token	<str>		ANY_P STRICT_P LAX_P
+%token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
+%token	<str>		KEYVALUE_P
 
 %type	<result>	result
 
@@ -225,9 +227,12 @@ makeAny(int first, int last)
 
 %type	<indexs>	index_elem index_list
 
-%type	<optype>	comp_op
+%type	<optype>	comp_op method
 
 %type	<boolean>	mode
+
+%type	<str>		key_name
+
 
 %left	OR_P
 %left	AND_P
@@ -363,20 +368,44 @@ accessor_op:
 	| array_accessor				{ $$ = $1; }
 	| '.' array_accessor			{ $$ = $2; }
 	| '.' any_path					{ $$ = $2; }
+	| '.' method '(' ')'			{ $$ = makeItemType($2); }
 	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
 	;
 
 key:
-	STRING_P						{ $$ = makeItemKey(&$1); }
-	| TO_P							{ $$ = makeItemKey(&$1); }
-	| NULL_P						{ $$ = makeItemKey(&$1); }
-	| TRUE_P						{ $$ = makeItemKey(&$1); }
-	| FALSE_P						{ $$ = makeItemKey(&$1); }
-	| IS_P							{ $$ = makeItemKey(&$1); }
-	| UNKNOWN_P						{ $$ = makeItemKey(&$1); }
-	| EXISTS_P						{ $$ = makeItemKey(&$1); }
-	| STRICT_P						{ $$ = makeItemKey(&$1); }
-	| LAX_P							{ $$ = makeItemKey(&$1); }
+	key_name						{ $$ = makeItemKey(&$1); }
+	;
+
+key_name:
+	STRING_P
+	| TO_P
+	| NULL_P
+	| TRUE_P
+	| FALSE_P
+	| IS_P
+	| UNKNOWN_P
+	| EXISTS_P
+	| STRICT_P
+	| LAX_P
+	| ABS_P
+	| SIZE_P
+	| TYPE_P
+	| FLOOR_P
+	| DOUBLE_P
+	| CEILING_P
+	| DATETIME_P
+	| KEYVALUE_P
+	;
+
+method:
+	ABS_P							{ $$ = jpiAbs; }
+	| SIZE_P						{ $$ = jpiSize; }
+	| TYPE_P						{ $$ = jpiType; }
+	| FLOOR_P						{ $$ = jpiFloor; }
+	| DOUBLE_P						{ $$ = jpiDouble; }
+	| CEILING_P						{ $$ = jpiCeiling; }
+	| DATETIME_P					{ $$ = jpiDatetime; }
+	| KEYVALUE_P					{ $$ = jpiKeyValue; }
 	;
 %%
 
