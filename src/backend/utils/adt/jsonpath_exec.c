@@ -209,11 +209,11 @@ JsonbType(JsonbValue *jb)
 	{
 		JsonbContainer	*jbc = jb->val.binary.data;
 
-		if (jbc->header & JB_FSCALAR)
+		if (JsonContainerIsScalar(jbc))
 			type = jbvScalar;
-		else if (jbc->header & JB_FOBJECT)
+		else if (JsonContainerIsObject(jbc))
 			type = jbvObject;
-		else if (jbc->header & JB_FARRAY)
+		else if (JsonContainerIsArray(jbc))
 			type = jbvArray;
 		else
 			elog(ERROR, "Unknown container type: 0x%08x", jbc->header);
