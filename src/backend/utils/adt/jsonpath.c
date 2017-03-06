@@ -91,7 +91,6 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			{
 				int32	left, right;
 
-				forbiddenRoot = true;
 				left = buf->len;
 
 				/*
@@ -102,9 +101,9 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				right = buf->len;
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
-				chld = flattenJsonPathParseItem(buf, item->value.args.left, true);
+				chld = flattenJsonPathParseItem(buf, item->value.args.left, forbiddenRoot);
 				*(int32*)(buf->data + left) = chld;
-				chld = flattenJsonPathParseItem(buf, item->value.args.right, true);
+				chld = flattenJsonPathParseItem(buf, item->value.args.right, forbiddenRoot);
 				*(int32*)(buf->data + right) = chld;
 			}
 			break;
@@ -120,8 +119,9 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				arg = buf->len;
 				appendBinaryStringInfo(buf, (char*)&arg /* fake value */, sizeof(arg));
 
-				forbiddenRoot = true;
-				chld = flattenJsonPathParseItem(buf, item->value.arg, true);
+				chld = flattenJsonPathParseItem(buf, item->value.arg,
+												item->type == jpiFilter ||
+												forbiddenRoot);
 				*(int32*)(buf->data + arg) = chld;
 			}
 			break;
@@ -136,9 +136,15 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("root is not allowed in expression")));
+			break;
 		case jpiAnyArray:
 		case jpiAnyKey:
+			break;
 		case jpiCurrent:
+			if (!forbiddenRoot)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("@ is not allowed in root expressions")));
 			break;
 		case jpiIndexArray:
 			appendBinaryStringInfo(buf,
