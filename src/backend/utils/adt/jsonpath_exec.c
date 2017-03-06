@@ -222,6 +222,69 @@ JsonbType(JsonbValue *jb)
 	return type;
 }
 
+static const char *
+JsonbTypeName(JsonbValue *jb)
+{
+	JsonbValue jbvbuf;
+
+	if (jb->type == jbvBinary)
+	{
+		JsonbContainer *jbc = jb->val.binary.data;
+
+		if (JsonContainerIsScalar(jbc))
+			jb = JsonbExtractScalar(jbc, &jbvbuf);
+		else if (JsonContainerIsArray(jbc))
+			return "array";
+		else if (JsonContainerIsObject(jbc))
+			return "object";
+		else
+			elog(ERROR, "Unknown container type: 0x%08x", jbc->header);
+	}
+
+	switch (jb->type)
+	{
+		case jbvObject:
+			return "object";
+		case jbvArray:
+			return "array";
+		case jbvNumeric:
+			return "number";
+		case jbvString:
+			return "string";
+		case jbvBool:
+			return "boolean";
+		case jbvNull:
+			return "null";
+		/* TODO
+			return "date";
+			return "time without time zone";
+			return "time with time zone";
+			return "timestamp without time zone";
+			return "timestamp with time zone";
+		*/
+		default:
+			elog(ERROR, "Unknown jsonb value type: %d", jb->type);
+			return "unknown";
+	}
+}
+
+static int
+JsonbArraySize(JsonbValue *jb)
+{
+	if (jb->type == jbvArray)
+		return jb->val.array.nElems;
+
+	if (jb->type == jbvBinary)
+	{
+		JsonbContainer *jbc = jb->val.binary.data;
+
+		if (JsonContainerIsArray(jbc) && !JsonContainerIsScalar(jbc))
+			return JsonContainerSize(jbc);
+	}
+
+	return -1;
+}
+
 static int
 compareNumeric(Numeric a, Numeric b)
 {
@@ -1041,6 +1104,237 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				*found = lappend(*found, jbv);
 			}
 			break;
+		case jpiType:
+			{
+				JsonbValue *jbv = palloc(sizeof(*jbv));
+
+				jbv->type = jbvString;
+				jbv->val.string.val = pstrdup(JsonbTypeName(jb));
+				jbv->val.string.len = strlen(jbv->val.string.val);
+
+				res = jperOk;
+
+				if (jspGetNext(jsp, &elem))
+					res = recursiveExecute(cxt, &elem, jbv, found);
+				else if (found)
+					*found = lappend(*found, jbv);
+			}
+			break;
+		case jpiSize:
+			{
+				int			size = JsonbArraySize(jb);
+
+				if (size < 0)
+				{
+					if (!cxt->lax)
+					{
+						res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+						break;
+					}
+
+					size = 1;
+				}
+
+				jb = palloc(sizeof(*jb));
+
+				jb->type = jbvNumeric;
+				jb->val.numeric =
+					DatumGetNumeric(DirectFunctionCall1(int4_numeric,
+														Int32GetDatum(size)));
+
+				res = jperOk;
+
+				if (jspGetNext(jsp, &elem))
+					res = recursiveExecute(cxt, &elem, jb, found);
+				else if (found)
+					*found = lappend(*found, jb);
+			}
+			break;
+		case jpiAbs:
+		case jpiFloor:
+		case jpiCeiling:
+			{
+				JsonbValue jbvbuf;
+
+				if (JsonbType(jb) == jbvScalar)
+					jb = JsonbExtractScalar(jb->val.binary.data, &jbvbuf);
+
+				if (jb->type == jbvNumeric)
+				{
+					Datum		datum = NumericGetDatum(jb->val.numeric);
+
+					switch (jsp->type)
+					{
+						case jpiAbs:
+							datum = DirectFunctionCall1(numeric_abs, datum);
+							break;
+						case jpiFloor:
+							datum = DirectFunctionCall1(numeric_floor, datum);
+							break;
+						case jpiCeiling:
+							datum = DirectFunctionCall1(numeric_ceil, datum);
+							break;
+						default:
+							break;
+					}
+
+					jb = palloc(sizeof(*jb));
+
+					jb->type = jbvNumeric;
+					jb->val.numeric = DatumGetNumeric(datum);
+
+					res = jperOk;
+
+					if (jspGetNext(jsp, &elem))
+						res = recursiveExecute(cxt, &elem, jb, found);
+					else if (found)
+						*found = lappend(*found, jb);
+				}
+				else
+					res = jperMakeError(ERRCODE_NON_NUMERIC_JSON_ITEM);
+			}
+			break;
+		case jpiDouble:
+			{
+				JsonbValue jbv;
+				MemoryContext mcxt = CurrentMemoryContext;
+
+				if (JsonbType(jb) == jbvScalar)
+					jb = JsonbExtractScalar(jb->val.binary.data, &jbv);
+
+				PG_TRY();
+				{
+					if (jb->type == jbvNumeric)
+					{
+						/* only check success of numeric to double cast */
+						DirectFunctionCall1(numeric_float8,
+											NumericGetDatum(jb->val.numeric));
+						res = jperOk;
+					}
+					else if (jb->type == jbvString)
+					{
+						/* cast string as double */
+						char	   *str = pnstrdup(jb->val.string.val,
+												   jb->val.string.len);
+						Datum		val = DirectFunctionCall1(
+											float8in, CStringGetDatum(str));
+						pfree(str);
+
+						jb = &jbv;
+						jb->type = jbvNumeric;
+						jb->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+														float8_numeric, val));
+						res = jperOk;
+
+					}
+					else
+						res = jperMakeError(ERRCODE_NON_NUMERIC_JSON_ITEM);
+				}
+				PG_CATCH();
+				{
+					if (ERRCODE_TO_CATEGORY(geterrcode()) !=
+														ERRCODE_DATA_EXCEPTION)
+						PG_RE_THROW();
+
+					FlushErrorState();
+					MemoryContextSwitchTo(mcxt);
+					res = jperMakeError(ERRCODE_NON_NUMERIC_JSON_ITEM);
+				}
+				PG_END_TRY();
+
+				if (res == jperOk)
+				{
+					if (jspGetNext(jsp, &elem))
+						res = recursiveExecute(cxt, &elem, jb, found);
+					else if (found)
+						*found = lappend(*found, copyJsonbValue(jb));
+				}
+			}
+			break;
+		case jpiDatetime:
+			/* TODO */
+			break;
+		case jpiKeyValue:
+			if (JsonbType(jb) != jbvObject)
+				res = jperMakeError(ERRCODE_JSON_OBJECT_NOT_FOUND);
+			else
+			{
+				int32		r;
+				JsonbValue	key;
+				JsonbValue	val;
+				JsonbValue	obj;
+				JsonbValue	keystr;
+				JsonbValue	valstr;
+				JsonbIterator *it;
+				JsonbParseState *ps = NULL;
+
+				hasNext = jspGetNext(jsp, &elem);
+
+				if (!JsonContainerSize(jb->val.binary.data))
+				{
+					res = jperNotFound;
+					break;
+				}
+
+				/* make template object */
+				obj.type = jbvBinary;
+
+				keystr.type = jbvString;
+				keystr.val.string.val = "key";
+				keystr.val.string.len = 3;
+
+				valstr.type = jbvString;
+				valstr.val.string.val = "value";
+				valstr.val.string.len = 5;
+
+				it = JsonbIteratorInit(jb->val.binary.data);
+
+				while ((r = JsonbIteratorNext(&it, &key, true)) != WJB_DONE)
+				{
+					if (r == WJB_KEY)
+					{
+						Jsonb	   *jsonb;
+						JsonbValue *keyval;
+
+						res = jperOk;
+
+						if (!hasNext && !found)
+							break;
+
+						r = JsonbIteratorNext(&it, &val, true);
+						Assert(r == WJB_VALUE);
+
+						pushJsonbValue(&ps, WJB_BEGIN_OBJECT, NULL);
+
+						pushJsonbValue(&ps, WJB_KEY, &keystr);
+						pushJsonbValue(&ps, WJB_VALUE, &key);
+
+
+						pushJsonbValue(&ps, WJB_KEY, &valstr);
+						pushJsonbValue(&ps, WJB_VALUE, &val);
+
+						keyval = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
+
+						jsonb = JsonbValueToJsonb(keyval);
+
+						JsonbInitBinary(&obj, jsonb);
+
+						if (hasNext)
+						{
+							res = recursiveExecute(cxt, &elem, &obj, found);
+
+							if (jperIsError(res))
+								break;
+
+							if (res == jperOk && !found)
+								break;
+						}
+						else
+							*found = lappend(*found, copyJsonbValue(&obj));
+					}
+				}
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
@@ -1135,7 +1429,13 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			case jpiAnyKey:
 		/*	case jpiAny: */
 			case jpiFilter:
-		/*	case jpiMethod: excluding type() and size() */
+			/* all methods excluding type() and size() */
+			case jpiAbs:
+			case jpiFloor:
+			case jpiCeiling:
+			case jpiDouble:
+			case jpiDatetime:
+			case jpiKeyValue:
 				return recursiveExecuteUnwrap(cxt, jsp, jb, found);
 
 			case jpiAnyArray:

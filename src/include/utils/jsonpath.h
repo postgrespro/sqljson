@@ -69,7 +69,15 @@ typedef enum JsonPathItemType {
 		jpiRoot,
 		jpiVariable,
 		jpiFilter,
-		jpiExists
+		jpiExists,
+		jpiType,
+		jpiSize,
+		jpiAbs,
+		jpiFloor,
+		jpiCeiling,
+		jpiDouble,
+		jpiDatetime,
+		jpiKeyValue,
 } JsonPathItemType;
 
 

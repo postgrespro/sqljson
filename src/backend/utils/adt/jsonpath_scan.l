@@ -271,13 +271,21 @@ typedef struct keyword
 static keyword keywords[] = {
 	{ 2, false,	IS_P,		"is"},
 	{ 2, false,	TO_P,		"to"},
+	{ 3, false,	ABS_P,		"abs"},
 	{ 3, false,	LAX_P,		"lax"},
 	{ 4, true,	NULL_P,		"null"},
+	{ 4, false,	SIZE_P,		"size"},
 	{ 4, true,	TRUE_P,		"true"},
+	{ 4, false,	TYPE_P,		"type"},
 	{ 5, true,	FALSE_P,	"false"},
+	{ 5, false,	FLOOR_P,	"floor"},
+	{ 6, false,	DOUBLE_P,	"double"},
 	{ 6, false,	EXISTS_P,	"exists"},
 	{ 6, false,	STRICT_P,	"strict"},
-	{ 7, false,	UNKNOWN_P,	"unknown"}
+	{ 7, false,	CEILING_P,	"ceiling"},
+	{ 7, false,	UNKNOWN_P,	"unknown"},
+	{ 8, false,	DATETIME_P,	"datetime"},
+	{ 8, false,	KEYVALUE_P,	"keyvalue"},
 };
 
 static int

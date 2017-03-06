@@ -165,6 +165,15 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 								   (char*)&item->value.anybounds.last,
 								   sizeof(item->value.anybounds.last));
 			break;
+		case jpiType:
+		case jpiSize:
+		case jpiAbs:
+		case jpiFloor:
+		case jpiCeiling:
+		case jpiDouble:
+		case jpiDatetime:
+		case jpiKeyValue:
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -402,6 +411,30 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 				appendStringInfo(buf, "**{%u,%u}", v->content.anybounds.first,
 												   v->content.anybounds.last);
 			break;
+		case jpiType:
+			appendBinaryStringInfo(buf, ".type()", 7);
+			break;
+		case jpiSize:
+			appendBinaryStringInfo(buf, ".size()", 7);
+			break;
+		case jpiAbs:
+			appendBinaryStringInfo(buf, ".abs()", 6);
+			break;
+		case jpiFloor:
+			appendBinaryStringInfo(buf, ".floor()", 8);
+			break;
+		case jpiCeiling:
+			appendBinaryStringInfo(buf, ".ceiling()", 10);
+			break;
+		case jpiDouble:
+			appendBinaryStringInfo(buf, ".double()", 9);
+			break;
+		case jpiDatetime:
+			appendBinaryStringInfo(buf, ".datetime()", 11);
+			break;
+		case jpiKeyValue:
+			appendBinaryStringInfo(buf, ".keyvalue()", 11);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -487,6 +520,14 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiCurrent:
 		case jpiAnyArray:
 		case jpiAnyKey:
+		case jpiType:
+		case jpiSize:
+		case jpiAbs:
+		case jpiFloor:
+		case jpiCeiling:
+		case jpiDouble:
+		case jpiDatetime:
+		case jpiKeyValue:
 			break;
 		case jpiKey:
 		case jpiString:
@@ -563,7 +604,15 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiFilter ||
 			v->type == jpiCurrent ||
 			v->type == jpiExists ||
-			v->type == jpiRoot
+			v->type == jpiRoot ||
+			v->type == jpiType ||
+			v->type == jpiSize ||
+			v->type == jpiAbs ||
+			v->type == jpiFloor ||
+			v->type == jpiCeiling ||
+			v->type == jpiDouble ||
+			v->type == jpiDatetime ||
+			v->type == jpiKeyValue
 		);
 
 		if (a)
