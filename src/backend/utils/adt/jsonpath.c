@@ -259,8 +259,11 @@ operationPriority(JsonPathItemType op)
 		case jpiDiv:
 		case jpiMod:
 			return 4;
-		default:
+		case jpiPlus:
+		case jpiMinus:
 			return 5;
+		default:
+			return 6;
 	}
 }
 
@@ -321,6 +324,18 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 							  operationPriority(v->type));
 			printOperation(buf, v->type);
 			jspGetRightArg(v, &elem);
+			printJsonPathItem(buf, &elem, false,
+							  operationPriority(elem.type) <=
+							  operationPriority(v->type));
+			if (printBracketes)
+				appendStringInfoChar(buf, ')');
+			break;
+		case jpiPlus:
+		case jpiMinus:
+			if (printBracketes)
+				appendStringInfoChar(buf, '(');
+			appendStringInfoChar(buf, v->type == jpiPlus ? '+' : '-');
+			jspGetArg(v, &elem);
 			printJsonPathItem(buf, &elem, false,
 							  operationPriority(elem.type) <=
 							  operationPriority(v->type));

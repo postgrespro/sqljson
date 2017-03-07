@@ -46,6 +46,7 @@ select '$.g ? (exists (.x))'::jsonpath;
 select '$.g ? (exists (@.x ? (@ == 14)))'::jsonpath;
 select '$.g ? (exists (.x ? (@ == 14)))'::jsonpath;
 select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
+select '$.g ? (+x >= +-(+a + 2))'::jsonpath;
 
 select '$a'::jsonpath;
 select '$a.b'::jsonpath;
