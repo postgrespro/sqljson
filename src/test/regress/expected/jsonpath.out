@@ -267,6 +267,24 @@ select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
  $."g"?(("x" >= 123 || "a" == 4) && exists (@."x"?(@ == 14)))
 (1 row)
 
+select '$a'::jsonpath;
+ jsonpath 
+----------
+ $"a"
+(1 row)
+
+select '$a.b'::jsonpath;
+ jsonpath 
+----------
+ $"a"."b"
+(1 row)
+
+select '$a[*]'::jsonpath;
+ jsonpath 
+----------
+ $"a"[*]
+(1 row)
+
 select '$.g ? (zip == $zip)'::jsonpath;
         jsonpath         
 -------------------------
@@ -283,6 +301,36 @@ select '$.a[1,2, 3 to 16]'::jsonpath;
                    jsonpath                    
 -----------------------------------------------
  $."a"[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+(1 row)
+
+select 'null.type()'::jsonpath;
+  jsonpath   
+-------------
+ null.type()
+(1 row)
+
+select '1.type()'::jsonpath;
+ jsonpath 
+----------
+ 1.type()
+(1 row)
+
+select '"aaa".type()'::jsonpath;
+   jsonpath   
+--------------
+ "aaa".type()
+(1 row)
+
+select 'aaa.type()'::jsonpath;
+   jsonpath   
+--------------
+ "aaa".type()
+(1 row)
+
+select 'true.type()'::jsonpath;
+  jsonpath   
+-------------
+ true.type()
 (1 row)
 
 select '$ ? (a < 1)'::jsonpath;
