@@ -221,7 +221,7 @@ makeAny(int first, int last)
 %token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
-%token	<str>		ANY_P STRICT_P LAX_P
+%token	<str>		ANY_P STRICT_P LAX_P LAST_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
 %token	<str>		KEYVALUE_P
 
@@ -312,6 +312,7 @@ path_primary:
 	scalar_value					{ $$ = $1; }
 	| '$'							{ $$ = makeItemType(jpiRoot); }
 	| '@'							{ $$ = makeItemType(jpiCurrent); }
+	| LAST_P						{ $$ = makeItemType(jpiLast); }
 	;
 
 accessor_expr:
@@ -394,6 +395,7 @@ key_name:
 	| CEILING_P
 	| DATETIME_P
 	| KEYVALUE_P
+	| LAST_P
 	;
 
 method:

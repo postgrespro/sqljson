@@ -274,6 +274,39 @@ select * from _jsonpath_query(jsonb '[1,2,3]', 'lax $[*]');
  3
 (3 rows)
 
+select * from _jsonpath_query(jsonb '[]', '$[last]');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select * from _jsonpath_query(jsonb '[]', 'strict $[last]');
+ERROR:  Invalid SQL/JSON subscript
+select * from _jsonpath_query(jsonb '[1]', '$[last]');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last]');
+ _jsonpath_query 
+-----------------
+ 3
+(1 row)
+
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last - 1]');
+ _jsonpath_query 
+-----------------
+ 2
+(1 row)
+
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last ? (@.type() == "number")]');
+ _jsonpath_query 
+-----------------
+ 3
+(1 row)
+
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last ? (@.type() == "string")]');
+ERROR:  Invalid SQL/JSON subscript
 select * from _jsonpath_query(jsonb '{"a": 10}', '$');
  _jsonpath_query 
 -----------------

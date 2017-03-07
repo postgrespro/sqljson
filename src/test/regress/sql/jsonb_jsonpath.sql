@@ -45,7 +45,13 @@ select * from _jsonpath_query(jsonb '1', 'lax $[*]');
 select * from _jsonpath_query(jsonb '[1]', 'lax $[0]');
 select * from _jsonpath_query(jsonb '[1]', 'lax $[*]');
 select * from _jsonpath_query(jsonb '[1,2,3]', 'lax $[*]');
-
+select * from _jsonpath_query(jsonb '[]', '$[last]');
+select * from _jsonpath_query(jsonb '[]', 'strict $[last]');
+select * from _jsonpath_query(jsonb '[1]', '$[last]');
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last]');
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last - 1]');
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last ? (@.type() == "number")]');
+select * from _jsonpath_query(jsonb '[1,2,3]', '$[last ? (@.type() == "string")]');
 
 select * from _jsonpath_query(jsonb '{"a": 10}', '$');
 select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)');

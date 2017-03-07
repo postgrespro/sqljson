@@ -79,6 +79,7 @@ typedef enum JsonPathItemType {
 		jpiDatetime,
 		jpiKeyValue,
 		jpiSubscript,
+		jpiLast,
 } JsonPathItemType;
 
 

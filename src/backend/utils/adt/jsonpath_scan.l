@@ -273,6 +273,7 @@ static keyword keywords[] = {
 	{ 2, false,	TO_P,		"to"},
 	{ 3, false,	ABS_P,		"abs"},
 	{ 3, false,	LAX_P,		"lax"},
+	{ 4, false,	LAST_P,		"last"},
 	{ 4, true,	NULL_P,		"null"},
 	{ 4, false,	SIZE_P,		"size"},
 	{ 4, true,	TRUE_P,		"true"},

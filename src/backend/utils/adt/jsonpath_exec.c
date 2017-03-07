@@ -25,6 +25,7 @@ typedef struct JsonPathExecContext
 {
 	List	   *vars;
 	bool		lax;
+	int			innermostArraySize;	/* for LAST array index evaluation */
 } JsonPathExecContext;
 
 static JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
@@ -950,8 +951,11 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiIndexArray:
 			if (JsonbType(jb) == jbvArray)
 			{
+				int			innermostArraySize = cxt->innermostArraySize;
 				int			i;
 				int			size = JsonbArraySize(jb);
+
+				cxt->innermostArraySize = size; /* for LAST evaluation */
 
 				hasNext = jspGetNext(jsp, &elem);
 
@@ -1032,9 +1036,48 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					if (res == jperOk && !found)
 						break;
 				}
+
+				cxt->innermostArraySize = innermostArraySize;
 			}
 			else
 				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+			break;
+
+		case jpiLast:
+			{
+				JsonbValue	tmpjbv;
+				JsonbValue *lastjbv;
+				int			last;
+				bool		hasNext;
+
+				if (cxt->innermostArraySize < 0)
+					elog(ERROR,
+						 "evaluating jsonpath LAST outside of array subscript");
+
+				hasNext = jspGetNext(jsp, &elem);
+
+				if (!hasNext && !found)
+				{
+					res = jperOk;
+					break;
+				}
+
+				last = cxt->innermostArraySize - 1;
+
+				lastjbv = hasNext ? &tmpjbv : palloc(sizeof(*lastjbv));
+
+				lastjbv->type = jbvNumeric;
+				lastjbv->val.numeric = DatumGetNumeric(DirectFunctionCall1(
+											int4_numeric, Int32GetDatum(last)));
+
+				if (hasNext)
+					res = recursiveExecute(cxt, &elem, lastjbv, found);
+				else
+				{
+					res = jperOk;
+					*found = lappend(*found, lastjbv);
+				}
+			}
 			break;
 		case jpiAnyKey:
 			if (JsonbType(jb) == jbvObject)
@@ -1553,6 +1596,7 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, List **foundJson)
 
 	cxt.vars = vars;
 	cxt.lax = (path->header & JSONPATH_LAX) != 0;
+	cxt.innermostArraySize = -1;
 
 	if (!cxt.lax && !foundJson)
 	{
