@@ -78,6 +78,7 @@ typedef enum JsonPathItemType {
 		jpiDouble,
 		jpiDatetime,
 		jpiKeyValue,
+		jpiSubscript,
 } JsonPathItemType;
 
 
@@ -114,7 +115,10 @@ typedef struct JsonPathItem {
 		/* storage for jpiIndexArray: indexes of array */
 		struct {
 			int32	nelems;
-			int32	*elems;
+			struct {
+				int32	from;
+				int32	to;
+			}	   *elems;
 		} array;
 
 		/* jpiAny: levels */
@@ -139,6 +143,8 @@ extern void jspGetRightArg(JsonPathItem *v, JsonPathItem *a);
 extern Numeric	jspGetNumeric(JsonPathItem *v);
 extern bool		jspGetBool(JsonPathItem *v);
 extern char * jspGetString(JsonPathItem *v, int32 *len);
+extern bool jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from,
+								 JsonPathItem *to, int i);
 
 /*
  * Parsing
@@ -164,7 +170,11 @@ struct JsonPathParseItem {
 		/* storage for jpiIndexArray: indexes of array */
 		struct {
 			int		nelems;
-			int32	*elems;
+			struct
+			{
+				JsonPathParseItem *from;
+				JsonPathParseItem *to;
+			}	   *elems;
 		} array;
 
 		/* jpiAny: levels */
