@@ -736,6 +736,37 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	return res;
 }
 
+static JsonPathExecResult
+getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+			  int32 *index)
+{
+	JsonbValue *jbv;
+	List	   *found = NIL;
+	JsonbValue	tmp;
+	JsonPathExecResult res = recursiveExecute(cxt, jsp, jb, &found);
+
+	if (jperIsError(res))
+		return res;
+
+	if (list_length(found) != 1)
+		return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+	jbv = linitial(found);
+
+	if (JsonbType(jbv) == jbvScalar)
+		jbv = JsonbExtractScalar(jbv->val.binary.data, &tmp);
+
+	if (jbv->type != jbvNumeric)
+		return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+	*index = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+							DirectFunctionCall2(numeric_trunc,
+											NumericGetDatum(jbv->val.numeric),
+											Int32GetDatum(0))));
+
+	return jperOk;
+}
+
 /*
  * Main executor function: walks on jsonpath structure and tries to find
  * correspoding parts of jsonb. Note, jsonb and jsonpath values should be
@@ -919,39 +950,87 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiIndexArray:
 			if (JsonbType(jb) == jbvArray)
 			{
-				JsonbValue		*v;
-				int				i;
+				int			i;
+				int			size = JsonbArraySize(jb);
 
 				hasNext = jspGetNext(jsp, &elem);
 
-				for(i=0; i<jsp->content.array.nelems; i++)
+				for (i = 0; i < jsp->content.array.nelems; i++)
 				{
-					/* TODO for future: array index can be expression */
-					v = getIthJsonbValueFromContainer(jb->val.binary.data,
-													  jsp->content.array.elems[i]);
+					JsonPathItem from;
+					JsonPathItem to;
+					int32		index;
+					int32		index_from;
+					int32		index_to;
+					bool		range = jspGetArraySubscript(jsp, &from, &to, i);
 
-					if (v == NULL)
-						continue;
+					res = getArrayIndex(cxt, &from, jb, &index_from);
 
-					if (hasNext == true)
+					if (jperIsError(res))
+						break;
+
+					if (range)
 					{
-						res = recursiveExecute(cxt, &elem, v, found);
+						res = getArrayIndex(cxt, &to, jb, &index_to);
 
-						if (jperIsError(res) || found == NULL)
+						if (jperIsError(res))
 							break;
-
-						if (res == jperOk && found == NULL)
-								break;
 					}
 					else
+						index_to = index_from;
+
+					if (!cxt->lax &&
+						(index_from < 0 ||
+						 index_from > index_to ||
+						 index_to >= size))
 					{
-						res = jperOk;
-
-						if (found == NULL)
-							break;
-
-						*found = lappend(*found, v);
+						res = jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+						break;
 					}
+
+					if (index_from < 0)
+						index_from = 0;
+
+					if (index_to >= size)
+						index_to = size - 1;
+
+					res = jperNotFound;
+
+					for (index = index_from; index <= index_to; index++)
+					{
+						JsonbValue *v =
+							getIthJsonbValueFromContainer(jb->val.binary.data,
+														  (uint32) index);
+
+						if (v == NULL)
+							continue;
+
+						if (hasNext)
+						{
+							res = recursiveExecute(cxt, &elem, v, found);
+
+							if (jperIsError(res))
+								break;
+
+							if (res == jperOk && !found)
+								break;
+						}
+						else
+						{
+							res = jperOk;
+
+							if (!found)
+								break;
+
+							*found = lappend(*found, v);
+						}
+					}
+
+					if (jperIsError(res))
+						break;
+
+					if (res == jperOk && !found)
+						break;
 				}
 			}
 			else

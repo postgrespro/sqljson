@@ -76,10 +76,48 @@ select _jsonpath_exists(jsonb '[1]', '$.[1]');
  f
 (1 row)
 
+select _jsonpath_exists(jsonb '[1]', 'strict $.[1]');
+ _jsonpath_exists 
+------------------
+ 
+(1 row)
+
+select _jsonpath_query(jsonb '[1]', 'strict $[1]');
+ERROR:  Invalid SQL/JSON subscript
 select _jsonpath_exists(jsonb '[1]', '$.[0]');
  _jsonpath_exists 
 ------------------
  t
+(1 row)
+
+select _jsonpath_exists(jsonb '[1]', '$.[0.3]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '[1]', '$.[0.5]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '[1]', '$.[0.9]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '[1]', '$.[1.2]');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '[1]', 'strict $.[1.2]');
+ _jsonpath_exists 
+------------------
+ 
 (1 row)
 
 select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,5]}', '$ ? (@.a[*] >  @.b[*])');
@@ -94,7 +132,7 @@ select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,5]}', '$ ? (@.a[*] >= @.
  t
 (1 row)
 
-select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,"5"]}', 'lax $ ? (@.a[*] >= @.b[*])');
+select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,"5"]}', '$ ? (@.a[*] >= @.b[*])');
  _jsonpath_exists 
 ------------------
  t
@@ -122,6 +160,12 @@ select _jsonpath_exists(jsonb '1', '$ ? ((@ == 1) is unknown)');
  _jsonpath_exists 
 ------------------
  f
+(1 row)
+
+select _jsonpath_exists(jsonb '[{"a": 1}, {"a": 2}]', '$[0 to 1] ? (@.a > 1)');
+ _jsonpath_exists 
+------------------
+ t
 (1 row)
 
 select * from _jsonpath_query(jsonb '{"a": 12, "b": {"a": 13}}', '$.a');
@@ -189,6 +233,14 @@ select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}]', 'lax $.[0 to 1
 -----------------
  13
 (1 row)
+
+select * from _jsonpath_query(jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]', '$.[2.5 - 1 to @.size() - 2]');
+ _jsonpath_query 
+-----------------
+ {"a": 13}
+ {"b": 14}
+ "ccc"
+(3 rows)
 
 select * from _jsonpath_query(jsonb '1', 'lax $[0]');
  _jsonpath_query 
@@ -408,79 +460,79 @@ select * from _jsonpath_query(jsonb '{"a": {"c": {"b": 1}}}', 'lax $.**{2,3}.b ?
  1
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{0}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{0}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  f
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{1}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{1}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{0,}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{0,}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{1,}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{1,}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{1,2}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"b": 1}}', '$.**{1,2}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{0}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{0}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  f
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  f
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{0,}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{0,}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1,}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1,}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1,2}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{1,2}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
 (1 row)
 
-select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{2,3}.b ? (@ > 0)');
+select * from _jsonpath_exists(jsonb '{"a": {"c": {"b": 1}}}', '$.**{2,3}.b ? ( @ > 0)');
  _jsonpath_exists 
 ------------------
  t
