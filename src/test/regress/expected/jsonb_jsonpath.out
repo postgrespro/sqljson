@@ -727,6 +727,36 @@ select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$[*].type()');
  "object"
 (6 rows)
 
+select _jsonpath_query(jsonb 'null', 'null.type()');
+ _jsonpath_query 
+-----------------
+ "null"
+(1 row)
+
+select _jsonpath_query(jsonb 'null', 'true.type()');
+ _jsonpath_query 
+-----------------
+ "boolean"
+(1 row)
+
+select _jsonpath_query(jsonb 'null', '123.type()');
+ _jsonpath_query 
+-----------------
+ "number"
+(1 row)
+
+select _jsonpath_query(jsonb 'null', '"123".type()');
+ _jsonpath_query 
+-----------------
+ "string"
+(1 row)
+
+select _jsonpath_query(jsonb 'null', 'aaa.type()');
+ _jsonpath_query 
+-----------------
+ "string"
+(1 row)
+
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'strict $[*].size()');
 ERROR:  SQL/JSON array not found
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'lax $[*].size()');

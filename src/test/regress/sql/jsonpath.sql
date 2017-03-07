@@ -47,9 +47,18 @@ select '$.g ? (exists (@.x ? (@ == 14)))'::jsonpath;
 select '$.g ? (exists (.x ? (@ == 14)))'::jsonpath;
 select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
 
+select '$a'::jsonpath;
+select '$a.b'::jsonpath;
+select '$a[*]'::jsonpath;
 select '$.g ? (zip == $zip)'::jsonpath;
 select '$.a.[1,2, 3 to 16]'::jsonpath;
 select '$.a[1,2, 3 to 16]'::jsonpath;
+
+select 'null.type()'::jsonpath;
+select '1.type()'::jsonpath;
+select '"aaa".type()'::jsonpath;
+select 'aaa.type()'::jsonpath;
+select 'true.type()'::jsonpath;
 
 select '$ ? (a < 1)'::jsonpath;
 select '$ ? (a < -1)'::jsonpath;

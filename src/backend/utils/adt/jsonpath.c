@@ -48,11 +48,6 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 	{
 		case jpiString:
 		case jpiVariable:
-			/* scalars aren't checked during grammar parse */
-			if (item->next != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("scalar could not be a part of path")));
 		case jpiKey:
 			appendBinaryStringInfo(buf, (char*)&item->value.string.len,
 								   sizeof(item->value.string.len));
@@ -60,18 +55,10 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			appendStringInfoChar(buf, '\0');
 			break;
 		case jpiNumeric:
-			if (item->next != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("scalar could not be a part of path")));
 			appendBinaryStringInfo(buf, (char*)item->value.numeric,
 								   VARSIZE(item->value.numeric));
 			break;
 		case jpiBool:
-			if (item->next != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("scalar could not be a part of path")));
 			appendBinaryStringInfo(buf, (char*)&item->value.boolean,
 								   sizeof(item->value.boolean));
 			break;
@@ -126,10 +113,6 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			}
 			break;
 		case jpiNull:
-			if (item->next != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("scalar could not be a part of path")));
 			break;
 		case jpiRoot:
 			if (forbiddenRoot)
@@ -592,6 +575,10 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 	if (v->nextPos > 0)
 	{
 		Assert(
+			v->type == jpiString ||
+			v->type == jpiNumeric ||
+			v->type == jpiBool ||
+			v->type == jpiNull ||
 			v->type == jpiKey ||
 			v->type == jpiAny ||
 			v->type == jpiAnyArray ||
@@ -601,6 +588,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiCurrent ||
 			v->type == jpiExists ||
 			v->type == jpiRoot ||
+			v->type == jpiVariable ||
 			v->type == jpiType ||
 			v->type == jpiSize ||
 			v->type == jpiAbs ||

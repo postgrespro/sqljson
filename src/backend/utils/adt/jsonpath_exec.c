@@ -1094,12 +1094,21 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiNumeric:
 		case jpiString:
 		case jpiVariable:
-			res = jperOk;
-			if (found)
+			if (jspGetNext(jsp, &elem))
 			{
-				JsonbValue *jbv = palloc(sizeof(*jbv));
-				computeJsonPathItem(cxt, jsp, jbv);
-				*found = lappend(*found, jbv);
+				JsonbValue jbv;
+				computeJsonPathItem(cxt, jsp, &jbv);
+				res = recursiveExecute(cxt, &elem, &jbv, found);
+			}
+			else
+			{
+				res = jperOk;
+				if (found)
+				{
+					JsonbValue *jbv = palloc(sizeof(*jbv));
+					computeJsonPathItem(cxt, jsp, jbv);
+					*found = lappend(*found, jbv);
+				}
 			}
 			break;
 		case jpiType:

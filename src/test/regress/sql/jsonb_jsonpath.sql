@@ -149,6 +149,11 @@ select _jsonpath_query(jsonb '{"a": [1, 2]}', 'lax $.a * 3');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$.type()');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', 'lax $.type()');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$[*].type()');
+select _jsonpath_query(jsonb 'null', 'null.type()');
+select _jsonpath_query(jsonb 'null', 'true.type()');
+select _jsonpath_query(jsonb 'null', '123.type()');
+select _jsonpath_query(jsonb 'null', '"123".type()');
+select _jsonpath_query(jsonb 'null', 'aaa.type()');
 
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'strict $[*].size()');
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'lax $[*].size()');
