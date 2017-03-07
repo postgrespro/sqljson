@@ -132,13 +132,39 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 						 errmsg("@ is not allowed in root expressions")));
 			break;
 		case jpiIndexArray:
-			appendBinaryStringInfo(buf,
-								   (char*)&item->value.array.nelems,
-								   sizeof(item->value.array.nelems));
-			appendBinaryStringInfo(buf,
-								   (char*)item->value.array.elems,
-								   item->value.array.nelems *
-										sizeof(item->value.array.elems[0]));
+			{
+				int32		nelems = item->value.array.nelems;
+				int			offset;
+				int			i;
+
+				appendBinaryStringInfo(buf, (char *) &nelems, sizeof(nelems));
+
+				offset = buf->len;
+
+				appendStringInfoSpaces(buf, sizeof(int32) * 2 * nelems);
+
+				for (i = 0; i < nelems; i++)
+				{
+					int32	   *ppos;
+					int32		topos;
+					int32		frompos =
+						flattenJsonPathParseItem(buf,
+												item->value.array.elems[i].from,
+												true);
+
+					if (item->value.array.elems[i].to)
+						topos = flattenJsonPathParseItem(buf,
+												item->value.array.elems[i].to,
+												true);
+					else
+						topos = 0;
+
+					ppos = (int32 *) &buf->data[offset + i * 2 * sizeof(int32)];
+
+					ppos[0] = frompos;
+					ppos[1] = topos;
+				}
+			}
 			break;
 		case jpiAny:
 			appendBinaryStringInfo(buf,
@@ -384,11 +410,22 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			break;
 		case jpiIndexArray:
 			appendStringInfoChar(buf, '[');
-			for(i = 0; i< v->content.array.nelems; i++)
+			for (i = 0; i < v->content.array.nelems; i++)
 			{
+				JsonPathItem from;
+				JsonPathItem to;
+				bool		range = jspGetArraySubscript(v, &from, &to, i);
+
 				if (i)
 					appendStringInfoChar(buf, ',');
-				appendStringInfo(buf, "%d", v->content.array.elems[i]);
+
+				printJsonPathItem(buf, &from, false, false);
+
+				if (range)
+				{
+					appendBinaryStringInfo(buf, " to ", 4);
+					printJsonPathItem(buf, &to, false, false);
+				}
 			}
 			appendStringInfoChar(buf, ']');
 			break;
@@ -477,7 +514,7 @@ jsonpath_out(PG_FUNCTION_ARGS)
 } while(0)								\
 
 #define read_int32_n(v, b, p, n) do {	\
-	(v) = (int32*)((b) + (p));			\
+	(v) = (void *)((b) + (p));			\
 	(p) += sizeof(int32) * (n);			\
 } while(0)								\
 
@@ -562,7 +599,8 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			break;
 		case jpiIndexArray:
 			read_int32(v->content.array.nelems, base, pos);
-			read_int32_n(v->content.array.elems, base, pos, v->content.array.nelems);
+			read_int32_n(v->content.array.elems, base, pos,
+						 v->content.array.nelems * 2);
 			break;
 		case jpiAny:
 			read_int32(v->content.anybounds.first, base, pos);
@@ -698,4 +736,20 @@ jspGetString(JsonPathItem *v, int32 *len)
 	if (len)
 		*len = v->content.value.datalen;
 	return v->content.value.data;
+}
+
+bool
+jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from, JsonPathItem *to,
+					 int i)
+{
+	Assert(v->type == jpiIndexArray);
+
+	jspInitByBuffer(from, v->base, v->content.array.elems[i].from);
+
+	if (!v->content.array.elems[i].to)
+		return false;
+
+	jspInitByBuffer(to, v->base, v->content.array.elems[i].to);
+
+	return true;
 }
