@@ -175,7 +175,14 @@ makeIndexArray(List *list)
 	v->value.array.elems = palloc(sizeof(v->value.array.elems[0]) * v->value.array.nelems);
 
 	foreach(cell, list)
-		v->value.array.elems[i++] = lfirst_int(cell);
+	{
+		JsonPathParseItem *jpi = lfirst(cell);
+
+		Assert(jpi->type == jpiSubscript);
+
+		v->value.array.elems[i].from = jpi->value.args.left;
+		v->value.array.elems[i++].to = jpi->value.args.right;
+	}
 
 	return v;
 }
@@ -222,10 +229,11 @@ makeAny(int first, int last)
 
 %type	<value>		scalar_value path_primary expr pexpr array_accessor
 					any_path accessor_op key predicate delimited_predicate
+					index_elem
 
 %type	<elems>		accessor_expr
 
-%type	<indexs>	index_elem index_list
+%type	<indexs>	index_list
 
 %type	<optype>	comp_op method
 
@@ -329,22 +337,13 @@ expr:
 	;
 
 index_elem:
-	INT_P							{ $$ = list_make1_int(pg_atoi($1.val, 4, 0)); }
-	| INT_P TO_P INT_P				{
-										int start = pg_atoi($1.val, 4, 0),
-											stop = pg_atoi($3.val, 4, 0),
-											i;
-
-										$$ = NIL;
-
-										for(i=start; i<= stop; i++)
-											$$ = lappend_int($$, i);
-									}
+	pexpr							{ $$ = makeItemBinary(jpiSubscript, $1, NULL); }
+	| pexpr TO_P pexpr				{ $$ = makeItemBinary(jpiSubscript, $1, $3); }
 	;
 
 index_list:
-	index_elem						{ $$ = $1; }
-	| index_list ',' index_elem		{ $$ = list_concat($1, $3); }
+	index_elem						{ $$ = list_make1($1); }
+	| index_list ',' index_elem		{ $$ = lappend($1, $3); }
 	;
 
 array_accessor:
