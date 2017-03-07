@@ -267,6 +267,12 @@ select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
  $."g"?(("x" >= 123 || "a" == 4) && exists (@."x"?(@ == 14)))
 (1 row)
 
+select '$.g ? (+x >= +-(+a + 2))'::jsonpath;
+            jsonpath            
+--------------------------------
+ $."g"?(+"x" >= +(-(+"a" + 2)))
+(1 row)
+
 select '$a'::jsonpath;
  jsonpath 
 ----------
