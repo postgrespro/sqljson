@@ -25,7 +25,7 @@
  */
 static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
-						 bool forbiddenRoot)
+						 bool forbiddenRoot, bool insideArraySubscript)
 {
 	/* position from begining of jsonpath data */
 	int32		pos = buf->len - JSONPATH_HDRSZ;
@@ -90,9 +90,13 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				right = buf->len;
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
-				chld = flattenJsonPathParseItem(buf, item->value.args.left, forbiddenRoot);
+				chld = flattenJsonPathParseItem(buf, item->value.args.left,
+												forbiddenRoot,
+												insideArraySubscript);
 				*(int32*)(buf->data + left) = chld;
-				chld = flattenJsonPathParseItem(buf, item->value.args.right, forbiddenRoot);
+				chld = flattenJsonPathParseItem(buf, item->value.args.right,
+												forbiddenRoot,
+												insideArraySubscript);
 				*(int32*)(buf->data + right) = chld;
 			}
 			break;
@@ -110,7 +114,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 				chld = flattenJsonPathParseItem(buf, item->value.arg,
 												item->type == jpiFilter ||
-												forbiddenRoot);
+												forbiddenRoot,
+												insideArraySubscript);
 				*(int32*)(buf->data + arg) = chld;
 			}
 			break;
@@ -131,6 +136,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("@ is not allowed in root expressions")));
 			break;
+		case jpiLast:
+			if (!insideArraySubscript)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("LAST is allowed only in array subscripts")));
+			break;
 		case jpiIndexArray:
 			{
 				int32		nelems = item->value.array.nelems;
@@ -150,12 +161,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32		frompos =
 						flattenJsonPathParseItem(buf,
 												item->value.array.elems[i].from,
-												true);
+												true, true);
 
 					if (item->value.array.elems[i].to)
 						topos = flattenJsonPathParseItem(buf,
 												item->value.array.elems[i].to,
-												true);
+												true, true);
 					else
 						topos = 0;
 
@@ -189,7 +200,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 	if (item->next)
 	{
-		chld = flattenJsonPathParseItem(buf, item->next, forbiddenRoot);
+		chld = flattenJsonPathParseItem(buf, item->next, forbiddenRoot,
+										insideArraySubscript);
 		*(int32 *)(buf->data + next) = chld;
 	}
 
@@ -215,7 +227,7 @@ jsonpath_in(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for jsonpath: \"%s\"", in)));
 
-	flattenJsonPathParseItem(&buf, jsonpath->expr, false);
+	flattenJsonPathParseItem(&buf, jsonpath->expr, false, false);
 
 	res = (JsonPath*)buf.data;
 	SET_VARSIZE(res, buf.len);
@@ -400,6 +412,9 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			Assert(!inKey);
 			appendStringInfoChar(buf, '$');
 			break;
+		case jpiLast:
+			appendBinaryStringInfo(buf, "last", 4);
+			break;
 		case jpiAnyArray:
 			appendBinaryStringInfo(buf, "[*]", 3);
 			break;
@@ -563,6 +578,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiDouble:
 		case jpiDatetime:
 		case jpiKeyValue:
+		case jpiLast:
 			break;
 		case jpiKey:
 		case jpiString:
@@ -646,6 +662,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiExists ||
 			v->type == jpiRoot ||
 			v->type == jpiVariable ||
+			v->type == jpiLast ||
 			v->type == jpiType ||
 			v->type == jpiSize ||
 			v->type == jpiAbs ||
