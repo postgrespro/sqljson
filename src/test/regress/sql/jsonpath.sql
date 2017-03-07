@@ -54,6 +54,7 @@ select '$a[*]'::jsonpath;
 select '$.g ? (zip == $zip)'::jsonpath;
 select '$.a.[1,2, 3 to 16]'::jsonpath;
 select '$.a[1,2, 3 to 16]'::jsonpath;
+select '$.a[$a + 1, ($b[*]) to -(@[0] * 2)]'::jsonpath;
 
 select 'null.type()'::jsonpath;
 select '1.type()'::jsonpath;
