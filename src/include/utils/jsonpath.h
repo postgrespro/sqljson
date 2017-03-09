@@ -80,6 +80,7 @@ typedef enum JsonPathItemType {
 		jpiKeyValue,
 		jpiSubscript,
 		jpiLast,
+		jpiStartsWith,
 } JsonPathItemType;
 
 

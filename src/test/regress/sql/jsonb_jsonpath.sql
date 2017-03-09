@@ -194,3 +194,12 @@ select _jsonpath_query(jsonb '{}', '$.double()');
 select _jsonpath_query(jsonb '1.23', '$.double()');
 select _jsonpath_query(jsonb '"1.23"', '$.double()');
 select _jsonpath_query(jsonb '"1.23aaa"', '$.double()');
+
+select _jsonpath_query(jsonb '["", "a", "abc", "abcabc"]', '$[*] ? (@ starts with "abc")');
+select _jsonpath_query(jsonb '["", "a", "abc", "abcabc"]', 'strict $ ? (@[*] starts with "abc")');
+select _jsonpath_query(jsonb '["", "a", "abd", "abdabc"]', 'strict $ ? (@[*] starts with "abc")');
+select _jsonpath_query(jsonb '["abc", "abcabc", null, 1]', 'strict $ ? (@[*] starts with "abc")');
+select _jsonpath_query(jsonb '["abc", "abcabc", null, 1]', 'strict $ ? ((@[*] starts with "abc") is unknown)');
+select _jsonpath_query(jsonb '[[null, 1, "abc", "abcabc"]]', 'lax $ ? (@[*] starts with "abc")');
+select _jsonpath_query(jsonb '[[null, 1, "abd", "abdabc"]]', 'lax $ ? ((@[*] starts with "abc") is unknown)');
+select _jsonpath_query(jsonb '[null, 1, "abd", "abdabc"]', 'lax $[*] ? ((@ starts with "abc") is unknown)');

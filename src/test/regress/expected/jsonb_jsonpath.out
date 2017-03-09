@@ -968,3 +968,51 @@ select _jsonpath_query(jsonb '"1.23"', '$.double()');
 
 select _jsonpath_query(jsonb '"1.23aaa"', '$.double()');
 ERROR:  Non-numeric SQL/JSON item
+select _jsonpath_query(jsonb '["", "a", "abc", "abcabc"]', '$[*] ? (@ starts with "abc")');
+ _jsonpath_query 
+-----------------
+ "abc"
+ "abcabc"
+(2 rows)
+
+select _jsonpath_query(jsonb '["", "a", "abc", "abcabc"]', 'strict $ ? (@[*] starts with "abc")');
+      _jsonpath_query       
+----------------------------
+ ["", "a", "abc", "abcabc"]
+(1 row)
+
+select _jsonpath_query(jsonb '["", "a", "abd", "abdabc"]', 'strict $ ? (@[*] starts with "abc")');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(jsonb '["abc", "abcabc", null, 1]', 'strict $ ? (@[*] starts with "abc")');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(jsonb '["abc", "abcabc", null, 1]', 'strict $ ? ((@[*] starts with "abc") is unknown)');
+      _jsonpath_query       
+----------------------------
+ ["abc", "abcabc", null, 1]
+(1 row)
+
+select _jsonpath_query(jsonb '[[null, 1, "abc", "abcabc"]]', 'lax $ ? (@[*] starts with "abc")');
+      _jsonpath_query       
+----------------------------
+ [null, 1, "abc", "abcabc"]
+(1 row)
+
+select _jsonpath_query(jsonb '[[null, 1, "abd", "abdabc"]]', 'lax $ ? ((@[*] starts with "abc") is unknown)');
+      _jsonpath_query       
+----------------------------
+ [null, 1, "abd", "abdabc"]
+(1 row)
+
+select _jsonpath_query(jsonb '[null, 1, "abd", "abdabc"]', 'lax $[*] ? ((@ starts with "abc") is unknown)');
+ _jsonpath_query 
+-----------------
+ null
+ 1
+(2 rows)
+

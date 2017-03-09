@@ -769,6 +769,77 @@ getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	return jperOk;
 }
 
+static JsonPathExecResult
+executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
+						   JsonbValue *jb)
+{
+	JsonPathExecResult res;
+	JsonPathItem elem;
+	List	   *lseq = NIL;
+	List	   *rseq = NIL;
+	ListCell   *lc;
+	JsonbValue *initial;
+	JsonbValue	initialbuf;
+	bool		error = false;
+	bool		found = false;
+
+	jspGetRightArg(jsp, &elem);
+	res = recursiveExecute(cxt, &elem, jb, &rseq);
+	if (jperIsError(res))
+		return jperError;
+
+	if (list_length(rseq) != 1)
+		return jperError;
+
+	initial = linitial(rseq);
+
+	if (JsonbType(initial) == jbvScalar)
+		initial = JsonbExtractScalar(initial->val.binary.data, &initialbuf);
+
+	if (initial->type != jbvString)
+		return jperError;
+
+	jspGetLeftArg(jsp, &elem);
+	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &lseq);
+	if (jperIsError(res))
+		return jperError;
+
+	foreach(lc, lseq)
+	{
+		JsonbValue *whole = lfirst(lc);
+		JsonbValue	wholebuf;
+
+		if (JsonbType(whole) == jbvScalar)
+			whole = JsonbExtractScalar(whole->val.binary.data, &wholebuf);
+
+		if (whole->type != jbvString)
+		{
+			if (!cxt->lax)
+				return jperError;
+
+			error = true;
+		}
+		else if (whole->val.string.len >= initial->val.string.len &&
+				 !memcmp(whole->val.string.val,
+						 initial->val.string.val,
+						 initial->val.string.len))
+		{
+			if (cxt->lax)
+				return jperOk;
+
+			found = true;
+		}
+	}
+
+	if (found) /* possible only in strict mode */
+		return jperOk;
+
+	if (error) /* possible only in lax mode */
+		return jperError;
+
+	return jperNotFound;
+}
+
 /*
  * Main executor function: walks on jsonpath structure and tries to find
  * correspoding parts of jsonb. Note, jsonb and jsonpath values should be
@@ -1465,6 +1536,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					}
 				}
 			}
+			break;
+		case jpiStartsWith:
+			res = executeStartsWithPredicate(cxt, jsp, jb);
 			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
