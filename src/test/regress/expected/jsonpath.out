@@ -377,6 +377,18 @@ select 'true.type()'::jsonpath;
  true.type()
 (1 row)
 
+select '$ ? (@ starts with "abc")'::jsonpath;
+        jsonpath         
+-------------------------
+ $?(@ starts with "abc")
+(1 row)
+
+select '$ ? (@ starts with $var)'::jsonpath;
+         jsonpath         
+--------------------------
+ $?(@ starts with $"var")
+(1 row)
+
 select '$ ? (a < 1)'::jsonpath;
   jsonpath   
 -------------

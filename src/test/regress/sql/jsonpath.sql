@@ -68,6 +68,9 @@ select '"aaa".type()'::jsonpath;
 select 'aaa.type()'::jsonpath;
 select 'true.type()'::jsonpath;
 
+select '$ ? (@ starts with "abc")'::jsonpath;
+select '$ ? (@ starts with $var)'::jsonpath;
+
 select '$ ? (a < 1)'::jsonpath;
 select '$ ? (a < -1)'::jsonpath;
 select '$ ? (a < +1)'::jsonpath;
