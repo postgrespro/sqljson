@@ -75,6 +75,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiMul:
 		case jpiDiv:
 		case jpiMod:
+		case jpiStartsWith:
 			{
 				int32	left, right;
 
@@ -265,6 +266,8 @@ printOperation(StringInfo buf, JsonPathItemType type)
 			appendBinaryStringInfo(buf, " / ", 3); break;
 		case jpiMod:
 			appendBinaryStringInfo(buf, " % ", 3); break;
+		case jpiStartsWith:
+			appendBinaryStringInfo(buf, " starts with ", 13); break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", type);
 	}
@@ -285,6 +288,7 @@ operationPriority(JsonPathItemType op)
 		case jpiGreater:
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
+		case jpiStartsWith:
 			return 2;
 		case jpiAdd:
 		case jpiSub:
@@ -350,6 +354,7 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 		case jpiMul:
 		case jpiDiv:
 		case jpiMod:
+		case jpiStartsWith:
 			if (printBracketes)
 				appendStringInfoChar(buf, '(');
 			jspGetLeftArg(v, &elem);
@@ -598,6 +603,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiGreater:
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
+		case jpiStartsWith:
 			read_int32(v->content.args.left, base, pos);
 			read_int32(v->content.args.right, base, pos);
 			break;
@@ -666,7 +672,8 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiCeiling ||
 			v->type == jpiDouble ||
 			v->type == jpiDatetime ||
-			v->type == jpiKeyValue
+			v->type == jpiKeyValue ||
+			v->type == jpiStartsWith
 		);
 
 		if (a)
@@ -693,7 +700,8 @@ jspGetLeftArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiSub ||
 		v->type == jpiMul ||
 		v->type == jpiDiv ||
-		v->type == jpiMod
+		v->type == jpiMod ||
+		v->type == jpiStartsWith
 	);
 
 	jspInitByBuffer(a, v->base, v->content.args.left);
@@ -715,7 +723,8 @@ jspGetRightArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiSub ||
 		v->type == jpiMul ||
 		v->type == jpiDiv ||
-		v->type == jpiMod
+		v->type == jpiMod ||
+		v->type == jpiStartsWith
 	);
 
 	jspInitByBuffer(a, v->base, v->content.args.right);

@@ -217,7 +217,7 @@ makeAny(int first, int last)
 	bool				boolean;
 }
 
-%token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P
+%token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P STARTS_P WITH_P
 %token	<str>		STRING_P NUMERIC_P INT_P EXISTS_P STRICT_P LAX_P LAST_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P KEYVALUE_P
 
@@ -229,7 +229,7 @@ makeAny(int first, int last)
 
 %type	<value>		scalar_value path_primary expr pexpr array_accessor
 					any_path accessor_op key predicate delimited_predicate
-					index_elem
+					index_elem starts_with_initial
 
 %type	<elems>		accessor_expr
 
@@ -299,13 +299,16 @@ predicate:
 	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
 	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }
 	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
-/*
-   Left for the future
-	| pexpr LIKE_REGEX pattern			{ $$ = ...; }
-	| pexpr STARTS WITH STRING_P		{ $$ = ...; }
-	| pexpr STARTS WITH '$' STRING_P	{ $$ = ...; }
-	| pexpr STARTS WITH '$' STRING_P	{ $$ = ...; }
+	| pexpr STARTS_P WITH_P starts_with_initial
+		{ $$ = makeItemBinary(jpiStartsWith, $1, $4); }
+/* Left for the future (needs XQuery support)
+	| pexpr LIKE_REGEX pattern [FLAG_P flags]	{ $$ = ...; };
 */
+	;
+
+starts_with_initial:
+	STRING_P						{ $$ = makeItemString(&$1); }
+	| '$' STRING_P					{ $$ = makeItemVariable(&$2); }
 	;
 
 path_primary:
@@ -397,6 +400,8 @@ key_name:
 	| DATETIME_P
 	| KEYVALUE_P
 	| LAST_P
+	| STARTS_P
+	| WITH_P
 	;
 
 method:
