@@ -17,6 +17,7 @@
 #include <math.h>
 
 #include "fmgr.h"
+#include "utils/timestamp.h"
 
 
 typedef int32 DateADT;
@@ -73,5 +74,8 @@ extern void EncodeSpecialDate(DateADT dt, char *str);
 extern DateADT GetSQLCurrentDate(void);
 extern TimeTzADT *GetSQLCurrentTime(int32 typmod);
 extern TimeADT GetSQLLocalTime(int32 typmod);
+extern int	tm2time(struct pg_tm *tm, fsec_t fsec, TimeADT *result);
+extern int	tm2timetz(struct pg_tm *tm, fsec_t fsec, int tz, TimeTzADT *result);
+extern void AdjustTimeForTypmod(TimeADT *time, int32 typmod);
 
 #endif							/* DATE_H */
