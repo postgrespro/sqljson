@@ -426,7 +426,10 @@ typedef struct
 				j,
 				us,
 				yysz,			/* is it YY or YYYY ? */
-				clock;			/* 12 or 24 hour clock? */
+				clock,			/* 12 or 24 hour clock? */
+				tzsign,
+				tzh,
+				tzm;
 } TmFromChar;
 
 #define ZERO_tmfc(_X) memset(_X, 0, sizeof(TmFromChar))
@@ -472,6 +475,7 @@ do {	\
 	(_X)->tm_sec  = (_X)->tm_year = (_X)->tm_min = (_X)->tm_wday = \
 	(_X)->tm_hour = (_X)->tm_yday = (_X)->tm_isdst = 0; \
 	(_X)->tm_mday = (_X)->tm_mon  = 1; \
+	(_X)->tm_zone = NULL; \
 } while(0)
 
 #define ZERO_tmtc(_X) \
@@ -611,6 +615,8 @@ typedef enum
 	DCH_RM,
 	DCH_SSSS,
 	DCH_SS,
+	DCH_TZH,
+	DCH_TZM,
 	DCH_TZ,
 	DCH_US,
 	DCH_WW,
@@ -758,7 +764,9 @@ static const KeyWord DCH_keywords[] = {
 	{"RM", 2, DCH_RM, FALSE, FROM_CHAR_DATE_GREGORIAN}, /* R */
 	{"SSSS", 4, DCH_SSSS, TRUE, FROM_CHAR_DATE_NONE},	/* S */
 	{"SS", 2, DCH_SS, TRUE, FROM_CHAR_DATE_NONE},
-	{"TZ", 2, DCH_TZ, FALSE, FROM_CHAR_DATE_NONE},	/* T */
+	{"TZH", 3, DCH_TZH, FALSE, FROM_CHAR_DATE_NONE},	/* T */
+	{"TZM", 3, DCH_TZM, TRUE, FROM_CHAR_DATE_NONE},
+	{"TZ", 2, DCH_TZ, FALSE, FROM_CHAR_DATE_NONE},
 	{"US", 2, DCH_US, TRUE, FROM_CHAR_DATE_NONE},	/* U */
 	{"WW", 2, DCH_WW, TRUE, FROM_CHAR_DATE_GREGORIAN},	/* W */
 	{"W", 1, DCH_W, TRUE, FROM_CHAR_DATE_GREGORIAN},
@@ -881,7 +889,7 @@ static const int DCH_index[KeyWord_INDEX_SIZE] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, DCH_A_D, DCH_B_C, DCH_CC, DCH_DAY, -1,
 	DCH_FX, -1, DCH_HH24, DCH_IDDD, DCH_J, -1, -1, DCH_MI, -1, DCH_OF,
-	DCH_P_M, DCH_Q, DCH_RM, DCH_SSSS, DCH_TZ, DCH_US, -1, DCH_WW, -1, DCH_Y_YYY,
+	DCH_P_M, DCH_Q, DCH_RM, DCH_SSSS, DCH_TZH, DCH_US, -1, DCH_WW, -1, DCH_Y_YYY,
 	-1, -1, -1, -1, -1, -1, -1, DCH_a_d, DCH_b_c, DCH_cc,
 	DCH_day, -1, DCH_fx, -1, DCH_hh24, DCH_iddd, DCH_j, -1, -1, DCH_mi,
 	-1, -1, DCH_p_m, DCH_q, DCH_rm, DCH_ssss, DCH_tz, DCH_us, -1, DCH_ww,
@@ -2529,6 +2537,13 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 					s += strlen(s);
 				}
 				break;
+			case DCH_TZH:
+			case DCH_TZM:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("formatting field \"%s\" is only supported in "
+								"to_timestamp", n->key->name)));
+				break;
 			case DCH_OF:
 				INVALID_FOR_INTERVAL;
 				sprintf(s, "%c%0*d",
@@ -3080,6 +3095,19 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 						 errmsg("formatting field \"%s\" is only supported in to_char",
 								n->key->name)));
 				break;
+			case DCH_TZH:
+				out->tzsign = *s == '-' ? -1 : +1;
+
+				if (*s == '+' || *s == '-' || *s == ' ')
+					s++;
+
+				from_char_parse_int_len(&out->tzh, &s, 2, n);
+				break;
+			case DCH_TZM:
+				if (!out->tzsign)
+					out->tzsign = +1;
+				from_char_parse_int_len(&out->tzm, &s, 2, n);
+				break;
 			case DCH_A_D:
 			case DCH_B_C:
 			case DCH_a_d:
@@ -3545,8 +3573,15 @@ to_timestamp(PG_FUNCTION_ARGS)
 	fsec_t		fsec;
 
 	do_to_timestamp(date_txt, fmt, &tm, &fsec);
+	if (tm.tm_zone)
+	{
+		int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
 
-	tz = DetermineTimeZoneOffset(&tm, session_timezone);
+		if (dterr)
+			DateTimeParseError(dterr, text_to_cstring(date_txt), "timestamptz");
+	}
+	else
+		tz = DetermineTimeZoneOffset(&tm, session_timezone);
 
 	if (tm2timestamp(&tm, fsec, &tz, &result) != 0)
 		ereport(ERROR,
@@ -3867,6 +3902,22 @@ do_to_timestamp(text *date_txt, text *fmt,
 		tm->tm_sec < 0 || tm->tm_sec >= SECS_PER_MINUTE ||
 		*fsec < INT64CONST(0) || *fsec >= USECS_PER_SEC)
 		DateTimeParseError(DTERR_FIELD_OVERFLOW, date_str, "timestamp");
+
+	if (tmfc.tzsign)
+	{
+		char	   *tz;
+
+		if (tmfc.tzh < 0 || tmfc.tzh > MAX_TZDISP_HOUR ||
+			tmfc.tzm < 0 || tmfc.tzm >= MINS_PER_HOUR)
+			DateTimeParseError(DTERR_TZDISP_OVERFLOW, date_str, "timestamp");
+
+		tz = palloc(7);
+
+		snprintf(tz, 7, "%c%02d:%02d",
+				 tmfc.tzsign > 0 ? '+' : '-', tmfc.tzh, tmfc.tzm);
+
+		tm->tm_zone = tz;
+	}
 
 	DEBUG_TM(tm);
 
