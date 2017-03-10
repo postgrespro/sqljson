@@ -124,6 +124,15 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				*(int32 *)(buf->data + offs) = chld;
 			}
 			break;
+		case jpiDatetime:
+			if (!item->value.arg)
+			{
+				int32 arg = 0;
+
+				appendBinaryStringInfo(buf, (char *) &arg, sizeof(arg));
+				break;
+			}
+			/* fall through */
 		case jpiFilter:
 		case jpiIsUnknown:
 		case jpiNot:
@@ -215,7 +224,6 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiFloor:
 		case jpiCeiling:
 		case jpiDouble:
-		case jpiDatetime:
 		case jpiKeyValue:
 			break;
 		default:
@@ -540,7 +548,13 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			appendBinaryStringInfo(buf, ".double()", 9);
 			break;
 		case jpiDatetime:
-			appendBinaryStringInfo(buf, ".datetime()", 11);
+			appendBinaryStringInfo(buf, ".datetime(", 10);
+			if (v->content.arg)
+			{
+				jspGetArg(v, &elem);
+				printJsonPathItem(buf, &elem, false, false);
+			}
+			appendStringInfoChar(buf, ')');
 			break;
 		case jpiKeyValue:
 			appendBinaryStringInfo(buf, ".keyvalue()", 11);
@@ -636,7 +650,6 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiFloor:
 		case jpiCeiling:
 		case jpiDouble:
-		case jpiDatetime:
 		case jpiKeyValue:
 		case jpiLast:
 			break;
@@ -678,6 +691,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiPlus:
 		case jpiMinus:
 		case jpiFilter:
+		case jpiDatetime:
 			read_int32(v->content.arg, base, pos);
 			break;
 		case jpiIndexArray:
@@ -703,7 +717,8 @@ jspGetArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiIsUnknown ||
 		v->type == jpiExists ||
 		v->type == jpiPlus ||
-		v->type == jpiMinus
+		v->type == jpiMinus ||
+		v->type == jpiDatetime
 	);
 
 	jspInitByBuffer(a, v->base, v->content.arg);
