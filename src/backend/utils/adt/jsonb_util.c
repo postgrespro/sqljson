@@ -15,6 +15,7 @@
 
 #include "access/hash.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/jsonb.h"
@@ -241,6 +242,7 @@ compareJsonbContainers(JsonbContainer *a, JsonbContainer *b)
 							res = (va.val.object.nPairs > vb.val.object.nPairs) ? 1 : -1;
 						break;
 					case jbvBinary:
+					case jbvDatetime:
 						elog(ERROR, "unexpected jbvBinary value");
 				}
 			}
@@ -1696,6 +1698,44 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
 		case jbvBool:
 			*jentry = (scalarVal->val.boolean) ?
 				JENTRY_ISBOOL_TRUE : JENTRY_ISBOOL_FALSE;
+			break;
+
+		case jbvDatetime:
+			{
+				char	   *str;
+				PGFunction	typoutput;
+				int			len;
+
+				switch (scalarVal->val.datetime.typid)
+				{
+					case DATEOID:
+						typoutput = date_out;
+						break;
+					case TIMEOID:
+						typoutput = time_out;
+						break;
+					case TIMETZOID:
+						typoutput = timetz_out;
+						break;
+					case TIMESTAMPOID:
+						typoutput = timestamp_out;
+						break;
+					case TIMESTAMPTZOID:
+						typoutput = timestamptz_out;
+						break;
+					default:
+						elog(ERROR, "unknown jsonb value datetime type oid %d",
+							 scalarVal->val.datetime.typid);
+				}
+
+				str = DatumGetCString(DirectFunctionCall1(typoutput,
+												scalarVal->val.datetime.value));
+
+				len = strlen(str);
+
+				appendToBuffer(buffer, str, len);
+				*jentry = JENTRY_ISSTRING | len;
+			}
 			break;
 
 		default:
