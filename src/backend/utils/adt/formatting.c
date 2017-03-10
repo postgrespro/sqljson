@@ -87,6 +87,7 @@
 #endif
 
 #include "catalog/pg_collation.h"
+#include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -955,6 +956,10 @@ typedef struct NUMProc
 			   *L_currency_symbol;
 } NUMProc;
 
+/* Return flags for DCH_from_char() */
+#define DCH_DATED	0x01
+#define DCH_TIMED	0x02
+#define DCH_ZONED	0x04
 
 /* ----------
  * Functions
@@ -969,7 +974,8 @@ static void parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 
 static void DCH_to_char(FormatNode *node, bool is_interval,
 			TmToChar *in, char *out, Oid collid);
-static void DCH_from_char(FormatNode *node, char *in, TmFromChar *out);
+static void DCH_from_char(FormatNode *node, char *in, TmFromChar *out,
+						  bool strict);
 
 #ifdef DEBUG_TO_FROM_CHAR
 static void dump_index(const KeyWord *k, const int *index);
@@ -986,8 +992,8 @@ static int	from_char_parse_int_len(int *dest, char **src, const int len, FormatN
 static int	from_char_parse_int(int *dest, char **src, FormatNode *node);
 static int	seq_search(char *name, const char *const *array, int type, int max, int *len);
 static int	from_char_seq_search(int *dest, char **src, const char *const *array, int type, int max, FormatNode *node);
-static void do_to_timestamp(text *date_txt, text *fmt,
-				struct pg_tm *tm, fsec_t *fsec);
+static void do_to_timestamp(text *date_txt, const char *fmt, int fmt_len,
+					bool strict, struct pg_tm *tm, fsec_t *fsec, int *flags);
 static char *fill_str(char *str, int c, int max);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
@@ -2996,7 +3002,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
  * ----------
  */
 static void
-DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
+DCH_from_char(FormatNode *node, char *in, TmFromChar *out, bool strict)
 {
 	FormatNode *n;
 	char	   *s;
@@ -3277,6 +3283,118 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 				break;
 		}
 	}
+
+	if (strict)
+	{
+		if (n->type != NODE_TYPE_END)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("input string is too short for datetime format")));
+
+		while (*s == ' ')
+			s++;
+
+		if (*s != '\0')
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("trailing characters remain in input string after "
+							"date time format")));
+	}
+}
+
+static int
+DCH_datetime_type(FormatNode *node)
+{
+	FormatNode *n;
+	int			flags = 0;
+
+	for (n = node; n->type != NODE_TYPE_END; n++)
+	{
+		if (n->type != NODE_TYPE_ACTION)
+			continue;
+
+		switch (n->key->id)
+		{
+			case DCH_FX:
+				break;
+			case DCH_A_M:
+			case DCH_P_M:
+			case DCH_a_m:
+			case DCH_p_m:
+			case DCH_AM:
+			case DCH_PM:
+			case DCH_am:
+			case DCH_pm:
+			case DCH_HH:
+			case DCH_HH12:
+			case DCH_HH24:
+			case DCH_MI:
+			case DCH_SS:
+			case DCH_MS:		/* millisecond */
+			case DCH_US:		/* microsecond */
+			case DCH_SSSS:
+				flags |= DCH_TIMED;
+				break;
+			case DCH_tz:
+			case DCH_TZ:
+			case DCH_OF:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("formatting field \"%s\" is only supported in to_char",
+					   n->key->name)));
+				flags |= DCH_ZONED;
+				break;
+			case DCH_TZH:
+			case DCH_TZM:
+				flags |= DCH_ZONED;
+				break;
+			case DCH_A_D:
+			case DCH_B_C:
+			case DCH_a_d:
+			case DCH_b_c:
+			case DCH_AD:
+			case DCH_BC:
+			case DCH_ad:
+			case DCH_bc:
+			case DCH_MONTH:
+			case DCH_Month:
+			case DCH_month:
+			case DCH_MON:
+			case DCH_Mon:
+			case DCH_mon:
+			case DCH_MM:
+			case DCH_DAY:
+			case DCH_Day:
+			case DCH_day:
+			case DCH_DY:
+			case DCH_Dy:
+			case DCH_dy:
+			case DCH_DDD:
+			case DCH_IDDD:
+			case DCH_DD:
+			case DCH_D:
+			case DCH_ID:
+			case DCH_WW:
+			case DCH_Q:
+			case DCH_CC:
+			case DCH_Y_YYY:
+			case DCH_YYYY:
+			case DCH_IYYY:
+			case DCH_YYY:
+			case DCH_IYY:
+			case DCH_YY:
+			case DCH_IY:
+			case DCH_Y:
+			case DCH_I:
+			case DCH_RM:
+			case DCH_rm:
+			case DCH_W:
+			case DCH_J:
+				flags |= DCH_DATED;
+		}
+	}
+
+	return flags;
 }
 
 /* select a DCHCacheEntry to hold the given format picture */
@@ -3578,7 +3696,9 @@ to_timestamp(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
-	do_to_timestamp(date_txt, fmt, &tm, &fsec);
+	do_to_timestamp(date_txt, VARDATA(fmt), VARSIZE_ANY_EXHDR(fmt), false,
+					&tm, &fsec, NULL);
+
 	if (tm.tm_zone)
 	{
 		int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
@@ -3611,7 +3731,8 @@ to_date(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
-	do_to_timestamp(date_txt, fmt, &tm, &fsec);
+	do_to_timestamp(date_txt, VARDATA(fmt), VARSIZE_ANY_EXHDR(fmt), false,
+					&tm, &fsec, NULL);
 
 	/* Prevent overflow in Julian-day routines */
 	if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
@@ -3632,6 +3753,150 @@ to_date(PG_FUNCTION_ARGS)
 	PG_RETURN_DATEADT(result);
 }
 
+Datum
+to_datetime(text *date_txt, const char *fmt, int fmt_len, bool strict,
+			Oid *typid, int32 *typmod)
+{
+	struct pg_tm tm;
+	fsec_t		fsec;
+	int			flags;
+
+	do_to_timestamp(date_txt, fmt, fmt_len, strict, &tm, &fsec, &flags);
+
+	*typmod = -1; /* TODO implement FF1, ..., FF9 */
+
+	if (flags & DCH_DATED)
+	{
+		if (flags & DCH_TIMED)
+		{
+			if (flags & DCH_ZONED)
+			{
+				TimestampTz	result;
+				int			tz;
+
+				if (tm.tm_zone)
+				{
+					int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
+
+					if (dterr)
+						DateTimeParseError(dterr, text_to_cstring(date_txt),
+										   "timestamptz");
+				}
+				else
+					tz = DetermineTimeZoneOffset(&tm, session_timezone);
+
+				if (tm2timestamp(&tm, fsec, &tz, &result) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("timestamptz out of range")));
+
+				AdjustTimestampForTypmod(&result, *typmod);
+
+				*typid = TIMESTAMPTZOID;
+				return TimestampTzGetDatum(result);
+			}
+			else
+			{
+				Timestamp	result;
+
+				if (tm2timestamp(&tm, fsec, NULL, &result) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("timestamp out of range")));
+
+				AdjustTimestampForTypmod(&result, *typmod);
+
+				*typid = TIMESTAMPOID;
+				return TimestampGetDatum(result);
+			}
+		}
+		else
+		{
+			if (flags & DCH_ZONED)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+						 errmsg("datetime format is zoned but not timed")));
+			}
+			else
+			{
+				DateADT		result;
+
+				/* Prevent overflow in Julian-day routines */
+				if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("date out of range: \"%s\"",
+									text_to_cstring(date_txt))));
+
+				result = date2j(tm.tm_year, tm.tm_mon, tm.tm_mday) -
+						POSTGRES_EPOCH_JDATE;
+
+				/* Now check for just-out-of-range dates */
+				if (!IS_VALID_DATE(result))
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("date out of range: \"%s\"",
+									text_to_cstring(date_txt))));
+
+				*typid = DATEOID;
+				return DateADTGetDatum(result);
+			}
+		}
+	}
+	else if (flags & DCH_TIMED)
+	{
+		if (flags & DCH_ZONED)
+		{
+			TimeTzADT  *result = palloc(sizeof(TimeTzADT));
+			int			tz;
+
+			if (tm.tm_zone)
+			{
+				int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
+
+				if (dterr)
+					DateTimeParseError(dterr, text_to_cstring(date_txt),
+									   "timetz");
+			}
+			else
+				tz = DetermineTimeZoneOffset(&tm, session_timezone);
+
+			if (tm2timetz(&tm, fsec, tz, result) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("timetz out of range")));
+
+			AdjustTimeForTypmod(&result->time, *typmod);
+
+			*typid = TIMETZOID;
+			return TimeTzADTPGetDatum(result);
+		}
+		else
+		{
+			TimeADT		result;
+
+			if (tm2time(&tm, fsec, &result) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						 errmsg("time out of range")));
+
+			AdjustTimeForTypmod(&result, *typmod);
+
+			*typid = TIMEOID;
+			return TimeADTGetDatum(result);
+		}
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+				 errmsg("datetime format is not dated and not timed")));
+	}
+
+	return (Datum) 0;
+}
+
 /*
  * do_to_timestamp: shared code for to_timestamp and to_date
  *
@@ -3646,12 +3911,12 @@ to_date(PG_FUNCTION_ARGS)
  * struct 'tm' and 'fsec'.
  */
 static void
-do_to_timestamp(text *date_txt, text *fmt,
-				struct pg_tm *tm, fsec_t *fsec)
+do_to_timestamp(text *date_txt, const char *fmt_str, int fmt_len, bool strict,
+				struct pg_tm *tm, fsec_t *fsec, int *flags)
 {
 	FormatNode *format;
 	TmFromChar	tmfc;
-	int			fmt_len;
+	char 	   *fmt_tmp = NULL;
 	char	   *date_str;
 	int			fmask;
 
@@ -3662,14 +3927,14 @@ do_to_timestamp(text *date_txt, text *fmt,
 	*fsec = 0;
 	fmask = 0;					/* bit mask for ValidateDate() */
 
-	fmt_len = VARSIZE_ANY_EXHDR(fmt);
+	if (fmt_len < 0) /* zero-terminated */
+		fmt_len = strlen(fmt_str);
+	else if (fmt_len > 0) /* not zero-terminated */
+		fmt_str = fmt_tmp = pnstrdup(fmt_str, fmt_len);
 
 	if (fmt_len)
 	{
-		char	   *fmt_str;
 		bool		incache;
-
-		fmt_str = text_to_cstring(fmt);
 
 		if (fmt_len > DCH_CACHE_SIZE)
 		{
@@ -3700,12 +3965,17 @@ do_to_timestamp(text *date_txt, text *fmt,
 		/* dump_index(DCH_keywords, DCH_index); */
 #endif
 
-		DCH_from_char(format, date_str, &tmfc);
+		DCH_from_char(format, date_str, &tmfc, strict);
 
-		pfree(fmt_str);
+		if (flags)
+			*flags = DCH_datetime_type(format);
+
 		if (!incache)
 			pfree(format);
 	}
+
+	if (fmt_tmp)
+		pfree(fmt_tmp);
 
 	DEBUG_TMFC(&tmfc);
 
