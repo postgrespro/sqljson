@@ -43,9 +43,6 @@
 
 static int	time2tm(TimeADT time, struct pg_tm *tm, fsec_t *fsec);
 static int	timetz2tm(TimeTzADT *time, struct pg_tm *tm, fsec_t *fsec, int *tzp);
-static int	tm2time(struct pg_tm *tm, fsec_t fsec, TimeADT *result);
-static int	tm2timetz(struct pg_tm *tm, fsec_t fsec, int tz, TimeTzADT *result);
-static void AdjustTimeForTypmod(TimeADT *time, int32 typmod);
 
 
 /* common code for timetypmodin and timetztypmodin */
@@ -1234,7 +1231,7 @@ time_in(PG_FUNCTION_ARGS)
 /* tm2time()
  * Convert a tm structure to a time data type.
  */
-static int
+int
 tm2time(struct pg_tm *tm, fsec_t fsec, TimeADT *result)
 {
 	*result = ((((tm->tm_hour * MINS_PER_HOUR + tm->tm_min) * SECS_PER_MINUTE) + tm->tm_sec)
@@ -1400,7 +1397,7 @@ time_scale(PG_FUNCTION_ARGS)
  * have a fundamental tie together but rather a coincidence of
  * implementation. - thomas
  */
-static void
+void
 AdjustTimeForTypmod(TimeADT *time, int32 typmod)
 {
 	static const int64 TimeScales[MAX_TIME_PRECISION + 1] = {
@@ -1939,7 +1936,7 @@ time_part(PG_FUNCTION_ARGS)
 /* tm2timetz()
  * Convert a tm structure to a time data type.
  */
-static int
+int
 tm2timetz(struct pg_tm *tm, fsec_t fsec, int tz, TimeTzADT *result)
 {
 	result->time = ((((tm->tm_hour * MINS_PER_HOUR + tm->tm_min) * SECS_PER_MINUTE) + tm->tm_sec) *
