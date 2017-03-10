@@ -238,7 +238,9 @@ enum jbvType
 	jbvArray = 0x10,
 	jbvObject,
 	/* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
-	jbvBinary
+	jbvBinary,
+	/* Virtual types */
+	jbvDatetime = 0x20,
 };
 
 /*
@@ -279,11 +281,19 @@ struct JsonbValue
 			int			len;
 			JsonbContainer *data;
 		}			binary;		/* Array or object, in on-disk format */
+
+		struct
+		{
+			Datum		value;
+			Oid			typid;
+			int32		typmod;
+		}			datetime;
 	}			val;
 };
 
-#define IsAJsonbScalar(jsonbval)	((jsonbval)->type >= jbvNull && \
-									 (jsonbval)->type <= jbvBool)
+#define IsAJsonbScalar(jsonbval)	(((jsonbval)->type >= jbvNull && \
+									  (jsonbval)->type <= jbvBool) || \
+									  (jsonbval)->type == jbvDatetime)
 
 /*
  * Key/value pair within an Object.
