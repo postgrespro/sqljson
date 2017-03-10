@@ -67,6 +67,8 @@ select '1.type()'::jsonpath;
 select '"aaa".type()'::jsonpath;
 select 'aaa.type()'::jsonpath;
 select 'true.type()'::jsonpath;
+select '$.datetime()'::jsonpath;
+select '$.datetime("datetime template")'::jsonpath;
 
 select '$ ? (@ starts with "abc")'::jsonpath;
 select '$ ? (@ starts with $var)'::jsonpath;

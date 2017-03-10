@@ -18,6 +18,7 @@
 #include "lib/stringinfo.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 #include "utils/json.h"
 #include "utils/jsonpath.h"
 #include "utils/varlena.h"
@@ -142,6 +143,16 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 			value->val.string.val = VARDATA_ANY(computedValue);
 			value->val.string.len = VARSIZE_ANY_EXHDR(computedValue);
 			break;
+		case DATEOID:
+		case TIMEOID:
+		case TIMETZOID:
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			value->type = jbvDatetime;
+			value->val.datetime.typid = var->typid;
+			value->val.datetime.typmod = var->typmod;
+			value->val.datetime.value = computedValue;
+			break;
 		case JSONBOID:
 			{
 				Jsonb	   *jb = DatumGetJsonbP(computedValue);
@@ -256,13 +267,24 @@ JsonbTypeName(JsonbValue *jb)
 			return "boolean";
 		case jbvNull:
 			return "null";
-		/* TODO
-			return "date";
-			return "time without time zone";
-			return "time with time zone";
-			return "timestamp without time zone";
-			return "timestamp with time zone";
-		*/
+		case jbvDatetime:
+			switch (jb->val.datetime.typid)
+			{
+				case DATEOID:
+					return "date";
+				case TIMEOID:
+					return "time without time zone";
+				case TIMETZOID:
+					return "time with time zone";
+				case TIMESTAMPOID:
+					return "timestamp without time zone";
+				case TIMESTAMPTZOID:
+					return "timestamp with time zone";
+				default:
+					elog(ERROR, "unknown jsonb value datetime type oid %d",
+						 jb->val.datetime.typid);
+			}
+			return "unknown";
 		default:
 			elog(ERROR, "Unknown jsonb value type: %d", jb->type);
 			return "unknown";
@@ -298,6 +320,118 @@ compareNumeric(Numeric a, Numeric b)
 			);
 }
 
+static int
+compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2, bool *error)
+{
+	PGFunction	cmpfunc = NULL;
+
+	switch (typid1)
+	{
+		case DATEOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					cmpfunc = date_cmp;
+					break;
+				case TIMESTAMPOID:
+					cmpfunc = date_cmp_timestamp;
+					break;
+				case TIMESTAMPTZOID:
+					cmpfunc = date_cmp_timestamptz;
+					break;
+				case TIMEOID:
+				case TIMETZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMEOID:
+			switch (typid2)
+			{
+				case TIMEOID:
+					cmpfunc = time_cmp;
+					break;
+				case TIMETZOID:
+					val1 = DirectFunctionCall1(time_timetz, val1);
+					cmpfunc = timetz_cmp;
+					break;
+				case DATEOID:
+				case TIMESTAMPOID:
+				case TIMESTAMPTZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMETZOID:
+			switch (typid2)
+			{
+				case TIMEOID:
+					val2 = DirectFunctionCall1(time_timetz, val2);
+					cmpfunc = timetz_cmp;
+					break;
+				case TIMETZOID:
+					cmpfunc = timetz_cmp;
+					break;
+				case DATEOID:
+				case TIMESTAMPOID:
+				case TIMESTAMPTZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMESTAMPOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					cmpfunc = timestamp_cmp_date;
+					break;
+				case TIMESTAMPOID:
+					cmpfunc = timestamp_cmp;
+					break;
+				case TIMESTAMPTZOID:
+					cmpfunc = timestamp_cmp_timestamptz;
+					break;
+				case TIMEOID:
+				case TIMETZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMESTAMPTZOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					cmpfunc = timestamptz_cmp_date;
+					break;
+				case TIMESTAMPOID:
+					cmpfunc = timestamptz_cmp_timestamp;
+					break;
+				case TIMESTAMPTZOID:
+					cmpfunc = timestamp_cmp;
+					break;
+				case TIMEOID:
+				case TIMETZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		default:
+			elog(ERROR, "unknown SQL/JSON datetime type oid: %d", typid1);
+	}
+
+	if (!cmpfunc)
+		elog(ERROR, "unknown SQL/JSON datetime type oid: %d", typid2);
+
+	*error = false;
+
+	return DatumGetInt32(DirectFunctionCall2(cmpfunc, val1, val2));
+}
+
 static JsonPathExecResult
 checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 {
@@ -330,6 +464,21 @@ checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 		case jbvNumeric:
 			eq = (compareNumeric(jb1->val.numeric, jb2->val.numeric) == 0);
 			break;
+		case jbvDatetime:
+			{
+				bool		error;
+
+				eq = compareDatetime(jb1->val.datetime.value,
+									 jb1->val.datetime.typid,
+									 jb2->val.datetime.value,
+									 jb2->val.datetime.typid,
+									 &error) == 0;
+
+				if (error)
+					return jperError;
+
+				break;
+			}
 		default:
 			elog(ERROR,"1Wrong state");
 	}
@@ -368,6 +517,20 @@ makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 			cmp = varstr_cmp(jb1->val.string.val, jb1->val.string.len,
 							 jb2->val.string.val, jb2->val.string.len,
 							 DEFAULT_COLLATION_OID);
+			break;
+		case jbvDatetime:
+			{
+				bool		error;
+
+				cmp = compareDatetime(jb1->val.datetime.value,
+									  jb1->val.datetime.typid,
+									  jb2->val.datetime.value,
+									  jb2->val.datetime.typid,
+									  &error);
+
+				if (error)
+					return jperError;
+			}
 			break;
 		default:
 			return jperError;
@@ -904,6 +1067,31 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		return jperError;
 
 	return jperNotFound;
+}
+
+static bool
+tryToParseDatetime(const char *template, text *datetime,
+				   Datum *value, Oid *typid, int32 *typmod)
+{
+	MemoryContext mcxt = CurrentMemoryContext;
+	bool		ok = false;
+
+	PG_TRY();
+	{
+		*value = to_datetime(datetime, template, -1, true, typid, typmod);
+		ok = true;
+	}
+	PG_CATCH();
+	{
+		if (ERRCODE_TO_CATEGORY(geterrcode()) != ERRCODE_DATA_EXCEPTION)
+			PG_RE_THROW();
+
+		FlushErrorState();
+		MemoryContextSwitchTo(mcxt);
+	}
+	PG_END_TRY();
+
+	return ok;
 }
 
 /*
@@ -1519,7 +1707,107 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			}
 			break;
 		case jpiDatetime:
-			/* TODO */
+			{
+				JsonbValue	jbvbuf;
+				Datum		value;
+				text	   *datetime_txt;
+				Oid			typid;
+				int32		typmod = -1;
+				bool		hasNext;
+
+				if (JsonbType(jb) == jbvScalar)
+					jb = JsonbExtractScalar(jb->val.binary.data, &jbvbuf);
+
+				if (jb->type != jbvString)
+				{
+					res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
+					break;
+				}
+
+				datetime_txt = cstring_to_text_with_len(jb->val.string.val,
+														jb->val.string.len);
+
+				res = jperOk;
+
+				if (jsp->content.arg)
+				{
+					text	   *template_txt;
+					char	   *template_str;
+					int			template_len;
+					MemoryContext mcxt = CurrentMemoryContext;
+
+					jspGetArg(jsp, &elem);
+
+					if (elem.type != jpiString)
+						elog(ERROR, "invalid jsonpath item type for .datetime() argument");
+
+					template_str = jspGetString(&elem, &template_len);
+					template_txt = cstring_to_text_with_len(template_str,
+															template_len);
+
+					PG_TRY();
+					{
+						value = to_datetime(datetime_txt,
+											template_str, template_len,
+											false,
+											&typid, &typmod);
+					}
+					PG_CATCH();
+					{
+						if (ERRCODE_TO_CATEGORY(geterrcode()) !=
+														ERRCODE_DATA_EXCEPTION)
+							PG_RE_THROW();
+
+						FlushErrorState();
+						MemoryContextSwitchTo(mcxt);
+
+						res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
+					}
+					PG_END_TRY();
+
+					pfree(template_txt);
+				}
+				else
+				{
+					if (!tryToParseDatetime("yyyy-mm-dd HH24:MI:SS TZH:TZM",
+									datetime_txt, &value, &typid, &typmod) &&
+						!tryToParseDatetime("yyyy-mm-dd HH24:MI:SS TZH",
+									datetime_txt, &value, &typid, &typmod) &&
+						!tryToParseDatetime("yyyy-mm-dd HH24:MI:SS",
+									datetime_txt, &value, &typid, &typmod) &&
+						!tryToParseDatetime("yyyy-mm-dd",
+									datetime_txt, &value, &typid, &typmod) &&
+						!tryToParseDatetime("HH24:MI:SS TZH:TZM",
+									datetime_txt, &value, &typid, &typmod) &&
+						!tryToParseDatetime("HH24:MI:SS TZH",
+									datetime_txt, &value, &typid, &typmod) &&
+						!tryToParseDatetime("HH24:MI:SS",
+									datetime_txt, &value, &typid, &typmod))
+						res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
+				}
+
+				pfree(datetime_txt);
+
+				if (jperIsError(res))
+					break;
+
+				hasNext = jspGetNext(jsp, &elem);
+
+				if (!hasNext && !found)
+					break;
+
+				jb = hasNext ? &jbvbuf : palloc(sizeof(*jb));
+
+				jb->type = jbvDatetime;
+				jb->val.datetime.value = value;
+				jb->val.datetime.typid = typid;
+				jb->val.datetime.typmod = typmod;
+
+				if (hasNext)
+					res = recursiveExecute(cxt, &elem, jb, found);
+				else
+					*found = lappend(*found, jb);
+			}
 			break;
 		case jpiKeyValue:
 			if (JsonbType(jb) != jbvObject)

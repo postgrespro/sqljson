@@ -278,7 +278,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 
 %type	<value>		scalar_value path_primary expr pexpr array_accessor
 					any_path accessor_op key predicate delimited_predicate
-					index_elem starts_with_initial
+					index_elem starts_with_initial opt_datetime_template
 
 %type	<elems>		accessor_expr
 
@@ -421,7 +421,14 @@ accessor_op:
 	| '.' array_accessor			{ $$ = $2; }
 	| '.' any_path					{ $$ = $2; }
 	| '.' method '(' ')'			{ $$ = makeItemType($2); }
+	| '.' DATETIME_P '(' opt_datetime_template ')'
+									{ $$ = makeItemUnary(jpiDatetime, $4); }
 	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
+	;
+
+opt_datetime_template:
+	STRING_P						{ $$ = makeItemString(&$1); }
+	| /* EMPTY */					{ $$ = NULL; }
 	;
 
 key:
@@ -461,7 +468,6 @@ method:
 	| FLOOR_P						{ $$ = jpiFloor; }
 	| DOUBLE_P						{ $$ = jpiDouble; }
 	| CEILING_P						{ $$ = jpiCeiling; }
-	| DATETIME_P					{ $$ = jpiDatetime; }
 	| KEYVALUE_P					{ $$ = jpiKeyValue; }
 	;
 %%
