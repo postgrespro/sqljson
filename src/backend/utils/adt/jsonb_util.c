@@ -15,8 +15,11 @@
 
 #include "access/hash.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
+#include "utils/datetime.h"
+#include "utils/jsonapi.h"
 #include "utils/jsonb.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
@@ -241,6 +244,7 @@ compareJsonbContainers(JsonbContainer *a, JsonbContainer *b)
 							res = (va.val.object.nPairs > vb.val.object.nPairs) ? 1 : -1;
 						break;
 					case jbvBinary:
+					case jbvDatetime:
 						elog(ERROR, "unexpected jbvBinary value");
 				}
 			}
@@ -1741,10 +1745,26 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
 				JENTRY_ISBOOL_TRUE : JENTRY_ISBOOL_FALSE;
 			break;
 
+		case jbvDatetime:
+			{
+				char		buf[MAXDATELEN + 1];
+				size_t		len;
+
+				JsonEncodeDateTime(buf,
+								   scalarVal->val.datetime.value,
+								   scalarVal->val.datetime.typid);
+				len = strlen(buf);
+				appendToBuffer(buffer, buf, len);
+
+				*jentry = JENTRY_ISSTRING | len;
+			}
+			break;
+
 		default:
 			elog(ERROR, "invalid jsonb scalar type");
 	}
 }
+
 
 /*
  * Compare two jbvString JsonbValue values, a and b.
