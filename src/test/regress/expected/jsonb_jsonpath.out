@@ -1021,3 +1021,475 @@ select _jsonpath_query(jsonb '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]'
  "abdacb"
 (3 rows)
 
+select _jsonpath_query(jsonb 'null', '$.datetime()');
+ERROR:  Invalid argument for SQL/JSON datetime function
+select _jsonpath_query(jsonb 'true', '$.datetime()');
+ERROR:  Invalid argument for SQL/JSON datetime function
+select _jsonpath_query(jsonb '1', '$.datetime()');
+ERROR:  Invalid argument for SQL/JSON datetime function
+select _jsonpath_query(jsonb '[]', '$.datetime()');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(jsonb '[]', 'strict $.datetime()');
+ERROR:  Invalid argument for SQL/JSON datetime function
+select _jsonpath_query(jsonb '{}', '$.datetime()');
+ERROR:  Invalid argument for SQL/JSON datetime function
+select _jsonpath_query(jsonb '""', '$.datetime()');
+ERROR:  Invalid argument for SQL/JSON datetime function
+select _jsonpath_query(jsonb '"10-03-2017"',       '$.datetime("dd-mm-yyyy")');
+ _jsonpath_query 
+-----------------
+ "03-10-2017"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017"',       '$.datetime("dd-mm-yyyy").type()');
+ _jsonpath_query 
+-----------------
+ "date"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34"', '$.datetime("dd-mm-yyyy")');
+ _jsonpath_query 
+-----------------
+ "03-10-2017"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34"', '$.datetime("dd-mm-yyyy").type()');
+ _jsonpath_query 
+-----------------
+ "date"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34"', '       $.datetime("dd-mm-yyyy HH24:MI").type()');
+        _jsonpath_query        
+-------------------------------
+ "timestamp without time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 +05:20"', '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM").type()');
+      _jsonpath_query       
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56"',                '$.datetime("HH24:MI:SS").type()');
+     _jsonpath_query      
+--------------------------
+ "time without time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56 +05:20"',         '$.datetime("HH24:MI:SS TZH:TZM").type()');
+    _jsonpath_query    
+-----------------------
+ "time with time zone"
+(1 row)
+
+set time zone '+00';
+select _jsonpath_query(jsonb '"10-03-2017 12:34"',        '$.datetime("dd-mm-yyyy HH24:MI")');
+      _jsonpath_query       
+----------------------------
+ "Fri Mar 10 12:34:00 2017"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34"',        '$.datetime("dd-mm-yyyy HH24:MI TZH")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 12:34:00 2017 +00"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 +05"',    '$.datetime("dd-mm-yyyy HH24:MI TZH")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 07:34:00 2017 +00"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 -05"',    '$.datetime("dd-mm-yyyy HH24:MI TZH")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 17:34:00 2017 +00"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 +05:20"', '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 07:14:00 2017 +00"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 -05:20"', '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 17:54:00 2017 +00"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34"',       '$.datetime("HH24:MI")');
+ _jsonpath_query 
+-----------------
+ "12:34:00"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34"',       '$.datetime("HH24:MI TZH")');
+ _jsonpath_query 
+-----------------
+ "12:34:00+00"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 +05"',    '$.datetime("HH24:MI TZH")');
+ _jsonpath_query 
+-----------------
+ "12:34:00+05"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 -05"',    '$.datetime("HH24:MI TZH")');
+ _jsonpath_query 
+-----------------
+ "12:34:00-05"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 +05:20"', '$.datetime("HH24:MI TZH:TZM")');
+ _jsonpath_query  
+------------------
+ "12:34:00+05:20"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 -05:20"', '$.datetime("HH24:MI TZH:TZM")');
+ _jsonpath_query  
+------------------
+ "12:34:00-05:20"
+(1 row)
+
+set time zone '+10';
+select _jsonpath_query(jsonb '"10-03-2017 12:34"',       '$.datetime("dd-mm-yyyy HH24:MI")');
+      _jsonpath_query       
+----------------------------
+ "Fri Mar 10 12:34:00 2017"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34"',        '$.datetime("dd-mm-yyyy HH24:MI TZH")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 12:34:00 2017 +10"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 +05"',    '$.datetime("dd-mm-yyyy HH24:MI TZH")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 17:34:00 2017 +10"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 -05"',    '$.datetime("dd-mm-yyyy HH24:MI TZH")');
+        _jsonpath_query         
+--------------------------------
+ "Sat Mar 11 03:34:00 2017 +10"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 +05:20"', '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 17:14:00 2017 +10"
+(1 row)
+
+select _jsonpath_query(jsonb '"10-03-2017 12:34 -05:20"', '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")');
+        _jsonpath_query         
+--------------------------------
+ "Sat Mar 11 03:54:00 2017 +10"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34"',        '$.datetime("HH24:MI")');
+ _jsonpath_query 
+-----------------
+ "12:34:00"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34"',        '$.datetime("HH24:MI TZH")');
+ _jsonpath_query 
+-----------------
+ "12:34:00+10"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 +05"',    '$.datetime("HH24:MI TZH")');
+ _jsonpath_query 
+-----------------
+ "12:34:00+05"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 -05"',    '$.datetime("HH24:MI TZH")');
+ _jsonpath_query 
+-----------------
+ "12:34:00-05"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 +05:20"', '$.datetime("HH24:MI TZH:TZM")');
+ _jsonpath_query  
+------------------
+ "12:34:00+05:20"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34 -05:20"', '$.datetime("HH24:MI TZH:TZM")');
+ _jsonpath_query  
+------------------
+ "12:34:00-05:20"
+(1 row)
+
+set time zone default;
+select _jsonpath_query(jsonb '"2017-03-10"', '$.datetime().type()');
+ _jsonpath_query 
+-----------------
+ "date"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10"', '$.datetime()');
+ _jsonpath_query 
+-----------------
+ "03-10-2017"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10 12:34:56"', '$.datetime().type()');
+        _jsonpath_query        
+-------------------------------
+ "timestamp without time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10 12:34:56"', '$.datetime()');
+      _jsonpath_query       
+----------------------------
+ "Fri Mar 10 12:34:56 2017"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10 12:34:56 +3"', '$.datetime().type()');
+      _jsonpath_query       
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10 12:34:56 +3"', '$.datetime()');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 01:34:56 2017 PST"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10 12:34:56 +3:10"', '$.datetime().type()');
+      _jsonpath_query       
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"2017-03-10 12:34:56 +3:10"', '$.datetime()');
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 01:24:56 2017 PST"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56"', '$.datetime().type()');
+     _jsonpath_query      
+--------------------------
+ "time without time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56"', '$.datetime()');
+ _jsonpath_query 
+-----------------
+ "12:34:56"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56 +3"', '$.datetime().type()');
+    _jsonpath_query    
+-----------------------
+ "time with time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56 +3"', '$.datetime()');
+ _jsonpath_query 
+-----------------
+ "12:34:56+03"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56 +3:10"', '$.datetime().type()');
+    _jsonpath_query    
+-----------------------
+ "time with time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '"12:34:56 +3:10"', '$.datetime()');
+ _jsonpath_query  
+------------------
+ "12:34:56+03:10"
+(1 row)
+
+set time zone '+00';
+-- date comparison
+select _jsonpath_query(jsonb
+	'["2017-03-10", "2017-03-11", "2017-03-09", "12:34:56", "01:02:03 +04", "2017-03-10 00:00:00", "2017-03-10 12:34:56", "2017-03-10 01:02:03 +04", "2017-03-10 03:00:00 +03"]',
+	'$[*].datetime() ? (@ == "10.03.2017".datetime("dd.mm.yyyy"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "03-10-2017"
+ "Fri Mar 10 00:00:00 2017"
+ "Fri Mar 10 00:00:00 2017 +00"
+(3 rows)
+
+select _jsonpath_query(jsonb
+	'["2017-03-10", "2017-03-11", "2017-03-09", "12:34:56", "01:02:03 +04", "2017-03-10 00:00:00", "2017-03-10 12:34:56", "2017-03-10 01:02:03 +04", "2017-03-10 03:00:00 +03"]',
+	'$[*].datetime() ? (@ >= "10.03.2017".datetime("dd.mm.yyyy"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "03-10-2017"
+ "03-11-2017"
+ "Fri Mar 10 00:00:00 2017"
+ "Fri Mar 10 12:34:56 2017"
+ "Fri Mar 10 00:00:00 2017 +00"
+(5 rows)
+
+select _jsonpath_query(jsonb
+	'["2017-03-10", "2017-03-11", "2017-03-09", "12:34:56", "01:02:03 +04", "2017-03-10 00:00:00", "2017-03-10 12:34:56", "2017-03-10 01:02:03 +04", "2017-03-10 03:00:00 +03"]',
+	'$[*].datetime() ? (@ <  "10.03.2017".datetime("dd.mm.yyyy"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "03-09-2017"
+ "Thu Mar 09 21:02:03 2017 +00"
+(2 rows)
+
+-- time comparison
+select _jsonpath_query(jsonb
+	'["12:34:00", "12:35:00", "12:36:00", "12:35:00 +00", "12:35:00 +01", "13:35:00 +01", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +01"]',
+	'$[*].datetime() ? (@ == "12:35".datetime("HH24:MI"))'
+);
+ _jsonpath_query 
+-----------------
+ "12:35:00"
+ "12:35:00+00"
+(2 rows)
+
+select _jsonpath_query(jsonb
+	'["12:34:00", "12:35:00", "12:36:00", "12:35:00 +00", "12:35:00 +01", "13:35:00 +01", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +01"]',
+	'$[*].datetime() ? (@ >= "12:35".datetime("HH24:MI"))'
+);
+ _jsonpath_query 
+-----------------
+ "12:35:00"
+ "12:36:00"
+ "12:35:00+00"
+(3 rows)
+
+select _jsonpath_query(jsonb
+	'["12:34:00", "12:35:00", "12:36:00", "12:35:00 +00", "12:35:00 +01", "13:35:00 +01", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +01"]',
+	'$[*].datetime() ? (@ <  "12:35".datetime("HH24:MI"))'
+);
+ _jsonpath_query 
+-----------------
+ "12:34:00"
+ "12:35:00+01"
+ "13:35:00+01"
+(3 rows)
+
+-- timetz comparison
+select _jsonpath_query(jsonb
+	'["12:34:00 +01", "12:35:00 +01", "12:36:00 +01", "12:35:00 +02", "12:35:00 -02", "10:35:00", "11:35:00", "12:35:00", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +1"]',
+	'$[*].datetime() ? (@ == "12:35 +1".datetime("HH24:MI TZH"))'
+);
+ _jsonpath_query 
+-----------------
+ "12:35:00+01"
+(1 row)
+
+select _jsonpath_query(jsonb
+	'["12:34:00 +01", "12:35:00 +01", "12:36:00 +01", "12:35:00 +02", "12:35:00 -02", "10:35:00", "11:35:00", "12:35:00", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +1"]',
+	'$[*].datetime() ? (@ >= "12:35 +1".datetime("HH24:MI TZH"))'
+);
+ _jsonpath_query 
+-----------------
+ "12:35:00+01"
+ "12:36:00+01"
+ "12:35:00-02"
+ "11:35:00"
+ "12:35:00"
+(5 rows)
+
+select _jsonpath_query(jsonb
+	'["12:34:00 +01", "12:35:00 +01", "12:36:00 +01", "12:35:00 +02", "12:35:00 -02", "10:35:00", "11:35:00", "12:35:00", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +1"]',
+	'$[*].datetime() ? (@ <  "12:35 +1".datetime("HH24:MI TZH"))'
+);
+ _jsonpath_query 
+-----------------
+ "12:34:00+01"
+ "12:35:00+02"
+ "10:35:00"
+(3 rows)
+
+-- timestamp comparison
+select _jsonpath_query(jsonb
+	'["2017-03-10 12:34:00", "2017-03-10 12:35:00", "2017-03-10 12:36:00", "2017-03-10 12:35:00 +01", "2017-03-10 13:35:00 +01", "2017-03-10 12:35:00 -01", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]',
+	'$[*].datetime() ? (@ == "10.03.2017 12:35".datetime("dd.mm.yyyy HH24:MI"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 12:35:00 2017"
+ "Fri Mar 10 12:35:00 2017 +00"
+(2 rows)
+
+select _jsonpath_query(jsonb
+	'["2017-03-10 12:34:00", "2017-03-10 12:35:00", "2017-03-10 12:36:00", "2017-03-10 12:35:00 +01", "2017-03-10 13:35:00 +01", "2017-03-10 12:35:00 -01", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]',
+	'$[*].datetime() ? (@ >= "10.03.2017 12:35".datetime("dd.mm.yyyy HH24:MI"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 12:35:00 2017"
+ "Fri Mar 10 12:36:00 2017"
+ "Fri Mar 10 12:35:00 2017 +00"
+ "Fri Mar 10 13:35:00 2017 +00"
+ "03-11-2017"
+(5 rows)
+
+select _jsonpath_query(jsonb
+	'["2017-03-10 12:34:00", "2017-03-10 12:35:00", "2017-03-10 12:36:00", "2017-03-10 12:35:00 +01", "2017-03-10 13:35:00 +01", "2017-03-10 12:35:00 -01", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]',
+	'$[*].datetime() ? (@ < "10.03.2017 12:35".datetime("dd.mm.yyyy HH24:MI"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 12:34:00 2017"
+ "Fri Mar 10 11:35:00 2017 +00"
+ "03-10-2017"
+(3 rows)
+
+-- timestamptz comparison
+select _jsonpath_query(jsonb
+	'["2017-03-10 12:34:00 +01", "2017-03-10 12:35:00 +01", "2017-03-10 12:36:00 +01", "2017-03-10 12:35:00 +02", "2017-03-10 12:35:00 -02", "2017-03-10 10:35:00", "2017-03-10 11:35:00", "2017-03-10 12:35:00", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]',
+	'$[*].datetime() ? (@ == "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 11:35:00 2017 +00"
+ "Fri Mar 10 11:35:00 2017"
+(2 rows)
+
+select _jsonpath_query(jsonb
+	'["2017-03-10 12:34:00 +01", "2017-03-10 12:35:00 +01", "2017-03-10 12:36:00 +01", "2017-03-10 12:35:00 +02", "2017-03-10 12:35:00 -02", "2017-03-10 10:35:00", "2017-03-10 11:35:00", "2017-03-10 12:35:00", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]',
+	'$[*].datetime() ? (@ >= "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 11:35:00 2017 +00"
+ "Fri Mar 10 11:36:00 2017 +00"
+ "Fri Mar 10 14:35:00 2017 +00"
+ "Fri Mar 10 11:35:00 2017"
+ "Fri Mar 10 12:35:00 2017"
+ "03-11-2017"
+(6 rows)
+
+select _jsonpath_query(jsonb
+	'["2017-03-10 12:34:00 +01", "2017-03-10 12:35:00 +01", "2017-03-10 12:36:00 +01", "2017-03-10 12:35:00 +02", "2017-03-10 12:35:00 -02", "2017-03-10 10:35:00", "2017-03-10 11:35:00", "2017-03-10 12:35:00", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]',
+	'$[*].datetime() ? (@ < "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))'
+);
+        _jsonpath_query         
+--------------------------------
+ "Fri Mar 10 11:34:00 2017 +00"
+ "Fri Mar 10 10:35:00 2017 +00"
+ "Fri Mar 10 10:35:00 2017"
+ "03-10-2017"
+(4 rows)
+
+set time zone default;
