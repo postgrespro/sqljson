@@ -745,6 +745,13 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiRoot ||
 			v->type == jpiVariable ||
 			v->type == jpiLast ||
+			v->type == jpiAdd ||
+			v->type == jpiSub ||
+			v->type == jpiMul ||
+			v->type == jpiDiv ||
+			v->type == jpiMod ||
+			v->type == jpiPlus ||
+			v->type == jpiMinus ||
 			v->type == jpiType ||
 			v->type == jpiSize ||
 			v->type == jpiAbs ||
