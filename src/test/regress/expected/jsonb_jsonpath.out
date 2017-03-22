@@ -1144,8 +1144,6 @@ select _jsonpath_query(jsonb 'null', '$.datetime()');
 ERROR:  Invalid argument for SQL/JSON datetime function
 select _jsonpath_query(jsonb 'true', '$.datetime()');
 ERROR:  Invalid argument for SQL/JSON datetime function
-select _jsonpath_query(jsonb '1', '$.datetime()');
-ERROR:  Invalid argument for SQL/JSON datetime function
 select _jsonpath_query(jsonb '[]', '$.datetime()');
  _jsonpath_query 
 -----------------
@@ -1157,6 +1155,25 @@ select _jsonpath_query(jsonb '{}', '$.datetime()');
 ERROR:  Invalid argument for SQL/JSON datetime function
 select _jsonpath_query(jsonb '""', '$.datetime()');
 ERROR:  Invalid argument for SQL/JSON datetime function
+-- Standard extension: UNIX epoch to timestamptz
+select _jsonpath_query(jsonb '0', '$.datetime()');
+        _jsonpath_query         
+--------------------------------
+ "Wed Dec 31 16:00:00 1969 PST"
+(1 row)
+
+select _jsonpath_query(jsonb '0', '$.datetime().type()');
+      _jsonpath_query       
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select _jsonpath_query(jsonb '1490216035.5', '$.datetime()');
+         _jsonpath_query          
+----------------------------------
+ "Wed Mar 22 13:53:55.5 2017 PDT"
+(1 row)
+
 select _jsonpath_query(jsonb '"10-03-2017"',       '$.datetime("dd-mm-yyyy")');
  _jsonpath_query 
 -----------------
