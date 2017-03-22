@@ -144,18 +144,23 @@ makeItemUnary(int type, JsonPathParseItem* a)
 }
 
 static JsonPathParseItem*
-makeItemList(List *list) {
-	JsonPathParseItem	*head, *end;
-	ListCell	*cell;
+makeItemList(List *list)
+{
+	JsonPathParseItem *head, *end;
+	ListCell   *cell = list_head(list);
 
-	head = end = (JsonPathParseItem*)linitial(list);
+	head = end = (JsonPathParseItem *) lfirst(cell);
 
-	foreach(cell, list)
+	if (!lnext(cell))
+		return head;
+
+	/* append items to the end of already existing list */
+	while (end->next)
+		end = end->next;
+
+	for_each_cell(cell, lnext(cell))
 	{
-		JsonPathParseItem	*c = (JsonPathParseItem*)lfirst(cell);
-
-		if (c == head)
-			continue;
+		JsonPathParseItem *c = (JsonPathParseItem *) lfirst(cell);
 
 		end->next = c;
 		end = c;
@@ -370,6 +375,7 @@ path_primary:
 accessor_expr:
 	path_primary					{ $$ = list_make1($1); }
 	| '.' key						{ $$ = list_make2(makeItemType(jpiCurrent), $2); }
+	| '(' expr ')' accessor_op		{ $$ = list_make2($2, $4); }
 	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
 	;
 

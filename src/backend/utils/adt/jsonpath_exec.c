@@ -711,6 +711,7 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	Datum		ldatum;
 	Datum		rdatum;
 	Datum		res;
+	bool		hasNext;
 
 	jspGetLeftArg(jsp, &elem);
 
@@ -742,7 +743,9 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	if (rval->type != jbvNumeric)
 		return jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
 
-	if (!found)
+	hasNext = jspGetNext(jsp, &elem);
+
+	if (!found && !hasNext)
 		return jperOk;
 
 	ldatum = NumericGetDatum(lval->val.numeric);
@@ -773,6 +776,9 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	lval->type = jbvNumeric;
 	lval->val.numeric = DatumGetNumeric(res);
 
+	if (hasNext)
+		return recursiveExecute(cxt, &elem, lval, found);
+
 	*found = lappend(*found, lval);
 
 	return jperOk;
@@ -786,6 +792,7 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonPathItem elem;
 	List	   *seq = NIL;
 	ListCell   *lc;
+	bool		hasNext;
 
 	jspGetArg(jsp, &elem);
 	jper = recursiveExecuteAndUnwrap(cxt, &elem, jb, &seq);
@@ -794,6 +801,8 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		return jperMakeError(ERRCODE_JSON_NUMBER_NOT_FOUND);
 
 	jper = jperNotFound;
+
+	hasNext = jspGetNext(jsp, &elem);
 
 	foreach(lc, seq)
 	{
@@ -805,12 +814,10 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		if (val->type == jbvNumeric)
 		{
-			jper = jperOk;
-
-			if (!found)
-				return jper;
+			if (!found && !hasNext)
+				return jperOk;
 		}
-		else if (!found)
+		else if (!found && !hasNext)
 			continue; /* skip non-numerics processing */
 
 		if (val->type != jbvNumeric)
@@ -831,7 +838,26 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				elog(ERROR, "unknown jsonpath arithmetic operation %d", jsp->type);
 		}
 
-		*found = lappend(*found, val);
+		if (hasNext)
+		{
+			JsonPathExecResult jper2 = recursiveExecute(cxt, &elem, val, found);
+
+			if (jperIsError(jper2))
+				return jper2;
+
+			if (jper2 == jperOk)
+			{
+				if (!found)
+					return jperOk;
+				jper = jperOk;
+			}
+		}
+		else
+		{
+			Assert(found);
+			*found = lappend(*found, val);
+			jper = jperOk;
+		}
 	}
 
 	return jper;

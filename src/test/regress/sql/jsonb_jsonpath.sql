@@ -170,6 +170,9 @@ select _jsonpath_query(jsonb 'null', '123.type()');
 select _jsonpath_query(jsonb 'null', '"123".type()');
 select _jsonpath_query(jsonb 'null', 'aaa.type()');
 
+select _jsonpath_query(jsonb '{"a": 2}', '($.a - 5).abs() + 10');
+select _jsonpath_query(jsonb '{"a": 2.5}', '-($.a * $.a).floor() + 10');
+
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'strict $[*].size()');
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'lax $[*].size()');
 
