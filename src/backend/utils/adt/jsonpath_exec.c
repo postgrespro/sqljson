@@ -1413,10 +1413,41 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					return executeItemUnwrapTargetArray(cxt, jsp, jb, found,
 														false);
 
-				if (!(jb = getScalar(jb, jbvString)))
+				if (JsonItemIsNumeric(jb))
+				{
+					bool		error = false;
+					float8		unix_epoch =
+						DatumGetFloat8(DirectFunctionCall1(numeric_float8_no_overflow,
+														   JsonItemNumericDatum(jb)));
+					TimestampTz	tstz = float8_timestamptz_internal(unix_epoch,
+																   &error);
+
+					if (error)
+						RETURN_ERROR(ereport(ERROR,
+											 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+											  errmsg("UNIX epoch is out ouf timestamptz range"))));
+
+					value = TimestampTzGetDatum(tstz);
+					typid = TIMESTAMPTZOID;
+					tz = 0;
+					res = jperOk;
+
+					hasNext = jspGetNext(jsp, &elem);
+
+					if (!hasNext && !found)
+						break;
+
+					jb = hasNext ? &jbvbuf : palloc(sizeof(*jb));
+
+					JsonItemInitDatetime(jb, value, typid, typmod, tz);
+
+					res = executeNextItem(cxt, jsp, &elem, jb, found, hasNext);
+					break;
+				}
+				else if (!JsonItemIsString(jb))
 					RETURN_ERROR(ereport(ERROR,
 										 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
-										  errmsg("jsonpath item method .%s() can only be applied to a string value",
+										  errmsg("jsonpath item method .%s() can only be applied to a string or number",
 												 jspOperationName(jsp->type)))));
 
 				datetime = cstring_to_text_with_len(JsonItemString(jb).val,

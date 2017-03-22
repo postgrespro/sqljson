@@ -348,7 +348,6 @@ select jsonb_path_query('[null, 1, "a\b", "a\\b", "^a\\b$"]', 'lax $[*] ? (@ lik
 
 select jsonb_path_query('null', '$.datetime()');
 select jsonb_path_query('true', '$.datetime()');
-select jsonb_path_query('1', '$.datetime()');
 select jsonb_path_query('[]', '$.datetime()');
 select jsonb_path_query('[]', 'strict $.datetime()');
 select jsonb_path_query('{}', '$.datetime()');
@@ -363,6 +362,11 @@ select jsonb_path_query('"12:34"', '$.datetime("HH24:MI TZH", 2147483648)');
 select jsonb_path_query('"12:34"', '$.datetime("HH24:MI TZH", -2147483647)');
 select jsonb_path_query('"12:34"', '$.datetime("HH24:MI TZH", -2147483648)');
 select jsonb_path_query('"aaaa"', '$.datetime("HH24")');
+
+-- Standard extension: UNIX epoch to timestamptz
+select jsonb_path_query('0', '$.datetime()');
+select jsonb_path_query('0', '$.datetime().type()');
+select jsonb_path_query('1490216035.5', '$.datetime()');
 
 select jsonb '"10-03-2017"' @? '$.datetime("dd-mm-yyyy")';
 select jsonb_path_query('"10-03-2017"', '$.datetime("dd-mm-yyyy")');

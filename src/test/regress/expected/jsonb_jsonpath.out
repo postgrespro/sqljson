@@ -1659,20 +1659,18 @@ select jsonb_path_query('[null, 1, "a\b", "a\\b", "^a\\b$"]', 'lax $[*] ? (@ lik
 (1 row)
 
 select jsonb_path_query('null', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select jsonb_path_query('true', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
-select jsonb_path_query('1', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select jsonb_path_query('[]', '$.datetime()');
  jsonb_path_query 
 ------------------
 (0 rows)
 
 select jsonb_path_query('[]', 'strict $.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select jsonb_path_query('{}', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select jsonb_path_query('""', '$.datetime()');
 ERROR:  unrecognized datetime format
 HINT:  use datetime template argument for explicit format specification
@@ -1709,6 +1707,25 @@ ERROR:  timezone argument of jsonpath item method .datetime() is out of integer 
 select jsonb_path_query('"aaaa"', '$.datetime("HH24")');
 ERROR:  invalid value "aa" for "HH24"
 DETAIL:  Value must be an integer.
+-- Standard extension: UNIX epoch to timestamptz
+select jsonb_path_query('0', '$.datetime()');
+      jsonb_path_query       
+-----------------------------
+ "1970-01-01T00:00:00+00:00"
+(1 row)
+
+select jsonb_path_query('0', '$.datetime().type()');
+      jsonb_path_query      
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select jsonb_path_query('1490216035.5', '$.datetime()');
+       jsonb_path_query        
+-------------------------------
+ "2017-03-22T20:53:55.5+00:00"
+(1 row)
+
 select jsonb '"10-03-2017"' @? '$.datetime("dd-mm-yyyy")';
  ?column? 
 ----------

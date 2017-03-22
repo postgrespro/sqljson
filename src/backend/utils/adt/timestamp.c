@@ -728,21 +728,25 @@ make_timestamptz_at_timezone(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(result);
 }
 
-/*
- * to_timestamp(double precision)
- * Convert UNIX epoch to timestamptz.
- */
-Datum
-float8_timestamptz(PG_FUNCTION_ARGS)
+TimestampTz
+float8_timestamptz_internal(float8 seconds, bool *error)
 {
-	float8		seconds = PG_GETARG_FLOAT8(0);
+	float8		saved_seconds = seconds;
 	TimestampTz result;
 
 	/* Deal with NaN and infinite inputs ... */
 	if (isnan(seconds))
+	{
+		if (error)
+		{
+			*error = true;
+			return 0;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("timestamp cannot be NaN")));
+	}
 
 	if (isinf(seconds))
 	{
@@ -758,9 +762,17 @@ float8_timestamptz(PG_FUNCTION_ARGS)
 			(float8) SECS_PER_DAY * (DATETIME_MIN_JULIAN - UNIX_EPOCH_JDATE)
 			|| seconds >=
 			(float8) SECS_PER_DAY * (TIMESTAMP_END_JULIAN - UNIX_EPOCH_JDATE))
+		{
+			if (error)
+			{
+				*error = true;
+				return 0;
+			}
+
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range: \"%g\"", seconds)));
+		}
 
 		/* Convert UNIX epoch to Postgres epoch */
 		seconds -= ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
@@ -770,13 +782,32 @@ float8_timestamptz(PG_FUNCTION_ARGS)
 
 		/* Recheck in case roundoff produces something just out of range */
 		if (!IS_VALID_TIMESTAMP(result))
+		{
+			if (error)
+			{
+				*error = true;
+				return 0;
+			}
+
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range: \"%g\"",
-							PG_GETARG_FLOAT8(0))));
+					 errmsg("timestamp out of range: \"%g\"", saved_seconds)));
+		}
 	}
 
-	PG_RETURN_TIMESTAMP(result);
+	return result;
+}
+
+/*
+ * to_timestamp(double precision)
+ * Convert UNIX epoch to timestamptz.
+ */
+Datum
+float8_timestamptz(PG_FUNCTION_ARGS)
+{
+	float8		seconds = PG_GETARG_FLOAT8(0);
+
+	PG_RETURN_TIMESTAMP(float8_timestamptz_internal(seconds, NULL));
 }
 
 /* timestamptz_out()
