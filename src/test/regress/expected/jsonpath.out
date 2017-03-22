@@ -397,6 +397,36 @@ select '$ ? (@ starts with $var)'::jsonpath;
  $?(@ starts with $"var")
 (1 row)
 
+select '($).a.b'::jsonpath;
+ jsonpath  
+-----------
+ $."a"."b"
+(1 row)
+
+select '($.a.b).c.d'::jsonpath;
+     jsonpath      
+-------------------
+ $."a"."b"."c"."d"
+(1 row)
+
+select '($.a.b + -$.x.y).c.d'::jsonpath;
+             jsonpath             
+----------------------------------
+ ($."a"."b" + -$."x"."y")."c"."d"
+(1 row)
+
+select '(-+$.a.b).c.d'::jsonpath;
+        jsonpath         
+-------------------------
+ (-(+$."a"."b"))."c"."d"
+(1 row)
+
+select '1 + ($.a.b + 2).c.d'::jsonpath;
+           jsonpath            
+-------------------------------
+ (1 + ($."a"."b" + 2)."c"."d")
+(1 row)
+
 select '$ ? (a < 1)'::jsonpath;
   jsonpath   
 -------------
