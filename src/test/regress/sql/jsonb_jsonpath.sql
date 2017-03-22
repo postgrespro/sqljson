@@ -229,11 +229,15 @@ select _jsonpath_query(jsonb '[null, 1, "abd", "abdabc"]', 'lax $[*] ? ((@ start
 
 select _jsonpath_query(jsonb 'null', '$.datetime()');
 select _jsonpath_query(jsonb 'true', '$.datetime()');
-select _jsonpath_query(jsonb '1', '$.datetime()');
 select _jsonpath_query(jsonb '[]', '$.datetime()');
 select _jsonpath_query(jsonb '[]', 'strict $.datetime()');
 select _jsonpath_query(jsonb '{}', '$.datetime()');
 select _jsonpath_query(jsonb '""', '$.datetime()');
+
+-- Standard extension: UNIX epoch to timestamptz
+select _jsonpath_query(jsonb '0', '$.datetime()');
+select _jsonpath_query(jsonb '0', '$.datetime().type()');
+select _jsonpath_query(jsonb '1490216035.5', '$.datetime()');
 
 select _jsonpath_query(jsonb '"10-03-2017"',       '$.datetime("dd-mm-yyyy")');
 select _jsonpath_query(jsonb '"10-03-2017"',       '$.datetime("dd-mm-yyyy").type()');
