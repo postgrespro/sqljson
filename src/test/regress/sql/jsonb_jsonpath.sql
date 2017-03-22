@@ -240,11 +240,15 @@ select jsonb '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]' @* 'lax $[*] ? 
 
 select jsonb 'null' @* '$.datetime()';
 select jsonb 'true' @* '$.datetime()';
-select jsonb '1' @* '$.datetime()';
 select jsonb '[]' @* '$.datetime()';
 select jsonb '[]' @* 'strict $.datetime()';
 select jsonb '{}' @* '$.datetime()';
 select jsonb '""' @* '$.datetime()';
+
+-- Standard extension: UNIX epoch to timestamptz
+select jsonb '0' @* '$.datetime()';
+select jsonb '0' @* '$.datetime().type()';
+select jsonb '1490216035.5' @* '$.datetime()';
 
 select jsonb '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy")';
 select jsonb '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy").type()';

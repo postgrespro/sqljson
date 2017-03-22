@@ -2042,7 +2042,6 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			{
 				JsonbValue	jbvbuf;
 				Datum		value;
-				text	   *datetime;
 				Oid			typid;
 				int32		typmod = -1;
 				int			tz;
@@ -2053,84 +2052,113 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
 
-				if (jb->type != jbvString)
-					break;
-
-				datetime = cstring_to_text_with_len(jb->val.string.val,
-													jb->val.string.len);
-
-				if (jsp->content.args.left)
+				if (jb->type == jbvNumeric && !jsp->content.args.left)
 				{
-					char	   *template_str;
-					int			template_len;
-					char	   *tzname = NULL;
+					/* Standard extension: unix epoch to timestamptz */
+					MemoryContext mcxt = CurrentMemoryContext;
 
-					jspGetLeftArg(jsp, &elem);
-
-					if (elem.type != jpiString)
-						elog(ERROR, "invalid jsonpath item type for .datetime() argument");
-
-					template_str = jspGetString(&elem, &template_len);
-
-					if (jsp->content.args.right)
+					PG_TRY();
 					{
-						JsonValueList tzlist = { 0 };
-						JsonPathExecResult tzres;
-						JsonbValue *tzjbv;
+						Datum		unix_epoch =
+								DirectFunctionCall1(numeric_float8,
+											NumericGetDatum(jb->val.numeric));
 
-						jspGetRightArg(jsp, &elem);
-						tzres = recursiveExecuteNoUnwrap(cxt, &elem, jb,
-														 &tzlist);
-
-						if (jperIsError(tzres))
-							return tzres;
-
-						if (JsonValueListLength(&tzlist) != 1)
-							break;
-
-						tzjbv = JsonValueListHead(&tzlist);
-
-						if (tzjbv->type != jbvString)
-							break;
-
-						tzname = pnstrdup(tzjbv->val.string.val,
-										  tzjbv->val.string.len);
-					}
-
-					if (tryToParseDatetime(template_str, template_len, datetime,
-										   tzname, false,
-										   &value, &typid, &typmod, &tz))
+						value = DirectFunctionCall1(float8_timestamptz,
+													unix_epoch);
+						typid = TIMESTAMPTZOID;
+						tz = 0;
 						res = jperOk;
-
-					if (tzname)
-						pfree(tzname);
-				}
-				else
-				{
-					const char *templates[] = {
-						"yyyy-mm-dd HH24:MI:SS TZH:TZM",
-						"yyyy-mm-dd HH24:MI:SS TZH",
-						"yyyy-mm-dd HH24:MI:SS",
-						"yyyy-mm-dd",
-						"HH24:MI:SS TZH:TZM",
-						"HH24:MI:SS TZH",
-						"HH24:MI:SS"
-					};
-					int			i;
-
-					for (i = 0; i < sizeof(templates) / sizeof(*templates); i++)
+					}
+					PG_CATCH();
 					{
-						if (tryToParseDatetime(templates[i], -1, datetime,
-											   NULL, true,  &value, &typid,
-											   &typmod, &tz))
+						if (ERRCODE_TO_CATEGORY(geterrcode()) !=
+														ERRCODE_DATA_EXCEPTION)
+							PG_RE_THROW();
+
+						FlushErrorState();
+						MemoryContextSwitchTo(mcxt);
+					}
+					PG_END_TRY();
+				}
+				else if (jb->type == jbvString)
+				{
+					text	   *datetime =
+						cstring_to_text_with_len(jb->val.string.val,
+												 jb->val.string.len);
+
+					if (jsp->content.args.left)
+					{
+						char	   *template_str;
+						int			template_len;
+						char	   *tzname = NULL;
+
+						jspGetLeftArg(jsp, &elem);
+
+						if (elem.type != jpiString)
+							elog(ERROR, "invalid jsonpath item type for .datetime() argument");
+
+						template_str = jspGetString(&elem, &template_len);
+
+						if (jsp->content.args.right)
 						{
+							JsonValueList tzlist = { 0 };
+							JsonPathExecResult tzres;
+							JsonbValue *tzjbv;
+
+							jspGetRightArg(jsp, &elem);
+							tzres = recursiveExecuteNoUnwrap(cxt, &elem, jb,
+															 &tzlist);
+
+							if (jperIsError(tzres))
+								return tzres;
+
+							if (JsonValueListLength(&tzlist) != 1)
+								break;
+
+							tzjbv = JsonValueListHead(&tzlist);
+
+							if (tzjbv->type != jbvString)
+								break;
+
+							tzname = pnstrdup(tzjbv->val.string.val,
+											  tzjbv->val.string.len);
+						}
+
+						if (tryToParseDatetime(template_str, template_len,
+											   datetime, tzname, false,
+											   &value, &typid, &typmod, &tz))
 							res = jperOk;
-							break;
+
+						if (tzname)
+							pfree(tzname);
+					}
+					else
+					{
+						const char *templates[] = {
+							"yyyy-mm-dd HH24:MI:SS TZH:TZM",
+							"yyyy-mm-dd HH24:MI:SS TZH",
+							"yyyy-mm-dd HH24:MI:SS",
+							"yyyy-mm-dd",
+							"HH24:MI:SS TZH:TZM",
+							"HH24:MI:SS TZH",
+							"HH24:MI:SS"
+						};
+						int			i;
+
+						for (i = 0; i < sizeof(templates) / sizeof(*templates); i++)
+						{
+							if (tryToParseDatetime(templates[i], -1, datetime,
+												   NULL, true,  &value, &typid,
+												   &typmod, &tz))
+							{
+								res = jperOk;
+								break;
+							}
 						}
 					}
-				}
 
-				pfree(datetime);
+					pfree(datetime);
+				}
 
 				if (jperIsError(res))
 					break;
