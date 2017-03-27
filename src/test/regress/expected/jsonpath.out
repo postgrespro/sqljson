@@ -177,6 +177,12 @@ select '$.a/+-1'::jsonpath;
  ($."a" / -1)
 (1 row)
 
+select '$.g ? ($.a == 1)'::jsonpath;
+      jsonpath      
+--------------------
+ $."g"?($."a" == 1)
+(1 row)
+
 select '$.g ? (@ == 1)'::jsonpath;
     jsonpath    
 ----------------
@@ -313,6 +319,12 @@ select '$.a[$a + 1, ($b[*]) to -(@[0] * 2)]'::jsonpath;
                 jsonpath                
 ----------------------------------------
  $."a"[$"a" + 1,$"b"[*] to -(@[0] * 2)]
+(1 row)
+
+select '$.a[$.a.size() - 3]'::jsonpath;
+        jsonpath         
+-------------------------
+ $."a"[$."a".size() - 3]
 (1 row)
 
 select 'last'::jsonpath;

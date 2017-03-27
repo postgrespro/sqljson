@@ -657,6 +657,12 @@ select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.c ? (.a == .b)');
  t
 (1 row)
 
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.c ? ($.c.a == .b)');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
 select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.* ? (.a == .b)');
  _jsonpath_exists 
 ------------------
@@ -763,6 +769,12 @@ select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (-@[*] < -3)');
  _jsonpath_exists 
 ------------------
  f
+(1 row)
+
+select _jsonpath_exists(jsonb '1', '$ ? ($ > 0)');
+ _jsonpath_exists 
+------------------
+ t
 (1 row)
 
 -- unwrapping of operator arguments in lax mode

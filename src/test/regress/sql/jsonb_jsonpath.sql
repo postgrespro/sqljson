@@ -134,6 +134,7 @@ from
 select _jsonpath_exists(jsonb '{"a": 1, "b":1}', '$ ? (.a == .b)');
 select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$ ? (.a == .b)');
 select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.c ? (.a == .b)');
+select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.c ? ($.c.a == .b)');
 select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.* ? (.a == .b)');
 select _jsonpath_exists(jsonb '{"a": 1, "b":1}', '$.** ? (.a == .b)');
 select _jsonpath_exists(jsonb '{"c": {"a": 1, "b":1}}', '$.** ? (.a == .b)');
@@ -153,6 +154,7 @@ select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (+@[*] > +2)');
 select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (+@[*] > +3)');
 select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (-@[*] < -2)');
 select _jsonpath_exists(jsonb '[1,2,3]', '$ ? (-@[*] < -3)');
+select _jsonpath_exists(jsonb '1', '$ ? ($ > 0)');
 
 -- unwrapping of operator arguments in lax mode
 select _jsonpath_query(jsonb '{"a": [2]}', 'lax $.a * 3');
