@@ -25,7 +25,7 @@
  */
 static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
-						 bool forbiddenRoot, bool insideArraySubscript)
+						 bool allowCurrent, bool insideArraySubscript)
 {
 	/* position from begining of jsonpath data */
 	int32	pos = buf->len - JSONPATH_HDRSZ;
@@ -90,11 +90,11 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
 				chld = flattenJsonPathParseItem(buf, item->value.args.left,
-												forbiddenRoot,
+												allowCurrent,
 												insideArraySubscript);
 				*(int32*)(buf->data + left) = chld;
 				chld = flattenJsonPathParseItem(buf, item->value.args.right,
-												forbiddenRoot,
+												allowCurrent,
 												insideArraySubscript);
 				*(int32*)(buf->data + right) = chld;
 			}
@@ -117,7 +117,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				appendStringInfoChar(buf, '\0');
 
 				chld = flattenJsonPathParseItem(buf, item->value.like_regex.expr,
-												forbiddenRoot,
+												allowCurrent,
 												insideArraySubscript);
 				*(int32 *)(buf->data + offs) = chld;
 			}
@@ -145,7 +145,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 				chld = flattenJsonPathParseItem(buf, item->value.arg,
 												item->type == jpiFilter ||
-												forbiddenRoot,
+												allowCurrent,
 												insideArraySubscript);
 				*(int32*)(buf->data + arg) = chld;
 			}
@@ -153,16 +153,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiNull:
 			break;
 		case jpiRoot:
-			if (forbiddenRoot)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("root is not allowed in expression")));
 			break;
 		case jpiAnyArray:
 		case jpiAnyKey:
 			break;
 		case jpiCurrent:
-			if (!forbiddenRoot)
+			if (!allowCurrent)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("@ is not allowed in root expressions")));
@@ -230,7 +226,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 	if (item->next)
 		*(int32*)(buf->data + next) =
-			flattenJsonPathParseItem(buf, item->next, forbiddenRoot,
+			flattenJsonPathParseItem(buf, item->next, allowCurrent,
 									 insideArraySubscript);
 
 	return  pos;

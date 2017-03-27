@@ -30,6 +30,7 @@ select '$-1'::jsonpath;
 select '$--+1'::jsonpath;
 select '$.a/+-1'::jsonpath;
 
+select '$.g ? ($.a == 1)'::jsonpath;
 select '$.g ? (@ == 1)'::jsonpath;
 select '$.g ? (a == 1)'::jsonpath;
 select '$.g ? (.a == 1)'::jsonpath;
@@ -54,6 +55,7 @@ select '$.g ? (zip == $zip)'::jsonpath;
 select '$.a.[1,2, 3 to 16]'::jsonpath;
 select '$.a[1,2, 3 to 16]'::jsonpath;
 select '$.a[$a + 1, ($b[*]) to -(@[0] * 2)]'::jsonpath;
+select '$.a[$.a.size() - 3]'::jsonpath;
 select 'last'::jsonpath;
 select '"last"'::jsonpath;
 select '$.last'::jsonpath;
