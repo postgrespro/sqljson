@@ -26,6 +26,7 @@ typedef struct JsonPathExecContext
 {
 	List	   *vars;
 	bool		lax;
+	JsonbValue *root;				/* for $ evaluation */
 	int			innermostArraySize;	/* for LAST array index evaluation */
 } JsonPathExecContext;
 
@@ -1059,6 +1060,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			else if (!cxt->lax && found)	/* XXX deviation from standard */
 				res = jperMakeError(ERRCODE_JSON_MEMBER_NOT_FOUND);
 			break;
+		case jpiRoot:
+			jb = cxt->root;
+			/* fall through */
 		case jpiCurrent:
 			if (!jspGetNext(jsp, &elem))
 			{
@@ -1318,19 +1322,6 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiPlus:
 		case jpiMinus:
 			res = executeUnaryArithmExpr(cxt, jsp, jb, found);
-			break;
-		case jpiRoot:
-			if (jspGetNext(jsp, &elem))
-			{
-				res = recursiveExecute(cxt, &elem, jb, found);
-			}
-			else
-			{
-				res = jperOk;
-				if (found)
-					*found = lappend(*found, copyJsonbValue(jb));
-			}
-
 			break;
 		case jpiFilter:
 			jspGetArg(jsp, &elem);
@@ -1852,6 +1843,7 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, List **foundJson)
 
 	cxt.vars = vars;
 	cxt.lax = (path->header & JSONPATH_LAX) != 0;
+	cxt.root = &jbv;
 	cxt.innermostArraySize = -1;
 
 	return recursiveExecute(&cxt, &jsp, &jbv, foundJson);
