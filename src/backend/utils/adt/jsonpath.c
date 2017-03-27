@@ -723,7 +723,7 @@ jspGetArg(JsonPathItem *v, JsonPathItem *a)
 bool
 jspGetNext(JsonPathItem *v, JsonPathItem *a)
 {
-	if (v->nextPos > 0)
+	if (jspHasNext(v))
 	{
 		Assert(
 			v->type == jpiString ||
