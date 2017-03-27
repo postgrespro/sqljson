@@ -149,6 +149,8 @@ typedef struct JsonPathItem {
 	} content;
 } JsonPathItem;
 
+#define jspHasNext(jsp) ((jsp)->nextPos > 0)
+
 extern void jspInit(JsonPathItem *v, JsonPath *js);
 extern void jspInitByBuffer(JsonPathItem *v, char *base, int32 pos);
 extern bool jspGetNext(JsonPathItem *v, JsonPathItem *a);
