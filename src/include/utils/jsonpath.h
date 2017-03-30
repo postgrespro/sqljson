@@ -256,9 +256,15 @@ typedef struct JsonPathVariable	{
 
 
 
+typedef struct JsonValueList
+{
+	JsonbValue *singleton;
+	List	   *list;
+} JsonValueList;
+
 JsonPathExecResult	executeJsonPath(JsonPath *path,
 									List	*vars, /* list of JsonPathVariable */
 									Jsonb *json,
-									List **foundJson);
+									JsonValueList *foundJson);
 
 #endif
