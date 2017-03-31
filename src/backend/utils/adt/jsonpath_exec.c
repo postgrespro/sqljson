@@ -38,7 +38,7 @@ typedef struct JsonValueListIterator
 
 #define JsonValueListIteratorEnd ((ListCell *) -1)
 
-static JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
+static inline JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 										   JsonPathItem *jsp, JsonbValue *jb,
 										   JsonValueList *found);
 
@@ -304,7 +304,7 @@ computeJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item, JsonbValue *va
  * as alias to jbvBinary
  */
 #define jbvScalar jbvBinary
-static int
+static inline int
 JsonbType(JsonbValue *jb)
 {
 	int type = jb->type;
@@ -524,7 +524,7 @@ compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2, bool *error)
 	return DatumGetInt32(DirectFunctionCall2(cmpfunc, val1, val2));
 }
 
-static JsonPathExecResult
+static inline JsonPathExecResult
 checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 {
 	bool	eq = false;
@@ -2004,12 +2004,10 @@ wrapItem(JsonbValue *jbv)
 	return jbv;
 }
 
-static JsonPathExecResult
+static inline JsonPathExecResult
 recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				 JsonValueList *found)
 {
-	check_stack_depth();
-
 	if (cxt->lax)
 	{
 		switch (jsp->type)
