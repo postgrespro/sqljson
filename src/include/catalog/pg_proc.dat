@@ -9317,6 +9317,13 @@
   proname => '_jsonpath_query', prorows => '1000', proretset => 't',
   prorettype => 'jsonb', proargtypes => 'jsonb jsonpath jsonb',
   prosrc => 'jsonb_jsonpath_query3' },
+{ oid => '6073', descr => 'jsonpath predicate test',
+  proname => '_jsonpath_predicate', prorettype => 'bool',
+  proargtypes => 'jsonb jsonpath', prosrc => 'jsonb_jsonpath_predicate2' },
+{ oid => '6074', descr => 'jsonpath predicate test',
+  proname => '_jsonpath_predicate', prorettype => 'bool',
+  proargtypes => 'jsonb jsonpath jsonb',
+  prosrc => 'jsonb_jsonpath_predicate3' },
 
 # txid
 { oid => '2939', descr => 'I/O',
