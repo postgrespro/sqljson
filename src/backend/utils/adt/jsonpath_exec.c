@@ -41,6 +41,17 @@ JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
 	return jbv;
 }
 
+static inline JsonbValue *
+JsonbWrapInBinary(JsonbValue *jbv, JsonbValue *out)
+{
+	Jsonb	   *jb = JsonbValueToJsonb(jbv);
+
+	if (!out)
+		out = palloc(sizeof(*out));
+
+	return JsonbInitBinary(out, jb);
+}
+
 /********************Execute functions for JsonPath***************************/
 
 /*
