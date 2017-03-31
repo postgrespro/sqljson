@@ -235,6 +235,7 @@ makeAny(int first, int last)
 %type	<value>		scalar_value path_primary expr pexpr array_accessor
 					any_path accessor_op key predicate delimited_predicate
 					index_elem starts_with_initial opt_datetime_template
+					expr_or_predicate
 
 %type	<elems>		accessor_expr
 
@@ -259,12 +260,17 @@ makeAny(int first, int last)
 %%
 
 result:
-	mode expr						{
+	mode expr_or_predicate			{
 										*result = palloc(sizeof(JsonPathParseResult));
 										(*result)->expr = $2;
 										(*result)->lax = $1;
 									}
 	| /* EMPTY */					{ *result = NULL; }
+	;
+
+expr_or_predicate:
+	expr							{ $$ = $1; }
+	| predicate						{ $$ = $1; }
 	;
 
 mode:
@@ -327,6 +333,7 @@ accessor_expr:
 	path_primary					{ $$ = list_make1($1); }
 	| '.' key						{ $$ = list_make2(makeItemType(jpiCurrent), $2); }
 	| '(' expr ')' accessor_op		{ $$ = list_make2($2, $4); }
+	| '(' predicate ')'	accessor_op	{ $$ = list_make2($2, $4); }
 	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
 	;
 

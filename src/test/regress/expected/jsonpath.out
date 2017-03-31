@@ -409,6 +409,22 @@ select '$ ? (@ starts with $var)'::jsonpath;
  $?(@ starts with $"var")
 (1 row)
 
+select '$ < 1'::jsonpath;
+ jsonpath 
+----------
+ ($ < 1)
+(1 row)
+
+select '($ < 1) || $.a.b <= $x'::jsonpath;
+           jsonpath           
+------------------------------
+ ($ < 1 || $."a"."b" <= $"x")
+(1 row)
+
+select '@ + 1'::jsonpath;
+ERROR:  @ is not allowed in root expressions
+LINE 1: select '@ + 1'::jsonpath;
+               ^
 select '($).a.b'::jsonpath;
  jsonpath  
 -----------
@@ -437,6 +453,12 @@ select '1 + ($.a.b + 2).c.d'::jsonpath;
            jsonpath            
 -------------------------------
  (1 + ($."a"."b" + 2)."c"."d")
+(1 row)
+
+select '1 + ($.a.b > 2).c.d'::jsonpath;
+           jsonpath            
+-------------------------------
+ (1 + ($."a"."b" > 2)."c"."d")
 (1 row)
 
 select '$ ? (a < 1)'::jsonpath;
