@@ -168,6 +168,17 @@ select _jsonpath_query(jsonb '2', '$ > 1');
 select _jsonpath_query(jsonb '2', '$ <= 1');
 select _jsonpath_query(jsonb '2', '$ == "2"');
 
+select _jsonpath_predicate(jsonb '2', '$ > 1');
+select _jsonpath_predicate(jsonb '2', '$ <= 1');
+select _jsonpath_predicate(jsonb '2', '$ == "2"');
+select _jsonpath_predicate(jsonb '2', '1');
+select _jsonpath_predicate(jsonb '{}', '$');
+select _jsonpath_predicate(jsonb '[]', '$');
+select _jsonpath_predicate(jsonb '[1,2,3]', '$[*]');
+select _jsonpath_predicate(jsonb '[]', '$[*]');
+select _jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] > $x) [1]', '{"x": 1}');
+select _jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] < $x) [1]', '{"x": 2}');
+
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$.type()');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', 'lax $.type()');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$[*].type()');
