@@ -32,6 +32,16 @@ static JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 										   JsonPathItem *jsp, JsonbValue *jb,
 										   List **found);
 
+static inline JsonbValue *
+JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
+{
+	jbv->type = jbvBinary;
+	jbv->val.binary.data = &jb->root;
+	jbv->val.binary.len = VARSIZE_ANY_EXHDR(jb);
+
+	return jbv;
+}
+
 /********************Execute functions for JsonPath***************************/
 
 /*
@@ -124,11 +134,7 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 				if (JB_ROOT_IS_SCALAR(jb))
 					JsonbExtractScalar(&jb->root, value);
 				else
-				{
-					value->type = jbvBinary;
-					value->val.binary.data = &jb->root;
-					value->val.binary.len = VARSIZE_ANY_EXHDR(jb);
-				}
+					JsonbInitBinary(value, jb);
 			}
 			break;
 		case (Oid) -1: /* raw JsonbValue */
@@ -958,10 +964,8 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, List **foundJson)
 	cxt.vars = vars;
 	cxt.lax = false; /* FIXME */
 
-	jbv.type = jbvBinary;
-	jbv.val.binary.data = &json->root;
-	jbv.val.binary.len = VARSIZE_ANY_EXHDR(json);
-
+	JsonbInitBinary(&jbv, json);
+	
 	jspInit(&jsp, path);
 
 	return recursiveExecute(&cxt, &jsp, &jbv, foundJson);
