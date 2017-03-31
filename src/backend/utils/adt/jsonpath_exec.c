@@ -43,7 +43,7 @@ static inline JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 										   JsonPathItem *jsp, JsonbValue *jb,
 										   JsonValueList *found);
 
-static JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt,
+static inline JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt,
 							JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 
 static inline JsonbValue *wrapItemsInArray(const JsonValueList *items);
@@ -1958,51 +1958,56 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 }
 
 static JsonPathExecResult
-recursiveExecuteUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
-					   JsonbValue *jb, JsonValueList *found)
+recursiveExecuteUnwrapArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
+							JsonbValue *jb, JsonValueList *found)
 {
-	if (cxt->lax && JsonbType(jb) == jbvArray)
+	JsonPathExecResult res = jperNotFound;
+
+	if (jb->type == jbvArray)
 	{
-		JsonPathExecResult res = jperNotFound;
+		JsonbValue *elem = jb->val.array.elems;
+		JsonbValue *last = elem + jb->val.array.nElems;
 
-		if (jb->type == jbvArray)
+		for (; elem < last; elem++)
 		{
-			JsonbValue *elem = jb->val.array.elems;
-			JsonbValue *last = elem + jb->val.array.nElems;
+			res = recursiveExecuteNoUnwrap(cxt, jsp, elem, found);
 
-			for (; elem < last; elem++)
+			if (jperIsError(res))
+				break;
+			if (res == jperOk && !found)
+				break;
+		}
+	}
+	else
+	{
+		JsonbValue	v;
+		JsonbIterator *it;
+		JsonbIteratorToken tok;
+
+		it = JsonbIteratorInit(jb->val.binary.data);
+
+		while ((tok = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
+		{
+			if (tok == WJB_ELEM)
 			{
-				res = recursiveExecuteNoUnwrap(cxt, jsp, elem, found);
-
+				res = recursiveExecuteNoUnwrap(cxt, jsp, &v, found);
 				if (jperIsError(res))
 					break;
 				if (res == jperOk && !found)
 					break;
 			}
 		}
-		else
-		{
-			JsonbValue	v;
-			JsonbIterator *it;
-			JsonbIteratorToken tok;
-
-			it = JsonbIteratorInit(jb->val.binary.data);
-
-			while ((tok = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
-			{
-				if (tok == WJB_ELEM)
-				{
-					res = recursiveExecuteNoUnwrap(cxt, jsp, &v, found);
-					if (jperIsError(res))
-						break;
-					if (res == jperOk && !found)
-						break;
-				}
-			}
-		}
-
-		return res;
 	}
+
+	return res;
+}
+
+static inline JsonPathExecResult
+recursiveExecuteUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					   JsonbValue *jb, JsonValueList *found)
+{
+	if (cxt->lax && JsonbType(jb) == jbvArray)
+		return recursiveExecuteUnwrapArray(cxt, jsp, jb, found);
 
 	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found);
 }
