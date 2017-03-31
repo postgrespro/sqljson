@@ -801,6 +801,25 @@ select _jsonpath_query(jsonb '{"a": [2, 3, 4]}', 'lax -$.a');
 -- should fail
 select _jsonpath_query(jsonb '{"a": [1, 2]}', 'lax $.a * 3');
 ERROR:  Singleton SQL/JSON item required
+-- extension: boolean expressions
+select _jsonpath_query(jsonb '2', '$ > 1');
+ _jsonpath_query 
+-----------------
+ true
+(1 row)
+
+select _jsonpath_query(jsonb '2', '$ <= 1');
+ _jsonpath_query 
+-----------------
+ false
+(1 row)
+
+select _jsonpath_query(jsonb '2', '$ == "2"');
+ _jsonpath_query 
+-----------------
+ null
+(1 row)
+
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$.type()');
  _jsonpath_query 
 -----------------
@@ -864,6 +883,30 @@ select _jsonpath_query(jsonb '{"a": 2.5}', '-($.a * $.a).floor() + 10');
  _jsonpath_query 
 -----------------
  4
+(1 row)
+
+select _jsonpath_query(jsonb '[1, 2, 3]', '($[*] > 2) ? (@ == true)');
+ _jsonpath_query 
+-----------------
+ true
+(1 row)
+
+select _jsonpath_query(jsonb '[1, 2, 3]', '($[*] > 3).type()');
+ _jsonpath_query 
+-----------------
+ "boolean"
+(1 row)
+
+select _jsonpath_query(jsonb '[1, 2, 3]', '($[*].a > 3).type()');
+ _jsonpath_query 
+-----------------
+ "boolean"
+(1 row)
+
+select _jsonpath_query(jsonb '[1, 2, 3]', 'strict ($[*].a > 3).type()');
+ _jsonpath_query 
+-----------------
+ "null"
 (1 row)
 
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'strict $[*].size()');

@@ -163,6 +163,11 @@ select _jsonpath_query(jsonb '{"a": [2, 3, 4]}', 'lax -$.a');
 -- should fail
 select _jsonpath_query(jsonb '{"a": [1, 2]}', 'lax $.a * 3');
 
+-- extension: boolean expressions
+select _jsonpath_query(jsonb '2', '$ > 1');
+select _jsonpath_query(jsonb '2', '$ <= 1');
+select _jsonpath_query(jsonb '2', '$ == "2"');
+
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$.type()');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', 'lax $.type()');
 select _jsonpath_query(jsonb '[null,1,true,"a",[],{}]', '$[*].type()');
@@ -174,6 +179,10 @@ select _jsonpath_query(jsonb 'null', 'aaa.type()');
 
 select _jsonpath_query(jsonb '{"a": 2}', '($.a - 5).abs() + 10');
 select _jsonpath_query(jsonb '{"a": 2.5}', '-($.a * $.a).floor() + 10');
+select _jsonpath_query(jsonb '[1, 2, 3]', '($[*] > 2) ? (@ == true)');
+select _jsonpath_query(jsonb '[1, 2, 3]', '($[*] > 3).type()');
+select _jsonpath_query(jsonb '[1, 2, 3]', '($[*].a > 3).type()');
+select _jsonpath_query(jsonb '[1, 2, 3]', 'strict ($[*].a > 3).type()');
 
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'strict $[*].size()');
 select _jsonpath_query(jsonb '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]', 'lax $[*].size()');

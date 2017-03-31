@@ -84,11 +84,16 @@ select '$ ? (@ like_regex "pattern" flag "isim")'::jsonpath;
 select '$ ? (@ like_regex "pattern" flag "xsms")'::jsonpath;
 select '$ ? (@ like_regex "pattern" flag "a")'::jsonpath;
 
+select '$ < 1'::jsonpath;
+select '($ < 1) || $.a.b <= $x'::jsonpath;
+select '@ + 1'::jsonpath;
+
 select '($).a.b'::jsonpath;
 select '($.a.b).c.d'::jsonpath;
 select '($.a.b + -$.x.y).c.d'::jsonpath;
 select '(-+$.a.b).c.d'::jsonpath;
 select '1 + ($.a.b + 2).c.d'::jsonpath;
+select '1 + ($.a.b > 2).c.d'::jsonpath;
 
 select '$ ? (a < 1)'::jsonpath;
 select '$ ? (a < -1)'::jsonpath;
