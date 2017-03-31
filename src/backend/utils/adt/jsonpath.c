@@ -748,6 +748,16 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiMod ||
 			v->type == jpiPlus ||
 			v->type == jpiMinus ||
+			v->type == jpiEqual ||
+			v->type == jpiNotEqual ||
+			v->type == jpiGreater ||
+			v->type == jpiGreaterOrEqual ||
+			v->type == jpiLess ||
+			v->type == jpiLessOrEqual ||
+			v->type == jpiAnd ||
+			v->type == jpiOr ||
+			v->type == jpiNot ||
+			v->type == jpiIsUnknown ||
 			v->type == jpiType ||
 			v->type == jpiSize ||
 			v->type == jpiAbs ||
