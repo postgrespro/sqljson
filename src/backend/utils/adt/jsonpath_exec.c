@@ -1090,22 +1090,58 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return jper;
 }
 
+static JsonValueList
+prependKey(JsonbValue *key, const JsonValueList *items)
+{
+	JsonValueList objs = { 0 };
+	JsonValueListIterator it = { 0 };
+	JsonbValue *val;
+
+	while ((val = JsonValueListNext(items, &it)))
+	{
+		JsonbValue *obj;
+		JsonbValue	bin;
+		JsonbParseState *ps = NULL;
+
+		if (val->type == jbvObject || val->type == jbvArray)
+			val = JsonbWrapInBinary(val, &bin);
+
+		pushJsonbValue(&ps, WJB_BEGIN_OBJECT, NULL);
+		pushJsonbValue(&ps, WJB_KEY, key);
+		pushJsonbValue(&ps, WJB_VALUE, val);
+		obj = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
+
+		JsonValueListAppend(&objs, obj);
+	}
+
+	return objs;
+}
+
 /*
  * implements jpiAny node (** operator)
  */
 static JsonPathExecResult
 recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
-			 JsonValueList *found, uint32 level, uint32 first, uint32 last)
+			 JsonValueList *found, bool outPath,
+			 uint32 level, uint32 first, uint32 last)
 {
 	JsonPathExecResult	res = jperNotFound;
 	JsonbIterator		*it;
 	int32				r;
 	JsonbValue			v;
+	bool				isObject;
+	JsonValueList		items = { 0 };
+	JsonValueList	   *pitems = found;
 
 	check_stack_depth();
 
 	if (level > last)
 		return res;
+
+	if (pitems && outPath)
+		pitems = &items;
+
+	isObject = JsonContainerIsObject(jb->val.binary.data);
 
 	it = JsonbIteratorInit(jb->val.binary.data);
 
@@ -1114,19 +1150,24 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	 */
 	while((r = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
 	{
+		JsonbValue	key;
+
 		if (r == WJB_KEY)
 		{
+			key = v;
 			r = JsonbIteratorNext(&it, &v, true);
 			Assert(r == WJB_VALUE);
+
+			if (pitems == &items)
+				JsonValueListClear(pitems);
 		}
 
 		if (r == WJB_VALUE || r == WJB_ELEM)
 		{
-
 			if (level >= first)
 			{
 				/* check expression */
-				res = recursiveExecuteNext(cxt, NULL, jsp, &v, found, true);
+				res = recursiveExecuteNext(cxt, NULL, jsp, &v, pitems, true);
 
 				if (jperIsError(res))
 					break;
@@ -1137,7 +1178,8 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 
 			if (level < last && v.type == jbvBinary)
 			{
-				res = recursiveAny(cxt, jsp, &v, found, level + 1, first, last);
+				res = recursiveAny(cxt, jsp, &v, pitems, outPath,
+								   level + 1, first, last);
 
 				if (jperIsError(res))
 					break;
@@ -1145,8 +1187,14 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				if (res == jperOk && found == NULL)
 					break;
 			}
+
+			if (isObject && !JsonValueListIsEmpty(&items) && !jperIsError(res))
+				JsonValueListConcat(found, prependKey(&key, &items));
 		}
 	}
+
+	if (!isObject && !JsonValueListIsEmpty(&items) && !jperIsError(res))
+		JsonValueListAppend(found, wrapItemsInArray(&items));
 
 	return res;
 }
@@ -1469,7 +1517,8 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiKey:
 			if (JsonbType(jb) == jbvObject)
 			{
-				JsonbValue	*v, key;
+				JsonbValue *v;
+				JsonbValue	key;
 				JsonbValue	obj;
 
 				if (jb->type == jbvObject)
@@ -1482,10 +1531,19 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				if (v != NULL)
 				{
-					res = recursiveExecuteNext(cxt, jsp, NULL, v, found, false);
+					JsonValueList items = { 0 };
+					JsonValueList *pitems = found;
+
+					if (pitems && jspOutPath(jsp))
+						pitems = &items;
+
+					res = recursiveExecuteNext(cxt, jsp, NULL, v, pitems, false);
 
 					if (jspHasNext(jsp) || !found)
 						pfree(v); /* free value if it was not added to found list */
+
+					if (!JsonValueListIsEmpty(&items) && !jperIsError(res))
+						JsonValueListConcat(found, prependKey(&key, &items));
 				}
 				else if (!cxt->lax)
 				{
@@ -1547,6 +1605,13 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiAnyArray:
 			if (JsonbType(jb) == jbvArray)
 			{
+				JsonValueList items = { 0 };
+				JsonValueList *pitems = found;
+				bool		wrap = pitems && jspOutPath(jsp);
+
+				if (wrap)
+					pitems = &items;
+
 				hasNext = jspGetNext(jsp, &elem);
 
 				if (jb->type == jbvArray)
@@ -1556,7 +1621,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 					for (; el < last_el; el++)
 					{
-						res = recursiveExecuteNext(cxt, jsp, &elem, el, found, true);
+						res = recursiveExecuteNext(cxt, jsp, &elem, el, pitems, true);
 
 						if (jperIsError(res))
 							break;
@@ -1577,7 +1642,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					{
 						if (r == WJB_ELEM)
 						{
-							res = recursiveExecuteNext(cxt, jsp, &elem, &v, found, true);
+							res = recursiveExecuteNext(cxt, jsp, &elem, &v, pitems, true);
 
 							if (jperIsError(res))
 								break;
@@ -1587,6 +1652,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						}
 					}
 				}
+
+				if (wrap && !jperIsError(res))
+					JsonValueListAppend(found, wrapItemsInArray(&items));
 			}
 			else
 				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
@@ -1599,6 +1667,12 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				int			i;
 				int			size = JsonbArraySize(jb);
 				bool		binary = jb->type == jbvBinary;
+				JsonValueList items = { 0 };
+				JsonValueList *pitems = found;
+				bool		wrap = pitems && jspOutPath(jsp);
+
+				if (wrap)
+					pitems = &items;
 
 				cxt->innermostArraySize = size; /* for LAST evaluation */
 
@@ -1655,7 +1729,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						if (v == NULL)
 							continue;
 
-						res = recursiveExecuteNext(cxt, jsp, &elem, v, found,
+						res = recursiveExecuteNext(cxt, jsp, &elem, v, pitems,
 												   !binary);
 
 						if (jperIsError(res))
@@ -1673,6 +1747,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				}
 
 				cxt->innermostArraySize = innermostArraySize;
+
+				if (wrap && !jperIsError(res))
+					JsonValueListAppend(found, wrapItemsInArray(&items));
 			}
 			else if (JsonbType(jb) == jbvObject)
 			{
@@ -1680,6 +1757,12 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				int			i;
 				JsonbValue	bin;
 				JsonbValue *wrapped = NULL;
+				JsonValueList items = { 0 };
+				JsonValueList *pitems = found;
+				bool		wrap = pitems && jspOutPath(jsp);
+
+				if (wrap)
+					pitems = &items;
 
 				if (jb->type != jbvBinary)
 					jb = JsonbWrapInBinary(jb, &bin);
@@ -1719,7 +1802,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						if (index_from <= 0 && index_to >= 0)
 						{
 							res = recursiveExecuteNext(cxt, jsp, NULL, jb,
-													   found, true);
+													   pitems, true);
 							if (jperIsError(res))
 								return res;
 
@@ -1757,7 +1840,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						if (!index)
 						{
 							res = recursiveExecuteNext(cxt, jsp, NULL, jb,
-													   found, true);
+													   pitems, true);
 							if (jperIsError(res))
 								return res;
 						}
@@ -1770,7 +1853,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						if (key)
 						{
 							res = recursiveExecuteNext(cxt, jsp, NULL, key,
-													   found, false);
+													   pitems, false);
 							if (jperIsError(res))
 								return res;
 						}
@@ -1785,6 +1868,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				}
 
 				cxt->innermostArraySize = innermostArraySize;
+
+				if (wrap && !jperIsError(res))
+					JsonValueListAppend(found, wrapItemsInArray(&items));
 			}
 			else
 			{
@@ -1842,15 +1928,31 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				while((r = JsonbIteratorNext(&it, &v, true)) != WJB_DONE)
 				{
+					JsonbValue	key;
+					JsonValueList items = { 0 };
+					JsonValueList *pitems = found;
+
+					if (r == WJB_KEY && jspOutPath(jsp))
+					{
+						key = v;
+						r = JsonbIteratorNext(&it, &v, true);
+
+						if (pitems)
+							pitems = &items;
+					}
+
 					if (r == WJB_VALUE)
 					{
-						res = recursiveExecuteNext(cxt, jsp, &elem, &v, found, true);
+						res = recursiveExecuteNext(cxt, jsp, &elem, &v, pitems, true);
 
 						if (jperIsError(res))
 							break;
 
 						if (res == jperOk && !found)
 							break;
+
+						if (!JsonValueListIsEmpty(&items) && !jperIsError(res))
+							JsonValueListConcat(found, prependKey(&key, &items));
 					}
 				}
 			}
@@ -1900,7 +2002,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					res = recursiveExecuteNext(cxt, jsp, &elem, jb, found, true);
 
 					if (res == jperOk && !found)
-							break;
+						break;
 				}
 
 				if (jb->type == jbvArray || jb->type == jbvObject)
@@ -1908,7 +2010,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				if (jb->type == jbvBinary)
 					res = recursiveAny(cxt, hasNext ? &elem : NULL, jb, found,
-									   1,
+									   jspOutPath(jsp), 1,
 									   jsp->content.anybounds.first,
 									   jsp->content.anybounds.last);
 				break;

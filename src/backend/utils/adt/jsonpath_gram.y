@@ -38,6 +38,7 @@ makeItemType(int type)
 	JsonPathParseItem* v = palloc(sizeof(*v));
 
 	v->type = type;
+	v->flags = 0;
 	v->next = NULL;
 
 	return v;
@@ -276,6 +277,27 @@ makeItemObject(List *fields)
 	return v;
 }
 
+static JsonPathParseItem *
+setItemOutPathMode(JsonPathParseItem *jpi)
+{
+	jpi->flags |= 1;
+	return jpi;
+}
+
+static List *
+setItemsOutPathMode(List *items)
+{
+	ListCell   *cell;
+
+	foreach(cell, items)
+	{
+		JsonPathParseItem *jpi = lfirst(cell);
+		jpi->flags |= 1;
+	}
+
+	return items;
+}
+
 %}
 
 /* BISON Declarations */
@@ -311,7 +333,7 @@ makeItemObject(List *fields)
 					index_elem starts_with_initial opt_datetime_template
 					expr_or_predicate expr_or_seq expr_seq object_field
 
-%type	<elems>		accessor_expr expr_list object_field_list
+%type	<elems>		accessor_expr accessor_ops expr_list object_field_list
 
 %type	<indexs>	index_list
 
@@ -439,6 +461,27 @@ accessor_expr:
 	| '(' expr ')' accessor_op		{ $$ = list_make2($2, $4); }
 	| '(' predicate ')'	accessor_op	{ $$ = list_make2($2, $4); }
 	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
+	| accessor_expr '.' '(' key ')'
+		{ $$ = lappend($1, setItemOutPathMode($4)); }
+	| accessor_expr '.' '(' key accessor_ops ')'
+		{ $$ = list_concat($1, setItemsOutPathMode(lcons($4, $5))); }
+	| accessor_expr '.' '(' '*' ')'
+		{ $$ = lappend($1, setItemOutPathMode(makeItemType(jpiAnyKey))); }
+	| accessor_expr '.' '(' '*' accessor_ops ')'
+		{ $$ = list_concat($1, setItemsOutPathMode(lcons(makeItemType(jpiAnyKey), $5))); }
+	| accessor_expr '.' '(' array_accessor ')'
+		{ $$ = lappend($1, setItemOutPathMode($4)); }
+	| accessor_expr '.' '(' array_accessor accessor_ops ')'
+		{ $$ = list_concat($1, setItemsOutPathMode(lcons($4, $5))); }
+	| accessor_expr '.' '(' any_path ')'
+		{ $$ = lappend($1, setItemOutPathMode($4)); }
+	| accessor_expr '.' '(' any_path accessor_ops ')'
+		{ $$ = list_concat($1, setItemsOutPathMode(lcons($4, $5))); }
+	;
+
+accessor_ops:
+	accessor_op						{ $$ = list_make1($1); }
+	| accessor_ops accessor_op		{ $$ = lappend($1, $2); }
 	;
 
 pexpr:
