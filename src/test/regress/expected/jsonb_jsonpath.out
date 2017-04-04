@@ -1962,3 +1962,49 @@ select _jsonpath_query(jsonb '[[2,4,1,5,3]]', '$.map(@.reduce($1 + $2 + @2[0][2]
  [39]
 (1 row)
 
+-- extension: including subpaths into result
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a[*].b)');
+       _jsonpath_query       
+-----------------------------
+ {"a": [{"b": 1}, {"b": 2}]}
+(1 row)
+
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a[*]).b');
+ _jsonpath_query 
+-----------------
+ {"a": [1, 2]}
+(1 row)
+
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.a.([*].b)');
+   _jsonpath_query    
+----------------------
+ [{"b": 1}, {"b": 2}]
+(1 row)
+
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[*].b');
+ _jsonpath_query 
+-----------------
+ {"a": 1}
+ {"a": 2}
+(2 rows)
+
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.a[*].(b)');
+ _jsonpath_query 
+-----------------
+ {"b": 1}
+ {"b": 2}
+(2 rows)
+
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[*].(b)');
+ _jsonpath_query 
+-----------------
+ {"a": {"b": 1}}
+ {"a": {"b": 2}}
+(2 rows)
+
+select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a.[0 to 1].b)');
+       _jsonpath_query       
+-----------------------------
+ {"a": [{"b": 1}, {"b": 2}]}
+(1 row)
+
