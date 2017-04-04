@@ -114,6 +114,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiPlus:
 		case jpiMinus:
 		case jpiExists:
+		case jpiMap:
 			{
 				int32 arg;
 
@@ -122,6 +123,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 				chld = flattenJsonPathParseItem(buf, item->value.arg,
 												item->type == jpiFilter ||
+												item->type == jpiMap ||
 												allowCurrent,
 												insideArraySubscript);
 				*(int32*)(buf->data + arg) = chld;
@@ -496,6 +498,12 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 		case jpiKeyValue:
 			appendBinaryStringInfo(buf, ".keyvalue()", 11);
 			break;
+		case jpiMap:
+			appendBinaryStringInfo(buf, ".map(", 5);
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -623,6 +631,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiMinus:
 		case jpiFilter:
 		case jpiDatetime:
+		case jpiMap:
 			read_int32(v->content.arg, base, pos);
 			break;
 		case jpiIndexArray:
@@ -649,7 +658,8 @@ jspGetArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiExists ||
 		v->type == jpiPlus ||
 		v->type == jpiMinus ||
-		v->type == jpiDatetime
+		v->type == jpiDatetime ||
+		v->type == jpiMap
 	);
 
 	jspInitByBuffer(a, v->base, v->content.arg);
@@ -701,7 +711,8 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiDouble ||
 			v->type == jpiDatetime ||
 			v->type == jpiKeyValue ||
-			v->type == jpiStartsWith
+			v->type == jpiStartsWith ||
+			v->type == jpiMap
 		);
 
 		if (a)

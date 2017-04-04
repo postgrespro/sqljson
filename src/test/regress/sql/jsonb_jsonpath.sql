@@ -373,3 +373,9 @@ SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';
+
+-- extension: map item method
+select _jsonpath_query(jsonb '1', 'strict $.map(@ + 10)');
+select _jsonpath_query(jsonb '1', 'lax $.map(@ + 10)');
+select _jsonpath_query(jsonb '[1, 2, 3]', '$.map(@ + 10)');
+select _jsonpath_query(jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.map(@.map(@ + 10))');

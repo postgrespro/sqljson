@@ -1884,6 +1884,85 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			res = executeStartsWithPredicate(cxt, jsp, jb);
 			res = appendBoolResult(cxt, jsp, found, res, needBool);
 			break;
+		case jpiMap:
+			if (JsonbType(jb) != jbvArray)
+			{
+				if (cxt->lax)
+				{
+					JsonValueList reslist = { 0 };
+
+					jspGetArg(jsp, &elem);
+					res = recursiveExecute(cxt, &elem, jb, &reslist);
+
+					if (jperIsError(res))
+						return res;
+
+					if (JsonValueListLength(&reslist) != 1)
+						return jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+
+					res = recursiveExecuteNext(cxt, jsp, NULL,
+											   JsonValueListHead(&reslist),
+											   found, true);
+				}
+				else
+					res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+			}
+			else
+			{
+				JsonbValue	element_buf;
+				JsonbValue *element;
+				JsonbIterator *it = NULL;
+				JsonbIteratorToken tok;
+				JsonValueList result = { 0 };
+				int			size = JsonbArraySize(jb);
+				int			i;
+
+				jspGetArg(jsp, &elem);
+
+				if (jb->type == jbvBinary && size > 0)
+				{
+					element = &element_buf;
+					it = JsonbIteratorInit(jb->val.binary.data);
+					tok = JsonbIteratorNext(&it, &element_buf, false);
+					if (tok != WJB_BEGIN_ARRAY)
+						elog(ERROR, "unexpected jsonb token at the array start");
+				}
+
+				for (i = 0; i < size; i++)
+				{
+					JsonValueList reslist = { 0 };
+
+					if (it)
+					{
+						tok = JsonbIteratorNext(&it, element, true);
+						if (tok != WJB_ELEM)
+							break;
+					}
+					else
+						element = &jb->val.array.elems[i];
+
+					res = recursiveExecute(cxt, &elem, element, &reslist);
+
+					if (jperIsError(res))
+						break;
+
+					if (JsonValueListLength(&reslist) != 1)
+					{
+						res = jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+						break;
+					}
+
+					JsonValueListConcat(&result, reslist);
+				}
+
+				if (jperIsError(res))
+					break;
+
+				res = recursiveExecuteNext(cxt, jsp, NULL,
+										   wrapItemsInArray(&result),
+										   found, false);
+			}
+			break;
 		default:
 			elog(ERROR,"2Wrong state: %d", jsp->type);
 	}
