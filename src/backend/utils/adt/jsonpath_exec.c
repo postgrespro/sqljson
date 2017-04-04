@@ -336,7 +336,7 @@ static JsonPathBool executeNestedBoolItem(JsonPathExecContext *cxt,
 										  JsonPathItem *jsp, JsonItem *jb);
 static JsonPathExecResult executeAnyItem(JsonPathExecContext *cxt,
 										 JsonPathItem *jsp, JsonbContainer *jbc, JsonValueList *found,
-										 uint32 level, uint32 first, uint32 last,
+										 bool outPath, uint32 level, uint32 first, uint32 last,
 										 bool ignoreStructuralErrors, bool unwrapNext);
 static JsonPathBool executePredicate(JsonPathExecContext *cxt,
 									 JsonPathItem *pred, JsonPathItem *larg,
@@ -405,6 +405,7 @@ static JsonBaseObjectInfo setBaseObject(JsonPathExecContext *cxt,
 										JsonItem *jsi, int32 id);
 static void JsonValueListClear(JsonValueList *jvl);
 static void JsonValueListAppend(JsonValueList *jvl, JsonItem *jbv);
+static void JsonValueListConcat(JsonValueList *jvl1, JsonValueList jvl2);
 static int	JsonValueListLength(const JsonValueList *jvl);
 static bool JsonValueListIsEmpty(JsonValueList *jvl);
 static JsonItem *JsonValueListHead(JsonValueList *jvl);
@@ -424,6 +425,10 @@ static JsonItem *wrapItem(JsonItem *jbv, bool isJsonb);
 static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
 static JsonItem *wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf,
 					  bool isJsonb);
+static void appendWrappedItems(JsonValueList *found, JsonValueList *items,
+				   bool isJsonb);
+static JsonValueList prependKey(char *keystr, int keylen,
+		   const JsonValueList *items, bool isJsonb);
 
 static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
 				 bool isJsonb, JsonItem *res);
@@ -978,7 +983,18 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				if (jb != NULL)
 				{
-					res = executeNextItem(cxt, jsp, NULL, jb, found, true);
+					JsonValueList items = {0};
+					JsonValueList *pitems = found;
+
+					if (pitems && jspOutPath(jsp))
+						pitems = &items;
+
+					res = executeNextItem(cxt, jsp, NULL, jb, pitems, true);
+
+					if (!JsonValueListIsEmpty(&items) && !jperIsError(res))
+						JsonValueListConcat(found, prependKey(key, keylen,
+															  &items,
+															  cxt->isJsonb));
 				}
 				else if (!jspIgnoreStructuralErrors(cxt))
 				{
@@ -1040,10 +1056,19 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiAnyArray:
 			if (JsonbType(jb) == jbvArray)
 			{
+				JsonValueList items = {0};
+				JsonValueList *pitems = found;
+				bool		wrap = pitems && jspOutPath(jsp);
 				bool		hasNext = jspGetNext(jsp, &elem);
 
+				if (wrap)
+					pitems = &items;
+
 				res = executeItemUnwrapTargetArray(cxt, hasNext ? &elem : NULL,
-												   jb, found, jspAutoUnwrap(cxt));
+												   jb, pitems, jspAutoUnwrap(cxt));
+
+				if (wrap && !jperIsError(res))
+					appendWrappedItems(found, &items, cxt->isJsonb);
 			}
 			else if (jspAutoWrap(cxt))
 				res = executeNextItem(cxt, jsp, NULL, jb, found, true);
@@ -1059,6 +1084,12 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				int			innermostArraySize = cxt->innermostArraySize;
 				int			i;
 				JsonItem	bin;
+				JsonValueList items = {0};
+				JsonValueList *pitems = found;
+				bool		wrap = pitems && jspOutPath(jsp);
+
+				if (wrap)
+					pitems = &items;
 
 				jb = wrapJsonObjectOrArray(jb, &bin, cxt->isJsonb);
 
@@ -1094,7 +1125,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 						if (index_from <= 0 && index_to >= 0)
 						{
-							res = executeNextItem(cxt, jsp, NULL, jb, found,
+							res = executeNextItem(cxt, jsp, NULL, jb, pitems,
 												  true);
 							if (jperIsError(res))
 								return res;
@@ -1137,7 +1168,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 						if (!index)
 						{
-							res = executeNextItem(cxt, jsp, NULL, jb, found,
+							res = executeNextItem(cxt, jsp, NULL, jb, pitems,
 												  true);
 							if (jperIsError(res))
 								return res;
@@ -1158,7 +1189,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 						if (val)
 						{
-							res = executeNextItem(cxt, jsp, NULL, val, found,
+							res = executeNextItem(cxt, jsp, NULL, val, pitems,
 												  true);
 							if (jperIsError(res))
 								return res;
@@ -1178,6 +1209,9 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				}
 
 				cxt->innermostArraySize = innermostArraySize;
+
+				if (wrap && !jperIsError(res))
+					appendWrappedItems(found, &items, cxt->isJsonb);
 			}
 			else if (JsonbType(jb) == jbvArray || jspAutoWrap(cxt))
 			{
@@ -1186,7 +1220,13 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				int			size = JsonxArraySize(jb, cxt->isJsonb);
 				bool		binary = JsonItemIsBinary(jb);
 				bool		singleton = size < 0;
+				JsonValueList items = {0};
+				JsonValueList *pitems = found;
+				bool		wrap = pitems && jspOutPath(jsp);
 				bool		hasNext = jspGetNext(jsp, &elem);
+
+				if (wrap)
+					pitems = &items;
 
 				if (singleton)
 					size = 1;
@@ -1260,7 +1300,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						if (!hasNext && !found)
 							return jperOk;
 
-						res = executeNextItem(cxt, jsp, &elem, jsi, found,
+						res = executeNextItem(cxt, jsp, &elem, jsi, pitems,
 											  true);
 
 						if (jperIsError(res))
@@ -1278,6 +1318,9 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				}
 
 				cxt->innermostArraySize = innermostArraySize;
+
+				if (wrap && !jperIsError(res))
+					appendWrappedItems(found, &items, cxt->isJsonb);
 			}
 			else if (!jspIgnoreStructuralErrors(cxt))
 			{
@@ -1325,7 +1368,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				return executeAnyItem
 					(cxt, hasNext ? &elem : NULL,
-					 JsonItemBinary(jb).data, found, 1, 1, 1,
+					 JsonItemBinary(jb).data, found, jspOutPath(jsp), 1, 1, 1,
 					 false, jspAutoUnwrap(cxt));
 			}
 			else if (unwrap && JsonbType(jb) == jbvArray)
@@ -1403,8 +1446,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 					savedIgnoreStructuralErrors = cxt->ignoreStructuralErrors;
 					cxt->ignoreStructuralErrors = true;
-					res = executeNextItem(cxt, jsp, &elem,
-										  jb, found, true);
+					res = executeNextItem(cxt, jsp, &elem, jb, found, true);
 					cxt->ignoreStructuralErrors = savedIgnoreStructuralErrors;
 
 					if (res == jperOk && !found)
@@ -1414,7 +1456,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				if (JsonItemIsBinary(jb))
 					res = executeAnyItem
 						(cxt, hasNext ? &elem : NULL,
-						 JsonItemBinary(jb).data, found,
+						 JsonItemBinary(jb).data, found, jspOutPath(jsp),
 						 1,
 						 jsp->content.anybounds.first,
 						 jsp->content.anybounds.last,
@@ -1950,7 +1992,7 @@ executeItemUnwrapTargetArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	}
 
 	return executeAnyItem
-		(cxt, jsp, JsonItemBinary(jb).data, found, 1, 1, 1,
+		(cxt, jsp, JsonItemBinary(jb).data, found, false, 1, 1, 1,
 		 false, unwrapElements);
 }
 
@@ -2212,19 +2254,28 @@ executeNestedBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
  */
 static JsonPathExecResult
 executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
-			   JsonValueList *found, uint32 level, uint32 first, uint32 last,
-			   bool ignoreStructuralErrors, bool unwrapNext)
+			   JsonValueList *found, bool outPath, uint32 level, uint32 first,
+			   uint32 last, bool ignoreStructuralErrors, bool unwrapNext)
 {
 	JsonPathExecResult res = jperNotFound;
 	JsonxIterator it;
 	int32		r;
 	JsonItem	v;
+	char	   *keyStr = NULL;
+	int			keyLen = 0;
+	JsonValueList items = {0};
+	JsonValueList *pitems = found;
+	bool		isObject;
 
 	check_stack_depth();
 
 	if (level > last)
 		return res;
 
+	if (pitems && outPath)
+		pitems = &items;
+
+	isObject = JsonContainerIsObject(jbc);
 
 	JsonxIteratorInit(&it, jbc, cxt->isJsonb);
 
@@ -2235,8 +2286,13 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 	{
 		if (r == WJB_KEY)
 		{
+			keyStr = JsonItemString(&v).val;
+			keyLen = JsonItemString(&v).len;
 			r = JsonxIteratorNext(&it, JsonItemJbv(&v), true);
 			Assert(r == WJB_VALUE);
+
+			if (pitems == &items)
+				JsonValueListClear(pitems);
 		}
 
 		if (r == WJB_VALUE || r == WJB_ELEM)
@@ -2255,11 +2311,11 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 
 						savedIgnoreStructuralErrors = cxt->ignoreStructuralErrors;
 						cxt->ignoreStructuralErrors = true;
-						res = executeItemOptUnwrapTarget(cxt, jsp, &v, found, unwrapNext);
+						res = executeItemOptUnwrapTarget(cxt, jsp, &v, pitems, unwrapNext);
 						cxt->ignoreStructuralErrors = savedIgnoreStructuralErrors;
 					}
 					else
-						res = executeItemOptUnwrapTarget(cxt, jsp, &v, found, unwrapNext);
+						res = executeItemOptUnwrapTarget(cxt, jsp, &v, pitems, unwrapNext);
 
 					if (jperIsError(res))
 						break;
@@ -2268,7 +2324,7 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 						break;
 				}
 				else if (found)
-					JsonValueListAppend(found, copyJsonItem(&v));
+					JsonValueListAppend(pitems, copyJsonItem(&v));
 				else
 					return jperOk;
 			}
@@ -2276,7 +2332,7 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 			if (level < last && JsonItemIsBinary(&v))
 			{
 				res = executeAnyItem
-					(cxt, jsp, JsonItemBinary(&v).data, found,
+					(cxt, jsp, JsonItemBinary(&v).data, pitems, outPath,
 					 level + 1, first, last,
 					 ignoreStructuralErrors, unwrapNext);
 
@@ -2287,7 +2343,14 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 					break;
 			}
 		}
+
+		if (isObject && !JsonValueListIsEmpty(&items) && !jperIsError(res))
+			JsonValueListConcat(found, prependKey(keyStr, keyLen,
+												  &items, cxt->isJsonb));
 	}
+
+	if (!isObject && !JsonValueListIsEmpty(&items) && !jperIsError(res))
+		appendWrappedItems(found, &items, cxt->isJsonb);
 
 	return res;
 }
@@ -3347,6 +3410,24 @@ JsonValueListAppend(JsonValueList *jvl, JsonItem *jsi)
 	jvl->length++;
 }
 
+static void
+JsonValueListConcat(JsonValueList *jvl1, JsonValueList jvl2)
+{
+	if (!jvl1->tail)
+	{
+		Assert(!jvl1->head);
+		Assert(!jvl1->length);
+		*jvl1 = jvl2;
+	}
+	else if (jvl2.head)
+	{
+		Assert(jvl1->head);
+		jvl1->tail->next = jvl2.head;
+		jvl1->tail = jvl2.tail;
+		jvl1->length += jvl2.length;
+	}
+}
+
 static int
 JsonValueListLength(const JsonValueList *jvl)
 {
@@ -3731,6 +3812,51 @@ wrapItemsInArray(const JsonValueList *items, bool isJsonb)
 	}
 
 	return push(&ps, WJB_END_ARRAY, NULL);
+}
+
+static void
+appendWrappedItems(JsonValueList *found, JsonValueList *items, bool isJsonb)
+{
+	JsonbValue *wrapped = wrapItemsInArray(items, isJsonb);
+	JsonItem   *jsi = palloc(sizeof(*jsi));
+
+	JsonValueListAppend(found, JsonbValueToJsonItem(wrapped, jsi));
+}
+
+static JsonValueList
+prependKey(char *keystr, int keylen, const JsonValueList *items, bool isJsonb)
+{
+	JsonValueList objs = {0};
+	JsonValueListIterator it;
+	JsonItem   *val;
+	JsonbValue	key;
+
+	key.type = jbvString;
+	key.val.string.val = keystr;
+	key.val.string.len = keylen;
+
+	JsonValueListInitIterator(items, &it);
+
+	while ((val = JsonValueListNext(items, &it)))
+	{
+		JsonbValue *obj;
+		JsonbValue	valbuf;
+		JsonItem	bin;
+		JsonItem   *jsi = palloc(sizeof(*jsi));
+		JsonbParseState *ps = NULL;
+
+		if (JsonItemIsObject(val) || JsonItemIsArray(val))
+			val = JsonxWrapInBinary(val, &bin, isJsonb);
+
+		pushJsonbValue(&ps, WJB_BEGIN_OBJECT, NULL);
+		pushJsonbValue(&ps, WJB_KEY, &key);
+		pushJsonbValue(&ps, WJB_VALUE, JsonItemToJsonbValue(val, &valbuf));
+		obj = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
+
+		JsonValueListAppend(&objs, JsonbValueToJsonItem(obj, jsi));
+	}
+
+	return objs;
 }
 
 static void

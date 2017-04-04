@@ -598,3 +598,12 @@ select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ < @1[1]) > 2)');
 select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ < @1[1]) > 3)');
 select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ ? (@ ? (@ < @3[1]) > @2[0]) > @1[0]) > 2)');
 select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ ? (@ ? (@ < @3[2]) > @2[0]) > @1[0]) > 2)');
+
+-- extension: including subpaths into result
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a[*].b)');
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a[*]).b');
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.a.([*].b)');
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[*].b');
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.a[*].(b)');
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[*].(b)');
+select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a[0 to 1].b)');
