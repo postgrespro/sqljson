@@ -266,7 +266,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
 %token	<str>		ANY_P STRICT_P LAX_P LAST_P STARTS_P WITH_P LIKE_REGEX_P FLAG_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
-%token	<str>		KEYVALUE_P
+%token	<str>		KEYVALUE_P MAP_P
 
 %type	<result>	result
 
@@ -425,6 +425,8 @@ accessor_op:
 	| '.' method '(' ')'			{ $$ = makeItemType($2); }
 	| '.' DATETIME_P '(' opt_datetime_template ')'
 									{ $$ = makeItemUnary(jpiDatetime, $4); }
+	| '.' MAP_P '(' expr_or_predicate ')'
+									{ $$ = makeItemUnary(jpiMap, $4); }
 	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
 	;
 
@@ -463,6 +465,7 @@ key_name:
 	| WITH_P
 	| LIKE_REGEX_P
 	| FLAG_P
+	| MAP_P
 	;
 
 method:

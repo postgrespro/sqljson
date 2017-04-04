@@ -84,6 +84,7 @@ typedef enum JsonPathItemType {
 		jpiLast,
 		jpiStartsWith,
 		jpiLikeRegex,
+		jpiMap,
 } JsonPathItemType;
 
 /* XQuery regex mode flags for LIKE_REGEX predicate */
