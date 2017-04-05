@@ -375,3 +375,12 @@ select jsonb '1' @* 'strict $.map(@ + 10)';
 select jsonb '1' @* 'lax $.map(@ + 10)';
 select jsonb '[1, 2, 3]' @* '$.map(@ + 10)';
 select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.map(@.map(@ + 10))';
+
+-- extension: path sequences
+select jsonb '[1,2,3,4,5]' @* '10, 20, $[*], 30';
+select jsonb '[1,2,3,4,5]' @* 'lax    10, 20, $[*].a, 30';
+select jsonb '[1,2,3,4,5]' @* 'strict 10, 20, $[*].a, 30';
+select jsonb '[1,2,3,4,5]' @* '-(10, 20, $[1 to 3], 30)';
+select jsonb '[1,2,3,4,5]' @* 'lax (10, 20, $[1 to 3], 30).map(@ + 100)';
+select jsonb '[1,2,3,4,5]' @* '$[(0, $[*], 5) ? (@ == 3)]';
+select jsonb '[1,2,3,4,5]' @* '$[(0, $[*], 3) ? (@ == 3)]';
