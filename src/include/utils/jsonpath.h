@@ -84,6 +84,7 @@ typedef enum JsonPathItemType {
 		jpiLast,
 		jpiStartsWith,
 		jpiMap,
+		jpiSequence,
 } JsonPathItemType;
 
 
@@ -133,6 +134,11 @@ typedef struct JsonPathItem {
 		} anybounds;
 
 		struct {
+			int32	nelems;
+			int32  *elems;
+		} sequence;
+
+		struct {
 			char		*data;  /* for bool, numeric and string/key */
 			int32		datalen; /* filled only for string/key */
 		} value;
@@ -152,6 +158,7 @@ extern bool		jspGetBool(JsonPathItem *v);
 extern char * jspGetString(JsonPathItem *v, int32 *len);
 extern bool jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from,
 								 JsonPathItem *to, int i);
+extern void jspGetSequenceElement(JsonPathItem *v, int i, JsonPathItem *elem);
 
 /*
  * Parsing
@@ -189,6 +196,10 @@ struct JsonPathParseItem {
 			uint32	first;
 			uint32	last;
 		} anybounds;
+
+		struct {
+			List   *elems;
+		} sequence;
 
 		/* scalars */
 		Numeric		numeric;
