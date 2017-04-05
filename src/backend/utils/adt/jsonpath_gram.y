@@ -56,6 +56,7 @@ static JsonPathParseItem *makeAny(int first, int last);
 static JsonPathParseItem *makeItemLikeRegex(JsonPathParseItem *expr,
 											JsonPathString *pattern,
 											JsonPathString *flags);
+static JsonPathParseItem *makeItemSequence(List *elems);
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -101,9 +102,9 @@ static JsonPathParseItem *makeItemLikeRegex(JsonPathParseItem *expr,
 %type	<value>		scalar_value path_primary expr array_accessor
 					any_path accessor_op key predicate delimited_predicate
 					index_elem starts_with_initial expr_or_predicate
-					datetime_template opt_datetime_template
+					datetime_template opt_datetime_template expr_seq expr_or_seq
 
-%type	<elems>		accessor_expr
+%type	<elems>		accessor_expr expr_list
 
 %type	<indexs>	index_list
 
@@ -127,7 +128,7 @@ static JsonPathParseItem *makeItemLikeRegex(JsonPathParseItem *expr,
 %%
 
 result:
-	mode expr_or_predicate			{
+	mode expr_or_seq				{
 										*result = palloc(sizeof(JsonPathParseResult));
 										(*result)->expr = $2;
 										(*result)->lax = $1;
@@ -138,6 +139,20 @@ result:
 expr_or_predicate:
 	expr							{ $$ = $1; }
 	| predicate						{ $$ = $1; }
+	;
+
+expr_or_seq:
+	expr_or_predicate				{ $$ = $1; }
+	| expr_seq						{ $$ = $1; }
+	;
+
+expr_seq:
+	expr_list						{ $$ = makeItemSequence($1); }
+	;
+
+expr_list:
+	expr_or_predicate ',' expr_or_predicate	{ $$ = list_make2($1, $3); }
+	| expr_list ',' expr_or_predicate		{ $$ = lappend($1, $3); }
 	;
 
 mode:
@@ -195,6 +210,7 @@ path_primary:
 	| '$'							{ $$ = makeItemType(jpiRoot); }
 	| '@'							{ $$ = makeItemType(jpiCurrent); }
 	| LAST_P						{ $$ = makeItemType(jpiLast); }
+	| '(' expr_seq ')'				{ $$ = $2; }
 	;
 
 accessor_expr:
@@ -548,6 +564,16 @@ makeItemLikeRegex(JsonPathParseItem *expr, JsonPathString *pattern,
 	(void) RE_compile_and_cache(cstring_to_text_with_len(pattern->val,
 														 pattern->len),
 								cflags, DEFAULT_COLLATION_OID);
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemSequence(List *elems)
+{
+	JsonPathParseItem  *v = makeItemType(jpiSequence);
+
+	v->value.sequence.elems = elems;
 
 	return v;
 }

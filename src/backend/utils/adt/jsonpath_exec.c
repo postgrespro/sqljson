@@ -1591,6 +1591,52 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 			return executeKeyValueMethod(cxt, jsp, jb, found);
 
+		case jpiSequence:
+			{
+				JsonPathItem next;
+				bool		hasNext = jspGetNext(jsp, &next);
+				JsonValueList list;
+				JsonValueList *plist = hasNext ? &list : found;
+				JsonValueListIterator it;
+				int			i;
+
+				for (i = 0; i < jsp->content.sequence.nelems; i++)
+				{
+					JsonItem   *v;
+
+					if (hasNext)
+						memset(&list, 0, sizeof(list));
+
+					jspGetSequenceElement(jsp, i, &elem);
+					res = executeItem(cxt, &elem, jb, plist);
+
+					if (jperIsError(res))
+						break;
+
+					if (!hasNext)
+					{
+						if (!found && res == jperOk)
+							break;
+						continue;
+					}
+
+					JsonValueListInitIterator(&list, &it);
+
+					while ((v = JsonValueListNext(&list, &it)))
+					{
+						res = executeItem(cxt, &next, v, found);
+
+						if (jperIsError(res) || (!found && res == jperOk))
+						{
+							i = jsp->content.sequence.nelems;
+							break;
+						}
+					}
+				}
+
+				break;
+			}
+
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}

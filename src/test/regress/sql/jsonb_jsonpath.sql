@@ -539,3 +539,12 @@ SELECT jsonb_path_match('[true, true]', '$[*]', silent => false);
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @@ '$[*].a > 1';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @@ '$[*].a > 2';
 SELECT jsonb_path_match('[{"a": 1}, {"a": 2}]', '$[*].a > 1');
+
+-- extension: path sequences
+select jsonb_path_query('[1,2,3,4,5]', '10, 20, $[*], 30');
+select jsonb_path_query('[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');
+select jsonb_path_query('[1,2,3,4,5]', 'strict 10, 20, $[*].a, 30');
+select jsonb_path_query('[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
+select jsonb_path_query('[1,2,3,4,5]', 'lax (10, 20.5, $[1 to 3], "30").double()');
+select jsonb_path_query('[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
+select jsonb_path_query('[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');

@@ -2375,3 +2375,59 @@ SELECT jsonb_path_match('[{"a": 1}, {"a": 2}]', '$[*].a > 1');
  t
 (1 row)
 
+-- extension: path sequences
+select jsonb_path_query('[1,2,3,4,5]', '10, 20, $[*], 30');
+ jsonb_path_query 
+------------------
+ 10
+ 20
+ 1
+ 2
+ 3
+ 4
+ 5
+ 30
+(8 rows)
+
+select jsonb_path_query('[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');
+ jsonb_path_query 
+------------------
+ 10
+ 20
+ 30
+(3 rows)
+
+select jsonb_path_query('[1,2,3,4,5]', 'strict 10, 20, $[*].a, 30');
+ERROR:  SQL/JSON member not found
+DETAIL:  jsonpath member accessor can only be applied to an object
+select jsonb_path_query('[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
+ jsonb_path_query 
+------------------
+ -10
+ -20
+ -2
+ -3
+ -4
+ -30
+(6 rows)
+
+select jsonb_path_query('[1,2,3,4,5]', 'lax (10, 20.5, $[1 to 3], "30").double()');
+ jsonb_path_query 
+------------------
+ 10
+ 20.5
+ 2
+ 3
+ 4
+ 30
+(6 rows)
+
+select jsonb_path_query('[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
+ jsonb_path_query 
+------------------
+ 4
+(1 row)
+
+select jsonb_path_query('[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+ERROR:  invalid SQL/JSON subscript
+DETAIL:  jsonpath array subscript is not a singleton numeric value
