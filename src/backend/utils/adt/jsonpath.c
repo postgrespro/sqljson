@@ -215,6 +215,29 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiDouble:
 		case jpiKeyValue:
 			break;
+		case jpiSequence:
+			{
+				int32		nelems = list_length(item->value.sequence.elems);
+				ListCell   *lc;
+				int			offset;
+
+				appendBinaryStringInfo(buf, (char *) &nelems, sizeof(nelems));
+
+				offset = buf->len;
+
+				appendStringInfoSpaces(buf, sizeof(int32) * nelems);
+
+				foreach(lc, item->value.sequence.elems)
+				{
+					int32		pos =
+						flattenJsonPathParseItem(buf, lfirst(lc),
+												 allowCurrent, insideArraySubscript);
+
+					*(int32 *) &buf->data[offset] = pos;
+					offset += sizeof(int32);
+				}
+			}
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -300,6 +323,8 @@ operationPriority(JsonPathItemType op)
 {
 	switch (op)
 	{
+		case jpiSequence:
+			return -1;
 		case jpiOr:
 			return 0;
 		case jpiAnd:
@@ -489,12 +514,12 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 				if (i)
 					appendStringInfoChar(buf, ',');
 
-				printJsonPathItem(buf, &from, false, false);
+				printJsonPathItem(buf, &from, false, from.type == jpiSequence);
 
 				if (range)
 				{
 					appendBinaryStringInfo(buf, " to ", 4);
-					printJsonPathItem(buf, &to, false, false);
+					printJsonPathItem(buf, &to, false, to.type == jpiSequence);
 				}
 			}
 			appendStringInfoChar(buf, ']');
@@ -558,6 +583,25 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 		case jpiKeyValue:
 			appendBinaryStringInfo(buf, ".keyvalue()", 11);
 			break;
+		case jpiSequence:
+			if (printBracketes || jspHasNext(v))
+				appendStringInfoChar(buf, '(');
+
+			for (i = 0; i < v->content.sequence.nelems; i++)
+			{
+				JsonPathItem elem;
+
+				if (i)
+					appendBinaryStringInfo(buf, ", ", 2);
+
+				jspGetSequenceElement(v, i, &elem);
+
+				printJsonPathItem(buf, &elem, false, elem.type == jpiSequence);
+			}
+
+			if (printBracketes || jspHasNext(v))
+				appendStringInfoChar(buf, ')');
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -580,7 +624,7 @@ jsonpath_out(PG_FUNCTION_ARGS)
 		appendBinaryStringInfo(&buf, "strict ", 7);
 
 	jspInit(&v, in);
-	printJsonPathItem(&buf, &v, false, true);
+	printJsonPathItem(&buf, &v, false, v.type != jpiSequence);
 
 	PG_RETURN_CSTRING(buf.data);
 }
@@ -702,6 +746,11 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32(v->content.anybounds.first, base, pos);
 			read_int32(v->content.anybounds.last, base, pos);
 			break;
+		case jpiSequence:
+			read_int32(v->content.sequence.nelems, base, pos);
+			read_int32_n(v->content.sequence.elems, base, pos,
+						 v->content.sequence.nelems);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -768,7 +817,8 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiDouble ||
 			v->type == jpiDatetime ||
 			v->type == jpiKeyValue ||
-			v->type == jpiStartsWith
+			v->type == jpiStartsWith ||
+			v->type == jpiSequence
 		);
 
 		if (a)
@@ -871,4 +921,12 @@ jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from, JsonPathItem *to,
 	jspInitByBuffer(to, v->base, v->content.array.elems[i].to);
 
 	return true;
+}
+
+void
+jspGetSequenceElement(JsonPathItem *v, int i, JsonPathItem *elem)
+{
+	Assert(v->type == jpiSequence);
+
+	jspInitByBuffer(elem, v->base, v->content.sequence.elems[i]);
 }

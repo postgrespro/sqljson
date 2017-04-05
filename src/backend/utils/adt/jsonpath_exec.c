@@ -2261,6 +2261,51 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				}
 			}
 			break;
+		case jpiSequence:
+		{
+			JsonPathItem next;
+			bool		hasNext = jspGetNext(jsp, &next);
+			JsonValueList list;
+			JsonValueList *plist = hasNext ? &list : found;
+			JsonValueListIterator it;
+			int			i;
+
+			for (i = 0; i < jsp->content.sequence.nelems; i++)
+			{
+				JsonbValue *v;
+
+				if (hasNext)
+					memset(&list, 0, sizeof(list));
+
+				jspGetSequenceElement(jsp, i, &elem);
+				res = recursiveExecute(cxt, &elem, jb, plist);
+
+				if (jperIsError(res))
+					break;
+
+				if (!hasNext)
+				{
+					if (!found && res == jperOk)
+						break;
+					continue;
+				}
+
+				memset(&it, 0, sizeof(it));
+
+				while ((v = JsonValueListNext(&list, &it)))
+				{
+					res = recursiveExecute(cxt, &next, v, found);
+
+					if (jperIsError(res) || (!found && res == jperOk))
+					{
+						i = jsp->content.sequence.nelems;
+						break;
+					}
+				}
+			}
+
+			break;
+		}
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}

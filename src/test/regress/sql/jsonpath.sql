@@ -96,6 +96,13 @@ select '($)'::jsonpath;
 select '(($))'::jsonpath;
 select '((($ + 1)).a + ((2)).b ? ((((@ > 1)) || (exists(@.c)))))'::jsonpath;
 
+select '1, 2 + 3, $.a[*] + 5'::jsonpath;
+select '(1, 2, $.a)'::jsonpath;
+select '(1, 2, $.a).a[*]'::jsonpath;
+select '(1, 2, $.a) == 5'::jsonpath;
+select '$[(1, 2, $.a) to (3, 4)]'::jsonpath;
+select '$[(1, (2, $.a)), 3, (4, 5)]'::jsonpath;
+
 select '$ ? (@.a < 1)'::jsonpath;
 select '$ ? (@.a < -1)'::jsonpath;
 select '$ ? (@.a < +1)'::jsonpath;
