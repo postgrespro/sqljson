@@ -88,6 +88,8 @@ typedef enum JsonPathItemType {
 		jpiLikeRegex,
 		jpiSequence,
 		jpiArray,
+		jpiObject,
+		jpiObjectField,
 } JsonPathItemType;
 
 /* XQuery regex mode flags for LIKE_REGEX predicate */
@@ -147,6 +149,14 @@ typedef struct JsonPathItem {
 		} sequence;
 
 		struct {
+			int32	nfields;
+			struct {
+				int32	key;
+				int32	val;
+			}	   *fields;
+		} object;
+
+		struct {
 			char		*data;  /* for bool, numeric and string/key */
 			int32		datalen; /* filled only for string/key */
 		} value;
@@ -174,6 +184,8 @@ extern char * jspGetString(JsonPathItem *v, int32 *len);
 extern bool jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from,
 								 JsonPathItem *to, int i);
 extern void jspGetSequenceElement(JsonPathItem *v, int i, JsonPathItem *elem);
+extern void jspGetObjectField(JsonPathItem *v, int i,
+							  JsonPathItem *key, JsonPathItem *val);
 
 /*
  * Parsing
@@ -222,6 +234,10 @@ struct JsonPathParseItem {
 		struct {
 			List   *elems;
 		} sequence;
+
+		struct {
+			List   *fields;
+		} object;
 
 		/* scalars */
 		Numeric		numeric;

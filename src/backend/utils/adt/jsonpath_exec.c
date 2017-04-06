@@ -2324,6 +2324,70 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										   found, false);
 			}
 			break;
+		case jpiObject:
+			{
+				JsonbParseState *ps = NULL;
+				JsonbValue *obj;
+				int			i;
+
+				pushJsonbValue(&ps, WJB_BEGIN_OBJECT, NULL);
+
+				for (i = 0; i < jsp->content.object.nfields; i++)
+				{
+					JsonbValue *jbv;
+					JsonbValue	jbvtmp;
+					JsonPathItem key;
+					JsonPathItem val;
+					JsonValueList key_list = { 0 };
+					JsonValueList val_list = { 0 };
+
+					jspGetObjectField(jsp, i, &key, &val);
+
+					recursiveExecute(cxt, &key, jb, &key_list);
+
+					if (JsonValueListLength(&key_list) != 1)
+					{
+						res = jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+						break;
+					}
+
+					jbv = JsonValueListHead(&key_list);
+
+					if (JsonbType(jbv) == jbvScalar)
+						jbv = JsonbExtractScalar(jbv->val.binary.data, &jbvtmp);
+
+					if (jbv->type != jbvString)
+					{
+						res = jperMakeError(ERRCODE_JSON_SCALAR_REQUIRED); /* XXX */
+						break;
+					}
+
+					pushJsonbValue(&ps, WJB_KEY, jbv);
+
+					recursiveExecute(cxt, &val, jb, &val_list);
+
+					if (JsonValueListLength(&val_list) != 1)
+					{
+						res = jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+						break;
+					}
+
+					jbv = JsonValueListHead(&val_list);
+
+					if (jbv->type == jbvObject || jbv->type == jbvArray)
+						jbv = JsonbWrapInBinary(jbv, &jbvtmp);
+
+					pushJsonbValue(&ps, WJB_VALUE, jbv);
+				}
+
+				if (jperIsError(res))
+					break;
+
+				obj = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
+
+				res = recursiveExecuteNext(cxt, jsp, NULL, obj, found, false);
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}

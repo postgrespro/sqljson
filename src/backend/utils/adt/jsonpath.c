@@ -241,6 +241,38 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				}
 			}
 			break;
+		case jpiObject:
+			{
+				int32		nfields = list_length(item->value.object.fields);
+				ListCell   *lc;
+				int			offset;
+
+				appendBinaryStringInfo(buf, (char *) &nfields, sizeof(nfields));
+
+				offset = buf->len;
+
+				appendStringInfoSpaces(buf, sizeof(int32) * 2 * nfields);
+
+				foreach(lc, item->value.object.fields)
+				{
+					JsonPathParseItem *field = lfirst(lc);
+					int32		keypos =
+						flattenJsonPathParseItem(buf, field->value.args.left,
+												 allowCurrent,
+												 insideArraySubscript);
+					int32		valpos =
+						flattenJsonPathParseItem(buf, field->value.args.right,
+												 allowCurrent,
+												 insideArraySubscript);
+					int32	   *ppos = (int32 *) &buf->data[offset];
+
+					ppos[0] = keypos;
+					ppos[1] = valpos;
+
+					offset += 2 * sizeof(int32);
+				}
+			}
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -614,6 +646,26 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			}
 			appendStringInfoChar(buf, ']');
 			break;
+		case jpiObject:
+			appendStringInfoChar(buf, '{');
+
+			for (i = 0; i < v->content.object.nfields; i++)
+			{
+				JsonPathItem key;
+				JsonPathItem val;
+
+				jspGetObjectField(v, i, &key, &val);
+
+				if (i)
+					appendBinaryStringInfo(buf, ", ", 2);
+
+				printJsonPathItem(buf, &key, false, false);
+				appendBinaryStringInfo(buf, ": ", 2);
+				printJsonPathItem(buf, &val, false, val.type == jpiSequence);
+			}
+
+			appendStringInfoChar(buf, '}');
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -764,6 +816,11 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32_n(v->content.sequence.elems, base, pos,
 						 v->content.sequence.nelems);
 			break;
+		case jpiObject:
+			read_int32(v->content.object.nfields, base, pos);
+			read_int32_n(v->content.object.fields, base, pos,
+						 v->content.object.nfields * 2);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -833,7 +890,8 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiKeyValue ||
 			v->type == jpiStartsWith ||
 			v->type == jpiSequence ||
-			v->type == jpiArray
+			v->type == jpiArray ||
+			v->type == jpiObject
 		);
 
 		if (a)
@@ -944,4 +1002,12 @@ jspGetSequenceElement(JsonPathItem *v, int i, JsonPathItem *elem)
 	Assert(v->type == jpiSequence);
 
 	jspInitByBuffer(elem, v->base, v->content.sequence.elems[i]);
+}
+
+void
+jspGetObjectField(JsonPathItem *v, int i, JsonPathItem *key, JsonPathItem *val)
+{
+	Assert(v->type == jpiObject);
+	jspInitByBuffer(key, v->base, v->content.object.fields[i].key);
+	jspInitByBuffer(val, v->base, v->content.object.fields[i].val);
 }
