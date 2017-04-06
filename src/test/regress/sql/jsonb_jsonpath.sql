@@ -406,3 +406,10 @@ select _jsonpath_query(jsonb '[1, 2, 3]', '[(1, (2, $.map(@ + 100)[*])), (4, 5)]
 select _jsonpath_query(jsonb '[1, 2, 3]', '[[1, 2], [$.map(@ + 100)[*], 4], 5, [(1,2)?(@ > 5)]]');
 select _jsonpath_query(jsonb '[1, 2, 3]', 'strict [1, 2, $.map(@.a)[*], 4, 5]');
 select _jsonpath_query(jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*].map(@ + 10)[*] ? (@ > 13)]');
+
+-- extension: object constructors
+select _jsonpath_query(jsonb '[1, 2, 3]', '{}');
+select _jsonpath_query(jsonb '[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+select _jsonpath_query(jsonb '[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+select _jsonpath_query(jsonb '[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+select _jsonpath_query(jsonb '[1, 2, 3]', '{a: 2 + 3, "b": [$.map({x: @, y: @ < 3})[*], {z: "foo"}]}');
