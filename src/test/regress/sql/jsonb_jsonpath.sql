@@ -378,6 +378,7 @@ set time zone default;
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*]';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';
@@ -396,3 +397,12 @@ select _jsonpath_query(jsonb '[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
 select _jsonpath_query(jsonb '[1,2,3,4,5]', 'lax (10, 20, $[1 to 3], 30).map(@ + 100)');
 select _jsonpath_query(jsonb '[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
 select _jsonpath_query(jsonb '[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+
+-- extension: array constructors
+select _jsonpath_query(jsonb '[1, 2, 3]', '[]');
+select _jsonpath_query(jsonb '[1, 2, 3]', '[1, 2, $.map(@ + 100)[*], 4, 5]');
+select _jsonpath_query(jsonb '[1, 2, 3]', '[1, 2, $.map(@ + 100)[*], 4, 5][*]');
+select _jsonpath_query(jsonb '[1, 2, 3]', '[(1, (2, $.map(@ + 100)[*])), (4, 5)]');
+select _jsonpath_query(jsonb '[1, 2, 3]', '[[1, 2], [$.map(@ + 100)[*], 4], 5, [(1,2)?(@ > 5)]]');
+select _jsonpath_query(jsonb '[1, 2, 3]', 'strict [1, 2, $.map(@.a)[*], 4, 5]');
+select _jsonpath_query(jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*].map(@ + 10)[*] ? (@ > 13)]');
