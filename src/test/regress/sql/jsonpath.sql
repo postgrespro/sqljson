@@ -103,6 +103,9 @@ select '(1, 2, $.a) == 5'::jsonpath;
 select '$[(1, 2, $.a) to (3, 4)]'::jsonpath;
 select '$[(1, (2, $.a)), 3, (4, 5)]'::jsonpath;
 
+select '[]'::jsonpath;
+select '[[1, 2], ([(3, 4, 5), 6], []), $.a[*]]'::jsonpath;
+
 select '$ ? (@.a < 1)'::jsonpath;
 select '$ ? (@.a < -1)'::jsonpath;
 select '$ ? (@.a < +1)'::jsonpath;

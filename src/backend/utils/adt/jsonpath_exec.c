@@ -2306,6 +2306,24 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 			break;
 		}
+		case jpiArray:
+			{
+				JsonValueList list = { 0 };
+
+				if (jsp->content.arg)
+				{
+					jspGetArg(jsp, &elem);
+					res = recursiveExecute(cxt, &elem, jb, &list);
+
+					if (jperIsError(res))
+						break;
+				}
+
+				res = recursiveExecuteNext(cxt, jsp, NULL,
+										   wrapItemsInArray(&list),
+										   found, false);
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
