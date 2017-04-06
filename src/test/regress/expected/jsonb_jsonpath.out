@@ -2489,3 +2489,37 @@ select jsonb_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*][*] ? (@ > 3)]'
  [4, 5, 6, 7]
 (1 row)
 
+-- extension: object constructors
+select jsonb_path_query('[1, 2, 3]', '{}');
+ jsonb_path_query 
+------------------
+ {}
+(1 row)
+
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+        jsonb_path_query        
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+ jsonb_path_query 
+------------------
+ 5
+ [1, 2, 3, 4, 5]
+(2 rows)
+
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}[*]');
+        jsonb_path_query        
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+ERROR:  value in jsonpath object constructor must be a singleton
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}');
+                    jsonb_path_query                     
+---------------------------------------------------------
+ {"a": 5, "b": {"x": [1, 2, 3], "y": false, "z": "foo"}}
+(1 row)
+

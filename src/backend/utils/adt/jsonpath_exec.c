@@ -1660,6 +1660,65 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				break;
 			}
 
+		case jpiObject:
+			{
+				JsonbParseState *ps = NULL;
+				JsonbValue *obj;
+				JsonItem	jsibuf;
+				int			i;
+				JsonBuilderFunc push =
+					cxt->isJsonb ? pushJsonbValue : pushJsonValue;
+
+				push(&ps, WJB_BEGIN_OBJECT, NULL);
+
+				for (i = 0; i < jsp->content.object.nfields; i++)
+				{
+					JsonItem   *jsi;
+					JsonItem	jsitmp;
+					JsonPathItem key;
+					JsonPathItem val;
+					JsonbValue	valjbv;
+					JsonValueList key_list = {0};
+					JsonValueList val_list = {0};
+
+					jspGetObjectField(jsp, i, &key, &val);
+
+					res = executeItem(cxt, &key, jb, &key_list);
+					if (jperIsError(res))
+						return res;
+
+					if (JsonValueListLength(&key_list) != 1 ||
+						!(jsi = getScalar(JsonValueListHead(&key_list), jbvString)))
+						RETURN_ERROR(ereport(ERROR,
+											 (errcode(ERRCODE_JSON_SCALAR_REQUIRED),
+											  errmsg(ERRMSG_JSON_SCALAR_REQUIRED),
+											  errdetail("key in jsonpath object constructor must be a singleton string")))); /* XXX */
+
+					pushJsonbValue(&ps, WJB_KEY, JsonItemJbv(jsi));
+
+					res = executeItem(cxt, &val, jb, &val_list);
+					if (jperIsError(res))
+						return res;
+
+					if (JsonValueListLength(&val_list) != 1)
+						RETURN_ERROR(ereport(ERROR,
+											 (errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
+											  errmsg(ERRMSG_SINGLETON_JSON_ITEM_REQUIRED),
+											  errdetail("value in jsonpath object constructor must be a singleton"))));
+
+					jsi = JsonValueListHead(&val_list);
+					jsi = wrapJsonObjectOrArray(jsi, &jsitmp, cxt->isJsonb);
+
+					push(&ps, WJB_VALUE, JsonItemToJsonbValue(jsi, &valjbv));
+				}
+
+				obj = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
+				jb = JsonbValueToJsonItem(obj, &jsibuf);
+
+				res = executeNextItem(cxt, jsp, NULL, jb, found, true);
+				break;
+			}
+
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}

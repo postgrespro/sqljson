@@ -559,3 +559,11 @@ select jsonb_path_query('[1, 2, 3]', '[(1, (2, $[*])), (4, 5)]');
 select jsonb_path_query('[1, 2, 3]', '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]');
 select jsonb_path_query('[1, 2, 3]', 'strict [1, 2, $[*].a, 4, 5]');
 select jsonb_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*][*] ? (@ > 3)]');
+
+-- extension: object constructors
+select jsonb_path_query('[1, 2, 3]', '{}');
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}[*]');
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+select jsonb_path_query('[1, 2, 3]', '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}');

@@ -116,6 +116,10 @@ select '$[(1, (2, $.a)), 3, (4, 5)]'::jsonpath;
 select '[]'::jsonpath;
 select '[[1, 2], ([(3, 4, 5), 6], []), $.a[*]]'::jsonpath;
 
+select '{}'::jsonpath;
+select '{a: 1 + 2}'::jsonpath;
+select '{a: 1 + 2, b : (1,2), c: [$[*],4,5], d: { "e e e": "f f f" }}'::jsonpath;
+
 select '$ ? (@.a < 1)'::jsonpath;
 select '$ ? (@.a < -1)'::jsonpath;
 select '$ ? (@.a < +1)'::jsonpath;
