@@ -211,6 +211,8 @@ path_primary:
 	| '@'							{ $$ = makeItemType(jpiCurrent); }
 	| LAST_P						{ $$ = makeItemType(jpiLast); }
 	| '(' expr_seq ')'				{ $$ = $2; }
+	| '[' ']'						{ $$ = makeItemUnary(jpiArray, NULL); }
+	| '[' expr_or_seq ']'			{ $$ = makeItemUnary(jpiArray, $2); }
 	;
 
 accessor_expr:

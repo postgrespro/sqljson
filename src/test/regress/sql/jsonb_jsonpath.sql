@@ -502,6 +502,7 @@ set time zone default;
 
 SELECT jsonb_path_query('[{"a": 1}, {"a": 2}]', '$[*]');
 SELECT jsonb_path_query('[{"a": 1}, {"a": 2}]', '$[*] ? (@.a > 10)');
+SELECT jsonb_path_query('[{"a": 1}, {"a": 2}]', '[$[*].a]');
 
 SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a');
 SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a');
@@ -509,6 +510,7 @@ SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a ? (@ == 1)');
 SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a ? (@ > 10)');
 SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}]', '$[*].a ? (@ > $min && @ < $max)', vars => '{"min": 1, "max": 4}');
 SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}]', '$[*].a ? (@ > $min && @ < $max)', vars => '{"min": 3, "max": 4}');
+SELECT jsonb_path_query_array('[{"a": 1}, {"a": 2}]', '[$[*].a]');
 
 SELECT jsonb_path_query_first('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a');
 SELECT jsonb_path_query_first('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a', silent => true);
@@ -548,3 +550,12 @@ select jsonb_path_query('[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
 select jsonb_path_query('[1,2,3,4,5]', 'lax (10, 20.5, $[1 to 3], "30").double()');
 select jsonb_path_query('[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
 select jsonb_path_query('[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+
+-- extension: array constructors
+select jsonb_path_query('[1, 2, 3]', '[]');
+select jsonb_path_query('[1, 2, 3]', '[1, 2, $[*], 4, 5]');
+select jsonb_path_query('[1, 2, 3]', '[1, 2, $[*], 4, 5][*]');
+select jsonb_path_query('[1, 2, 3]', '[(1, (2, $[*])), (4, 5)]');
+select jsonb_path_query('[1, 2, 3]', '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]');
+select jsonb_path_query('[1, 2, 3]', 'strict [1, 2, $[*].a, 4, 5]');
+select jsonb_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*][*] ? (@ > 3)]');
