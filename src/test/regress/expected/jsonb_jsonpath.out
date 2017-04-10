@@ -1678,6 +1678,70 @@ select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.map(@.map(@ + 10))';
  [[11, 12], [13, 14, 15], [], [16, 17]]
 (1 row)
 
+-- extension: reduce/fold item methods
+select jsonb '1' @* 'strict $.reduce($1 + $2)';
+ERROR:  SQL/JSON array not found
+select jsonb '1' @* 'lax $.reduce($1 + $2)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '1' @* 'strict $.fold($1 + $2, 10)';
+ERROR:  SQL/JSON array not found
+select jsonb '1' @* 'lax $.fold($1 + $2, 10)';
+ ?column? 
+----------
+ 11
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '$.reduce($1 + $2)';
+ ?column? 
+----------
+ 6
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '$.fold($1 + $2, 100)';
+ ?column? 
+----------
+ 106
+(1 row)
+
+select jsonb '[]' @* '$.reduce($1 + $2)';
+ ?column? 
+----------
+(0 rows)
+
+select jsonb '[]' @* '$.fold($1 + $2, 100)';
+ ?column? 
+----------
+ 100
+(1 row)
+
+select jsonb '[1]' @* '$.reduce($1 + $2)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '$.foldl([$1, $2], [])';
+     ?column?      
+-------------------
+ [[[[], 1], 2], 3]
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '$.foldr([$2, $1], [])';
+     ?column?      
+-------------------
+ [[[[], 3], 2], 1]
+(1 row)
+
+select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.fold($1 + $2.fold($1 + $2, 100), 1000)';
+ ?column? 
+----------
+ 1428
+(1 row)
+
 -- extension: path sequences
 select jsonb '[1,2,3,4,5]' @* '10, 20, $[*], 30';
  ?column? 

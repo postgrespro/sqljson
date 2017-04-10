@@ -401,6 +401,18 @@ select '$.datetime("datetime template")'::jsonpath;
  $.datetime("datetime template")
 (1 row)
 
+select '$.reduce($1 + $2 + @[1])'::jsonpath;
+            jsonpath            
+--------------------------------
+ $.reduce(($"1" + $"2") + @[1])
+(1 row)
+
+select '$.fold($1 + $2 + @[1], 2 + 3)'::jsonpath;
+              jsonpath               
+-------------------------------------
+ $.fold(($"1" + $"2") + @[1], 2 + 3)
+(1 row)
+
 select '$ ? (@ starts with "abc")'::jsonpath;
         jsonpath         
 -------------------------
