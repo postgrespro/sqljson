@@ -30,6 +30,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 	/* position from begining of jsonpath data */
 	int32	pos = buf->len - JSONPATH_HDRSZ;
 	int32	chld, next;
+	bool	allowCurrentInArg = false;
 
 	check_stack_depth();
 
@@ -62,6 +63,11 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			appendBinaryStringInfo(buf, (char*)&item->value.boolean,
 								   sizeof(item->value.boolean));
 			break;
+		case jpiFold:
+		case jpiFoldl:
+		case jpiFoldr:
+			allowCurrentInArg = true;
+			/* fall through */
 		case jpiAnd:
 		case jpiOr:
 		case jpiEqual:
@@ -90,23 +96,28 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
 				chld = flattenJsonPathParseItem(buf, item->value.args.left,
-												allowCurrent,
+												allowCurrent ||
+												allowCurrentInArg,
 												insideArraySubscript);
 				*(int32*)(buf->data + left) = chld;
 				chld = flattenJsonPathParseItem(buf, item->value.args.right,
-												allowCurrent,
+												allowCurrent ||
+												allowCurrentInArg,
 												insideArraySubscript);
 				*(int32*)(buf->data + right) = chld;
 			}
 			break;
 		case jpiFilter:
+		case jpiMap:
+		case jpiReduce:
+			allowCurrentInArg = true;
+			/* fall through */
 		case jpiIsUnknown:
 		case jpiNot:
 		case jpiPlus:
 		case jpiMinus:
 		case jpiExists:
 		case jpiDatetime:
-		case jpiMap:
 		case jpiArray:
 			{
 				int32 arg = item->value.arg ? buf->len : 0;
@@ -117,9 +128,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					break;
 
 				chld = flattenJsonPathParseItem(buf, item->value.arg,
-												item->type == jpiFilter ||
-												item->type == jpiMap ||
-												allowCurrent,
+												allowCurrent ||
+												allowCurrentInArg,
 												insideArraySubscript);
 				*(int32*)(buf->data + arg) = chld;
 			}
@@ -604,6 +614,28 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 
 			appendStringInfoChar(buf, '}');
 			break;
+		case jpiReduce:
+			appendBinaryStringInfo(buf, ".reduce(", 8);
+			jspGetArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
+		case jpiFold:
+		case jpiFoldl:
+		case jpiFoldr:
+			if (v->type == jpiFold)
+				appendBinaryStringInfo(buf, ".fold(", 6);
+			else if (v->type == jpiFoldl)
+				appendBinaryStringInfo(buf, ".foldl(", 7);
+			else
+				appendBinaryStringInfo(buf, ".foldr(", 7);
+			jspGetLeftArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendBinaryStringInfo(buf, ", ", 2);
+			jspGetRightArg(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+			appendStringInfoChar(buf, ')');
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -721,6 +753,9 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
 		case jpiStartsWith:
+		case jpiFold:
+		case jpiFoldl:
+		case jpiFoldr:
 			read_int32(v->content.args.left, base, pos);
 			read_int32(v->content.args.right, base, pos);
 			break;
@@ -733,6 +768,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiDatetime:
 		case jpiMap:
 		case jpiArray:
+		case jpiReduce:
 			read_int32(v->content.arg, base, pos);
 			break;
 		case jpiIndexArray:
@@ -771,7 +807,8 @@ jspGetArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiMinus ||
 		v->type == jpiDatetime ||
 		v->type == jpiMap ||
-		v->type == jpiArray
+		v->type == jpiArray ||
+		v->type == jpiReduce
 	);
 
 	jspInitByBuffer(a, v->base, v->content.arg);
@@ -827,7 +864,11 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiMap ||
 			v->type == jpiSequence ||
 			v->type == jpiArray ||
-			v->type == jpiObject
+			v->type == jpiObject ||
+			v->type == jpiReduce ||
+			v->type == jpiFold ||
+			v->type == jpiFoldl ||
+			v->type == jpiFoldr
 		);
 
 		if (a)
@@ -855,7 +896,10 @@ jspGetLeftArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiMul ||
 		v->type == jpiDiv ||
 		v->type == jpiMod ||
-		v->type == jpiStartsWith
+		v->type == jpiStartsWith ||
+		v->type == jpiFold ||
+		v->type == jpiFoldl ||
+		v->type == jpiFoldr
 	);
 
 	jspInitByBuffer(a, v->base, v->content.args.left);
@@ -878,7 +922,10 @@ jspGetRightArg(JsonPathItem *v, JsonPathItem *a)
 		v->type == jpiMul ||
 		v->type == jpiDiv ||
 		v->type == jpiMod ||
-		v->type == jpiStartsWith
+		v->type == jpiStartsWith ||
+		v->type == jpiFold ||
+		v->type == jpiFoldl ||
+		v->type == jpiFoldr
 	);
 
 	jspInitByBuffer(a, v->base, v->content.args.right);

@@ -245,7 +245,7 @@ makeItemObject(List *fields)
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P STARTS_P WITH_P
 %token	<str>		STRING_P NUMERIC_P INT_P EXISTS_P STRICT_P LAX_P LAST_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
-%token	<str>		KEYVALUE_P MAP_P
+%token	<str>		KEYVALUE_P MAP_P REDUCE_P FOLD_P FOLDL_P FOLDR_P
 
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
@@ -262,7 +262,7 @@ makeItemObject(List *fields)
 
 %type	<indexs>	index_list
 
-%type	<optype>	comp_op method
+%type	<optype>	comp_op method fold
 
 %type	<boolean>	mode
 
@@ -322,6 +322,7 @@ scalar_value:
 	| NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
 	| '$' STRING_P					{ $$ = makeItemVariable(&$2); }
+	| '$' INT_P						{ $$ = makeItemVariable(&$2); }
 	;
 
 comp_op:
@@ -439,7 +440,17 @@ accessor_op:
 									{ $$ = makeItemUnary(jpiDatetime, $4); }
 	| '.' MAP_P '(' expr_or_predicate ')'
 									{ $$ = makeItemUnary(jpiMap, $4); }
+	| '.' REDUCE_P '(' expr_or_predicate ')'
+									{ $$ = makeItemUnary(jpiReduce, $4); }
+	| '.' fold '(' expr_or_predicate ',' expr_or_predicate ')'
+									{ $$ = makeItemBinary($2, $4, $6); }
 	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
+	;
+
+fold:
+	FOLD_P							{ $$ = jpiFold; }
+	| FOLDL_P						{ $$ = jpiFoldl; }
+	| FOLDR_P						{ $$ = jpiFoldr; }
 	;
 
 opt_datetime_template:
@@ -475,6 +486,10 @@ key_name:
 	| STARTS_P
 	| WITH_P
 	| MAP_P
+	| REDUCE_P
+	| FOLD_P
+	| FOLDL_P
+	| FOLDR_P
 	;
 
 method:

@@ -55,6 +55,9 @@ static inline JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt
 
 static inline JsonbValue *wrapItemsInArray(const JsonValueList *items);
 
+static inline JsonbValue *wrapItem(JsonbValue *jbv);
+
+static Datum returnDATUM(void *arg, bool *isNull);
 
 static inline void
 JsonValueListAppend(JsonValueList *jvl, JsonbValue *jbv)
@@ -284,6 +287,9 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 				else
 					JsonbInitBinary(value, jb);
 			}
+			break;
+		case (Oid) -1: /* JsonbValue */
+			*value = *(JsonbValue *) DatumGetPointer(computedValue);
 			break;
 		default:
 			ereport(ERROR,
@@ -2088,6 +2094,160 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				obj = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
 
 				res = recursiveExecuteNext(cxt, jsp, NULL, obj, found, false);
+			}
+			break;
+		case jpiReduce:
+		case jpiFold:
+		case jpiFoldl:
+		case jpiFoldr:
+			if (JsonbType(jb) != jbvArray)
+			{
+				if (cxt->lax)
+				{
+					if (jsp->type == jpiReduce)
+						res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
+					else
+						res = recursiveExecute(cxt, jsp, wrapItem(jb), found);
+				}
+				else
+					res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+			}
+			else
+			{
+				JsonbValue	jbv;
+				JsonbValue *result = NULL;
+				int			size = JsonbArraySize(jb);
+				int			i;
+				bool		foldr = jsp->type == jpiFoldr;
+
+				if (jsp->type == jpiReduce)
+					jspGetArg(jsp, &elem);
+				else
+				{
+					JsonValueList reslist = { 0 };
+
+					jspGetRightArg(jsp, &elem);
+					res = recursiveExecute(cxt, &elem, jb, &reslist);
+
+					if (jperIsError(res))
+						return res;
+
+					if (JsonValueListLength(&reslist) != 1)
+						return jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+
+					result = JsonValueListHead(&reslist);
+
+					jspGetLeftArg(jsp, &elem);
+				}
+
+				if (jsp->type == jpiReduce && size == 1)
+				{
+					if (jb->type == jbvBinary)
+					{
+						result = getIthJsonbValueFromContainer(jb->val.binary.data, 0);
+						if (!result)
+						{
+							res = jperNotFound;
+							break;
+						}
+					}
+					else
+					{
+						Assert(jb->type == jbvArray);
+						result = &jb->val.array.elems[0];
+					}
+				}
+				else if (size)
+				{
+					JsonPathVariable *v1 = palloc(sizeof(*v1));
+					JsonPathVariable *v2 = palloc(sizeof(*v2));
+					JsonbIterator *it = NULL;
+					JsonbIteratorToken tok;
+					JsonbValue *element;
+
+					if (jb->type == jbvBinary)
+					{
+						if (foldr)
+						{
+							/* unpack array for reverse iteration */
+							JsonbParseState *ps = NULL;
+
+							jb = pushJsonbValue(&ps, WJB_ELEM, jb);
+						}
+						else
+						{
+							element = &jbv;
+							it = JsonbIteratorInit(jb->val.binary.data);
+							tok = JsonbIteratorNext(&it, &jbv, false);
+							if (tok != WJB_BEGIN_ARRAY)
+								elog(ERROR, "unexpected jsonb token at the array start");
+						}
+					}
+
+					v1->cb = returnDATUM;
+					v2->cb = returnDATUM;
+					v1->varName = cstring_to_text_with_len("1", 1);
+					v2->varName = cstring_to_text_with_len("2", 1);
+					v1->typid = (Oid) -1; /* raw JsonbValue */
+					v2->typid = (Oid) -1;
+					v1->typmod = -1;
+					v2->typmod = -1;
+
+					cxt->vars = lcons(v1, lcons(v2, cxt->vars));
+
+					if (foldr)
+					{
+						/* swap $1 and $2 for foldr() */
+						JsonPathVariable *tmp = v1;
+
+						v1 = v2;
+						v2 = tmp;
+					}
+
+					for (i = 0; i < size; i++)
+					{
+						JsonValueList reslist = { 0 };
+
+						if (it)
+						{
+							tok = JsonbIteratorNext(&it, element, true);
+							if (tok != WJB_ELEM)
+								break;
+						}
+						else if (foldr)
+							element = &jb->val.array.elems[size - i - 1];
+						else
+							element = &jb->val.array.elems[i];
+
+						if (!i && jsp->type == jpiReduce)
+						{
+							result = copyJsonbValue(element);
+							continue;
+						}
+
+						v1->cb_arg = result;
+						v2->cb_arg = element;
+
+						res = recursiveExecute(cxt, &elem, jb, &reslist);
+
+						if (jperIsError(res))
+							return res;
+
+						if (JsonValueListLength(&reslist) != 1)
+							return jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+
+						result = JsonValueListHead(&reslist);
+					}
+
+					cxt->vars = list_delete_first(list_delete_first(cxt->vars));
+				}
+				else if (jsp->type == jpiReduce)
+				{
+					res = jperNotFound;
+					break;
+				}
+
+				res = recursiveExecuteNext(cxt, jsp, NULL, result, found, false);
 			}
 			break;
 		default:
