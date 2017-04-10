@@ -89,6 +89,10 @@ typedef enum JsonPathItemType {
 		jpiArray,
 		jpiObject,
 		jpiObjectField,
+		jpiReduce,
+		jpiFold,
+		jpiFoldl,
+		jpiFoldr,
 } JsonPathItemType;
 
 /* XQuery regex mode flags for LIKE_REGEX predicate */
