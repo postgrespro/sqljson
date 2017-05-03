@@ -92,6 +92,8 @@ typedef enum JsonPathItemType {
 		jpiFold,
 		jpiFoldl,
 		jpiFoldr,
+		jpiMin,
+		jpiMax,
 } JsonPathItemType;
 
 

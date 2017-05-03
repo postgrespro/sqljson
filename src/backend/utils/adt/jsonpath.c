@@ -203,6 +203,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiCeiling:
 		case jpiDouble:
 		case jpiKeyValue:
+		case jpiMin:
+		case jpiMax:
 			break;
 		case jpiSequence:
 			{
@@ -636,6 +638,12 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			printJsonPathItem(buf, &elem, false, false);
 			appendStringInfoChar(buf, ')');
 			break;
+		case jpiMin:
+			appendBinaryStringInfo(buf, ".min()", 6);
+			break;
+		case jpiMax:
+			appendBinaryStringInfo(buf, ".max()", 6);
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -729,6 +737,8 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiDouble:
 		case jpiKeyValue:
 		case jpiLast:
+		case jpiMin:
+		case jpiMax:
 			break;
 		case jpiKey:
 		case jpiString:
@@ -868,7 +878,9 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiReduce ||
 			v->type == jpiFold ||
 			v->type == jpiFoldl ||
-			v->type == jpiFoldr
+			v->type == jpiFoldr ||
+			v->type == jpiMin ||
+			v->type == jpiMax
 		);
 
 		if (a)

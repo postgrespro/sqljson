@@ -2250,6 +2250,78 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				res = recursiveExecuteNext(cxt, jsp, NULL, result, found, false);
 			}
 			break;
+		case jpiMin:
+		case jpiMax:
+			if (JsonbType(jb) != jbvArray)
+			{
+				if (cxt->lax)
+					res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
+				else
+					res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+			}
+			else
+			{
+				JsonbValue	jbvElementBuf;
+				JsonbValue *jbvElement;
+				JsonbValue *jbvResult = NULL;
+				Jsonb	   *jbResult = NULL;
+				JsonbIterator *it = NULL;
+				JsonbIteratorToken tok;
+				int			size = JsonbArraySize(jb);
+				int			i;
+				bool		isMax = jsp->type == jpiMax;
+
+				if (jb->type == jbvBinary)
+				{
+					jbvElement = &jbvElementBuf;
+					it = JsonbIteratorInit(jb->val.binary.data);
+					tok = JsonbIteratorNext(&it, &jbvElementBuf, false);
+					if (tok != WJB_BEGIN_ARRAY)
+						elog(ERROR, "unexpected jsonb token at the array start");
+				}
+
+				for (i = 0; i < size; i++)
+				{
+					if (it)
+					{
+						tok = JsonbIteratorNext(&it, jbvElement, true);
+						if (tok != WJB_ELEM)
+							break;
+					}
+					else
+						jbvElement = &jb->val.array.elems[i];
+
+					if (!i)
+					{
+						jbvResult = it ? copyJsonbValue(jbvElement) : jbvElement;
+
+						if (size > 1)
+							jbResult = JsonbValueToJsonb(jbvResult);
+					}
+					else
+					{
+						Jsonb	   *jbElement = JsonbValueToJsonb(jbvElement);
+						int			cmp = compareJsonbContainers(&jbElement->root,
+																 &jbResult->root);
+
+						if (isMax ? cmp > 0 : cmp < 0)
+						{
+							jbvResult = it ? copyJsonbValue(jbvElement) : jbvElement;
+							jbResult = jbElement;
+						}
+					}
+				}
+
+				if (!jbvResult)
+				{
+					res = jperNotFound;
+					break;
+				}
+
+				res = recursiveExecuteNext(cxt, jsp, NULL, jbvResult, found,
+										   false);
+			}
+			break;
 		default:
 			elog(ERROR,"2Wrong state: %d", jsp->type);
 	}
