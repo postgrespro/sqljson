@@ -1745,6 +1745,75 @@ select _jsonpath_query(jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.fold($1 + $2.
  1428
 (1 row)
 
+-- extension: min/max item methods
+select _jsonpath_query(jsonb '1', 'strict $.min()');
+ERROR:  SQL/JSON array not found
+select _jsonpath_query(jsonb '1', 'lax $.min()');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select _jsonpath_query(jsonb '[]', '$.min()');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(jsonb '[]', '$.max()');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(jsonb '[null]', '$.min()');
+ _jsonpath_query 
+-----------------
+ null
+(1 row)
+
+select _jsonpath_query(jsonb '[null]', '$.max()');
+ _jsonpath_query 
+-----------------
+ null
+(1 row)
+
+select _jsonpath_query(jsonb '[1, 2, 3]', '$.min()');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select _jsonpath_query(jsonb '[1, 2, 3]', '$.max()');
+ _jsonpath_query 
+-----------------
+ 3
+(1 row)
+
+select _jsonpath_query(jsonb '[2, 3, 5, null, 1, 4, null]', '$.min()');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select _jsonpath_query(jsonb '[2, 3, 5, null, 1, 4, null]', '$.max()');
+ _jsonpath_query 
+-----------------
+ 5
+(1 row)
+
+select _jsonpath_query(jsonb '["aa", null, "a", "bbb"]', '$.min()');
+ _jsonpath_query 
+-----------------
+ "a"
+(1 row)
+
+select _jsonpath_query(jsonb '["aa", null, "a", "bbb"]', '$.max()');
+ _jsonpath_query 
+-----------------
+ "bbb"
+(1 row)
+
+select _jsonpath_query(jsonb '[1, null, "2"]', '$.max()');
+ERROR:  SQL/JSON scalar required
 -- extension: path sequences
 select _jsonpath_query(jsonb '[1,2,3,4,5]', '10, 20, $[*], 30');
  _jsonpath_query 

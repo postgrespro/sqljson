@@ -403,6 +403,21 @@ select _jsonpath_query(jsonb '[1, 2, 3]', '$.foldl([$1, $2], [])');
 select _jsonpath_query(jsonb '[1, 2, 3]', '$.foldr([$2, $1], [])');
 select _jsonpath_query(jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.fold($1 + $2.fold($1 + $2, 100), 1000)');
 
+-- extension: min/max item methods
+select _jsonpath_query(jsonb '1', 'strict $.min()');
+select _jsonpath_query(jsonb '1', 'lax $.min()');
+select _jsonpath_query(jsonb '[]', '$.min()');
+select _jsonpath_query(jsonb '[]', '$.max()');
+select _jsonpath_query(jsonb '[null]', '$.min()');
+select _jsonpath_query(jsonb '[null]', '$.max()');
+select _jsonpath_query(jsonb '[1, 2, 3]', '$.min()');
+select _jsonpath_query(jsonb '[1, 2, 3]', '$.max()');
+select _jsonpath_query(jsonb '[2, 3, 5, null, 1, 4, null]', '$.min()');
+select _jsonpath_query(jsonb '[2, 3, 5, null, 1, 4, null]', '$.max()');
+select _jsonpath_query(jsonb '["aa", null, "a", "bbb"]', '$.min()');
+select _jsonpath_query(jsonb '["aa", null, "a", "bbb"]', '$.max()');
+select _jsonpath_query(jsonb '[1, null, "2"]', '$.max()');
+
 -- extension: path sequences
 select _jsonpath_query(jsonb '[1,2,3,4,5]', '10, 20, $[*], 30');
 select _jsonpath_query(jsonb '[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');

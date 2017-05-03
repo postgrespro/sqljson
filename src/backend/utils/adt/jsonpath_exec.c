@@ -2423,6 +2423,73 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				res = recursiveExecuteNext(cxt, jsp, NULL, result, found, false);
 			}
 			break;
+		case jpiMin:
+		case jpiMax:
+			if (JsonbType(jb) != jbvArray)
+			{
+				if (cxt->lax)
+					res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
+				else
+					res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+			}
+			else
+			{
+				JsonbValue	jbvElementBuf;
+				JsonbValue *jbvElement;
+				JsonbValue *jbvResult = NULL;
+				JsonbIterator *it = NULL;
+				JsonbIteratorToken tok;
+				int			size = JsonbArraySize(jb);
+				int			i;
+				JsonPathItemType cmpop =
+					jsp->type == jpiMax ? jpiGreater : jpiLess;
+
+				if (jb->type == jbvBinary)
+				{
+					jbvElement = &jbvElementBuf;
+					it = JsonbIteratorInit(jb->val.binary.data);
+					tok = JsonbIteratorNext(&it, &jbvElementBuf, false);
+					if (tok != WJB_BEGIN_ARRAY)
+						elog(ERROR, "unexpected jsonb token at the array start");
+				}
+
+				for (i = 0; i < size; i++)
+				{
+					if (it)
+					{
+						tok = JsonbIteratorNext(&it, jbvElement, true);
+						if (tok != WJB_ELEM)
+							break;
+					}
+					else
+						jbvElement = &jb->val.array.elems[i];
+
+					if (!i)
+					{
+						jbvResult = it ? copyJsonbValue(jbvElement) : jbvElement;
+					}
+					else
+					{
+						res = makeCompare(cmpop, jbvElement, jbvResult);
+
+						if (jperIsError(res))
+							return jperMakeError(ERRCODE_JSON_SCALAR_REQUIRED);
+
+						if (res == jperOk)
+							jbvResult = it ? copyJsonbValue(jbvElement) : jbvElement;
+					}
+				}
+
+				if (!jbvResult)
+				{
+					res = jperNotFound;
+					break;
+				}
+
+				res = recursiveExecuteNext(cxt, jsp, NULL, jbvResult, found,
+										   false);
+			}
+			break;
 		default:
 			elog(ERROR,"2Wrong state: %d", jsp->type);
 	}
