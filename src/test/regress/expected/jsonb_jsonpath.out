@@ -1736,6 +1736,75 @@ select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.fold($1 + $2.fold($1 + $2, 
  1428
 (1 row)
 
+-- extension: min/max item methods
+select jsonb '1' @* 'strict $.min()';
+ERROR:  SQL/JSON array not found
+select jsonb '1' @* 'lax $.min()';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '[]' @* '$.min()';
+ ?column? 
+----------
+(0 rows)
+
+select jsonb '[]' @* '$.max()';
+ ?column? 
+----------
+(0 rows)
+
+select jsonb '[null]' @* '$.min()';
+ ?column? 
+----------
+ null
+(1 row)
+
+select jsonb '[null]' @* '$.max()';
+ ?column? 
+----------
+ null
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '$.min()';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '$.max()';
+ ?column? 
+----------
+ 3
+(1 row)
+
+select jsonb '[2, 3, 5, null, 1, 4, null]' @* '$.min()';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '[2, 3, 5, null, 1, 4, null]' @* '$.max()';
+ ?column? 
+----------
+ 5
+(1 row)
+
+select jsonb '["aa", null, "a", "bbb"]' @* '$.min()';
+ ?column? 
+----------
+ "a"
+(1 row)
+
+select jsonb '["aa", null, "a", "bbb"]' @* '$.max()';
+ ?column? 
+----------
+ "bbb"
+(1 row)
+
+select jsonb '[1, null, "2"]' @* '$.max()';
+ERROR:  SQL/JSON scalar required
 -- extension: path sequences
 select jsonb '[1,2,3,4,5]' @* '10, 20, $[*], 30';
  ?column? 

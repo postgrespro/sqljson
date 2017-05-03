@@ -274,6 +274,8 @@ static keyword keywords[] = {
 	{ 3, false,	ABS_P,		"abs"},
 	{ 3, false,	LAX_P,		"lax"},
 	{ 3, false,	MAP_P,		"map"},
+	{ 3, false,	MAX_P,		"max"},
+	{ 3, false,	MIN_P,		"min"},
 	{ 4, false,	FLAG_P,		"flag"},
 	{ 4, false,	FOLD_P,		"fold"},
 	{ 4, false,	LAST_P,		"last"},

@@ -287,6 +287,7 @@ makeItemObject(List *fields)
 %token	<str>		ANY_P STRICT_P LAX_P LAST_P STARTS_P WITH_P LIKE_REGEX_P FLAG_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
 %token	<str>		KEYVALUE_P MAP_P REDUCE_P FOLD_P FOLDL_P FOLDR_P
+%token	<str>		MIN_P MAX_P
 
 %type	<result>	result
 
@@ -529,6 +530,8 @@ key_name:
 	| FOLD_P
 	| FOLDL_P
 	| FOLDR_P
+	| MIN_P
+	| MAX_P
 	;
 
 method:
@@ -539,6 +542,8 @@ method:
 	| DOUBLE_P						{ $$ = jpiDouble; }
 	| CEILING_P						{ $$ = jpiCeiling; }
 	| KEYVALUE_P					{ $$ = jpiKeyValue; }
+	| MIN_P							{ $$ = jpiMin; }
+	| MAX_P							{ $$ = jpiMax; }
 	;
 %%
 

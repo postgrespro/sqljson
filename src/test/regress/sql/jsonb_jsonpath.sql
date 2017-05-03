@@ -390,6 +390,21 @@ select jsonb '[1, 2, 3]' @* '$.foldl([$1, $2], [])';
 select jsonb '[1, 2, 3]' @* '$.foldr([$2, $1], [])';
 select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.fold($1 + $2.fold($1 + $2, 100), 1000)';
 
+-- extension: min/max item methods
+select jsonb '1' @* 'strict $.min()';
+select jsonb '1' @* 'lax $.min()';
+select jsonb '[]' @* '$.min()';
+select jsonb '[]' @* '$.max()';
+select jsonb '[null]' @* '$.min()';
+select jsonb '[null]' @* '$.max()';
+select jsonb '[1, 2, 3]' @* '$.min()';
+select jsonb '[1, 2, 3]' @* '$.max()';
+select jsonb '[2, 3, 5, null, 1, 4, null]' @* '$.min()';
+select jsonb '[2, 3, 5, null, 1, 4, null]' @* '$.max()';
+select jsonb '["aa", null, "a", "bbb"]' @* '$.min()';
+select jsonb '["aa", null, "a", "bbb"]' @* '$.max()';
+select jsonb '[1, null, "2"]' @* '$.max()';
+
 -- extension: path sequences
 select jsonb '[1,2,3,4,5]' @* '10, 20, $[*], 30';
 select jsonb '[1,2,3,4,5]' @* 'lax    10, 20, $[*].a, 30';
