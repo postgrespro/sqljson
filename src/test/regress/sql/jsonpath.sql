@@ -71,6 +71,8 @@ select '$.datetime()'::jsonpath;
 select '$.datetime("datetime template")'::jsonpath;
 select '$.reduce($1 + $2 + @[1])'::jsonpath;
 select '$.fold($1 + $2 + @[1], 2 + 3)'::jsonpath;
+select '$.min().abs() + 5'::jsonpath;
+select '$.max().floor()'::jsonpath;
 
 select '$ ? (@ starts with "abc")'::jsonpath;
 select '$ ? (@ starts with $var)'::jsonpath;

@@ -401,6 +401,18 @@ select '$.fold($1 + $2 + @[1], 2 + 3)'::jsonpath;
  $.fold(($"1" + $"2") + @[1], 2 + 3)
 (1 row)
 
+select '$.min().abs() + 5'::jsonpath;
+      jsonpath       
+---------------------
+ ($.min().abs() + 5)
+(1 row)
+
+select '$.max().floor()'::jsonpath;
+    jsonpath     
+-----------------
+ $.max().floor()
+(1 row)
+
 select '$ ? (@ starts with "abc")'::jsonpath;
         jsonpath         
 -------------------------
