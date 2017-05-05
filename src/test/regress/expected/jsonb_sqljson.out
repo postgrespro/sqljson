@@ -202,12 +202,20 @@ SELECT JSON_VALUE(jsonb '1.23', '$');
  1.23
 (1 row)
 
+SELECT JSON_VALUE(jsonb '1.23', '$' RETURNING int);
+ ?column? 
+----------
+        1
+(1 row)
+
 SELECT JSON_VALUE(jsonb '"1.23"', '$' RETURNING numeric);
  ?column? 
 ----------
      1.23
 (1 row)
 
+SELECT JSON_VALUE(jsonb '"1.23"', '$' RETURNING int ERROR ON ERROR);
+ERROR:  invalid input syntax for integer: "1.23"
 SELECT JSON_VALUE(jsonb '"aaa"', '$');
  ?column? 
 ----------
@@ -235,33 +243,37 @@ SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING char(2));
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING json);
  ?column? 
 ----------
- 
+ "aaa"
 (1 row)
 
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING jsonb);
  ?column? 
 ----------
- 
+ "aaa"
 (1 row)
 
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING json ERROR ON ERROR);
-ERROR:  invalid input syntax for type json
-DETAIL:  Token "aaa" is invalid.
-CONTEXT:  JSON data, line 1: aaa
-SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING jsonb ERROR ON ERROR);
-ERROR:  invalid input syntax for type json
-DETAIL:  Token "aaa" is invalid.
-CONTEXT:  JSON data, line 1: aaa
-SELECT JSON_VALUE(jsonb '"\"aaa\""', '$' RETURNING json);
  ?column? 
 ----------
  "aaa"
 (1 row)
 
-SELECT JSON_VALUE(jsonb '"\"aaa\""', '$' RETURNING jsonb);
+SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING jsonb ERROR ON ERROR);
  ?column? 
 ----------
  "aaa"
+(1 row)
+
+SELECT JSON_VALUE(jsonb '"\"aaa\""', '$' RETURNING json);
+ ?column?  
+-----------
+ "\"aaa\""
+(1 row)
+
+SELECT JSON_VALUE(jsonb '"\"aaa\""', '$' RETURNING jsonb);
+ ?column?  
+-----------
+ "\"aaa\""
 (1 row)
 
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING int);
