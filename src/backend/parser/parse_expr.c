@@ -4467,6 +4467,35 @@ assignDefaultJsonReturningType(Node *context_item, JsonFormat *context_format,
 }
 
 /*
+ * Try to coerce expression to the output type or
+ * use json_populate_type() for composite, array and domain types or
+ * use coercion via I/O.
+ */
+Node *
+coerceJsonExpr(ParseState *pstate, Node *expr, JsonReturning *returning,
+			   bool *coerce_via_io, bool *coerce_via_populate)
+{
+	Node	   *res = coerceJsonFuncExpr(pstate, expr, returning, false);
+	char		typtype;
+
+	if (res)
+		return res == expr ? NULL : res;
+
+	typtype = get_typtype(returning->typid);
+
+	if (coerce_via_populate &&
+		(returning->typid == RECORDOID ||
+		 typtype == TYPTYPE_COMPOSITE ||
+		 typtype == TYPTYPE_DOMAIN ||
+		 type_is_array(returning->typid)))
+		*coerce_via_populate = true;
+	else
+		*coerce_via_io = true;
+
+	return NULL;
+}
+
+/*
  * Transform a JSON output clause of JSON_VALUE, JSON_QUERY, JSON_EXISTS.
  */
 static void
@@ -4479,13 +4508,22 @@ transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 	transformJsonOutput(pstate, func->output, false,
 								   &jsexpr->returning);
 
+	/* JSON_VALUE returns text by default */
+	if (func->op == IS_JSON_VALUE && !OidIsValid(jsexpr->returning.typid))
+	{
+		jsexpr->returning.typid = TEXTOID;
+		jsexpr->returning.typmod = -1;
+	}
+
 	if (OidIsValid(jsexpr->returning.typid))
 	{
 		JsonReturning ret;
 
-		if (func->op == IS_JSON_VALUE)
+		if (func->op == IS_JSON_VALUE &&
+			jsexpr->returning.typid != JSONOID &&
+			jsexpr->returning.typid != JSONBOID)
 		{
-			/* Forced coercion via I/O for JSON_VALUE */
+			/* Forced coercion via I/O for JSON_VALUE for non-JSON types */
 			jsexpr->result_expr = NULL;
 			jsexpr->coerce_via_io = true;
 			return;
@@ -4501,15 +4539,10 @@ transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 			Assert(((CaseTestExpr *) placeholder)->typeId == ret.typid);
 			Assert(((CaseTestExpr *) placeholder)->typeMod == ret.typmod);
 
-			jsexpr->result_expr = coerceJsonFuncExpr(pstate,
-													 placeholder,
-													 &jsexpr->returning,
-													 false);
-
-			if (!jsexpr->result_expr)
-				jsexpr->coerce_via_io = true;
-			else if (jsexpr->result_expr == placeholder)
-				jsexpr->result_expr = NULL;
+			jsexpr->result_expr = coerceJsonExpr(pstate, placeholder,
+												 &jsexpr->returning,
+												 &jsexpr->coerce_via_io,
+												 NULL);
 		}
 	}
 	else
