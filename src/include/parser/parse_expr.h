@@ -23,4 +23,8 @@ extern Node *transformExpr(ParseState *pstate, Node *expr, ParseExprKind exprKin
 
 extern const char *ParseExprKindName(ParseExprKind exprKind);
 
+extern Node *coerceJsonExpr(ParseState *pstate, Node *expr,
+							JsonReturning *returning,
+							bool *coerce_via_io, bool *coerce_via_populate);
+
 #endif							/* PARSE_EXPR_H */

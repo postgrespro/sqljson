@@ -4300,6 +4300,43 @@ assignDefaultJsonReturningType(Node *context_item, JsonFormat *context_format,
 	ret->typmod = -1;
 }
 
+Node *
+coerceJsonExpr(ParseState *pstate, Node *expr, JsonReturning *returning,
+			   bool *coerce_via_io, bool *coerce_via_populate)
+{
+	Node	   *res = coerceJsonFuncExpr(pstate, expr, returning, false);
+	char		typtype;
+
+	if (res)
+	{
+		if (res == expr)
+			return NULL;
+
+#if 0 /* FIXME */
+		if (IsA(res, CoerceViaIO))
+		{
+			*coerce_via_io = true;
+			return NULL;
+		}
+#endif
+		return res;
+	}
+
+	typtype = get_typtype(returning->typid);
+
+	if (!coerce_via_populate)
+		*coerce_via_io = true;
+	else if (returning->typid == RECORDOID ||
+		typtype == TYPTYPE_COMPOSITE ||
+		typtype == TYPTYPE_DOMAIN ||
+		type_is_array(returning->typid))
+		*coerce_via_populate = true;
+	else
+		*coerce_via_io = true;
+
+	return NULL;
+}
+
 static void
 transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 							JsonExpr *jsexpr)
@@ -4333,15 +4370,10 @@ transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 			Assert(((CaseTestExpr *) placeholder)->typeId == ret.typid);
 			Assert(((CaseTestExpr *) placeholder)->typeMod == ret.typmod);
 
-			jsexpr->result_expr = coerceJsonFuncExpr(pstate,
-													 placeholder,
-													 &jsexpr->returning,
-													 false);
-
-			if (!jsexpr->result_expr)
-				jsexpr->coerce_via_io = true;
-			else if (jsexpr->result_expr == placeholder)
-				jsexpr->result_expr = NULL;
+			jsexpr->result_expr = coerceJsonExpr(pstate, placeholder,
+												 &jsexpr->returning,
+												 &jsexpr->coerce_via_io,
+												 NULL);
 		}
 	}
 	else

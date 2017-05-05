@@ -319,12 +319,20 @@ SELECT JSON_VALUE(jsonb '1.23', '$');
  1.23
 (1 row)
 
+SELECT JSON_VALUE(jsonb '1.23', '$' RETURNING int);
+ ?column? 
+----------
+        1
+(1 row)
+
 SELECT JSON_VALUE(jsonb '"1.23"', '$' RETURNING numeric);
  ?column? 
 ----------
      1.23
 (1 row)
 
+SELECT JSON_VALUE(jsonb '"1.23"', '$' RETURNING int ERROR ON ERROR);
+ERROR:  invalid input syntax for integer: "1.23"
 SELECT JSON_VALUE(jsonb '"aaa"', '$');
  ?column? 
 ----------

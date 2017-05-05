@@ -294,9 +294,10 @@ JsonPathExecResult	executeJsonPath(JsonPath *path,
 									JsonValueList *foundJson);
 
 extern bool  JsonbPathExists(Datum jb, JsonPath *path, List *vars);
-extern Datum JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars);
 extern Datum JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 			   bool *empty, List *vars);
+extern JsonbValue *JsonbPathValue(Datum jb, JsonPath *jp, bool *empty,
+			   List *vars);
 
 extern Datum EvalJsonPathVar(void *cxt, bool *isnull);
 

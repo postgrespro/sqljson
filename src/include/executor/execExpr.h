@@ -18,6 +18,7 @@
 
 /* forward reference to avoid circularity */
 struct ArrayRefState;
+struct JsonbValue;
 
 /* Bits in ExprState->flags (see also execnodes.h for public flag bits): */
 /* expression's interpreter has been initialized */
@@ -584,6 +585,27 @@ typedef struct ExprEvalStep
 			ExprState  *default_on_empty;
 			ExprState  *default_on_error;
 			List	   *args;
+
+			struct JsonScalarCoercions
+			{
+				struct JsonScalarCoercionExprState
+				{
+					Node	   *result_expr;
+					ExprState  *result_expr_state;
+					bool		coerce_via_io;
+					bool		coerce_via_populate;
+					bool		initialized;
+				} 			string,
+							numeric,
+							boolean,
+							date,
+							time,
+							timetz,
+							timestamp,
+							timestamptz,
+							composite,
+							null;
+			}			scalar;
 		}			jsonexpr;
 
 	}			d;
@@ -674,5 +696,10 @@ extern void ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op,
 					ExprContext *econtext);
 extern void ExecEvalJson(ExprState *state, ExprEvalStep *op,
 						 ExprContext *econtext);
+extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *jbv,
+							JsonReturning *returning,
+							struct JsonScalarCoercions *coercions,
+							MemoryContext mcxt,
+							struct JsonScalarCoercionExprState **pcestate);
 
 #endif							/* EXEC_EXPR_H */
