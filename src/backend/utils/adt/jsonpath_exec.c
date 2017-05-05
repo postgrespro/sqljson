@@ -3198,7 +3198,7 @@ JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 	return PointerGetDatum(NULL);
 }
 
-Datum
+JsonbValue *
 JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 {
 	JsonbValue *res;
@@ -3214,7 +3214,7 @@ JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 	*empty = !count;
 
 	if (*empty)
-		return PointerGetDatum(NULL);
+		return NULL;
 
 	if (count > 1)
 		ereport(ERROR,
@@ -3233,7 +3233,7 @@ JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 				 errmsg("SQL/JSON scalar required")));
 
 	if (res->type == jbvNull)
-		return PointerGetDatum(NULL);
+		return NULL;
 
-	return JsonbPGetDatum(JsonbValueToJsonb(res));
+	return res;
 }

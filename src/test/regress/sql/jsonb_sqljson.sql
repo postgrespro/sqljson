@@ -49,7 +49,9 @@ SELECT JSON_VALUE(jsonb '123', '$' RETURNING text);
 SELECT JSON_VALUE(jsonb '123', '$' RETURNING bytea);
 
 SELECT JSON_VALUE(jsonb '1.23', '$');
+SELECT JSON_VALUE(jsonb '1.23', '$' RETURNING int);
 SELECT JSON_VALUE(jsonb '"1.23"', '$' RETURNING numeric);
+SELECT JSON_VALUE(jsonb '"1.23"', '$' RETURNING int ERROR ON ERROR);
 
 SELECT JSON_VALUE(jsonb '"aaa"', '$');
 SELECT JSON_VALUE(jsonb '"aaa"', '$' RETURNING text);
@@ -81,9 +83,10 @@ SELECT JSON_VALUE(jsonb '{}', '$' ERROR ON ERROR);
 
 SELECT JSON_VALUE(jsonb '1', '$.a');
 SELECT JSON_VALUE(jsonb '1', 'strict $.a' ERROR ON ERROR);
+SELECT JSON_VALUE(jsonb '1', 'strict $.a' DEFAULT 'error' ON ERROR);
 SELECT JSON_VALUE(jsonb '1', 'lax $.a' ERROR ON ERROR);
 SELECT JSON_VALUE(jsonb '1', 'lax $.a' ERROR ON EMPTY ERROR ON ERROR);
-SELECT JSON_VALUE(jsonb '1', '$.a' DEFAULT 2 ON ERROR);
+SELECT JSON_VALUE(jsonb '1', 'strict $.a' DEFAULT 2 ON ERROR);
 SELECT JSON_VALUE(jsonb '1', 'lax $.a' DEFAULT 2 ON ERROR);
 SELECT JSON_VALUE(jsonb '1', 'lax $.a' DEFAULT '2' ON ERROR);
 SELECT JSON_VALUE(jsonb '1', 'lax $.a' NULL ON EMPTY DEFAULT '2' ON ERROR);
