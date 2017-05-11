@@ -369,3 +369,11 @@ select _jsonpath_query(jsonb
 );
 
 set time zone default;
+
+-- jsonpath operators
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*]';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';
