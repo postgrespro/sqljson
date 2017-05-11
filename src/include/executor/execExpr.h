@@ -680,6 +680,8 @@ typedef struct ExprEvalStep
 			ExprState  *default_on_error;	/* ON ERROR DEFAULT expression */
 			List	   *args;				/* passing arguments */
 
+			void	   *cache;				/* cache for json_populate_type() */
+
 			struct JsonCoercionsState
 			{
 				struct JsonCoercionState
