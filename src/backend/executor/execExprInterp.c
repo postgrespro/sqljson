@@ -4563,6 +4563,13 @@ ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
 	else if (op->d.jsonexpr.result_expr)
 		res = ExecEvalExprPassingCaseValue(op->d.jsonexpr.result_expr, econtext,
 										   isNull, res, *isNull);
+	else if (coercion && coercion->via_populate)
+		res = json_populate_type(res, JSONBOID,
+								 jexpr->returning->typid,
+								 jexpr->returning->typmod,
+								 &op->d.jsonexpr.cache,
+								 econtext->ecxt_per_query_memory,
+								 isNull);
 	/* else no coercion, simply return item */
 
 	return res;
