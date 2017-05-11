@@ -361,3 +361,11 @@ select _jsonpath_query(jsonb
 	'["10.03.2017 12:34 +1", "10.03.2017 12:35 +1", "10.03.2017 12:36 +1", "10.03.2017 12:35 +2", "10.03.2017 12:35 -2"]',
 	'$[*].datetime("dd.mm.yyyy HH24:MI TZH") ? (@ < "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))'
 );
+
+-- jsonpath operators
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*]';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';

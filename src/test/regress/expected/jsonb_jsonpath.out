@@ -1554,3 +1554,28 @@ select _jsonpath_query(jsonb
  "Fri Mar 10 02:35:00 2017 PST"
 (2 rows)
 
+-- jsonpath operators
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*]';
+ ?column? 
+----------
+ {"a": 1}
+ {"a": 2}
+(2 rows)
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+ ?column? 
+----------
+(0 rows)
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';
+ ?column? 
+----------
+ f
+(1 row)
+
