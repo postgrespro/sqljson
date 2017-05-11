@@ -206,6 +206,10 @@ extern text *transform_json_string_values(text *json, void *action_state,
 
 extern char *JsonEncodeDateTime(char *buf, Datum value, Oid typid, int *tz);
 
+extern Datum json_populate_type(Datum json_val, Oid json_type,
+								Oid typid, int32 typmod,
+								void **cache, MemoryContext mcxt, bool *isnull);
+
 extern Json *JsonCreate(text *json);
 extern JsonbIteratorToken JsonIteratorNext(JsonIterator **pit, JsonbValue *val,
 				 bool skipNested);

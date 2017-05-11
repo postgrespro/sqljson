@@ -751,6 +751,53 @@ FROM
  4 | 4 | [4]
 (25 rows)
 
+-- Extension: record types returning
+CREATE TYPE sqljsonb_rec AS (a int, t text, js json, jb jsonb, jsa json[]);
+CREATE TYPE sqljsonb_reca AS (reca sqljsonb_rec[]);
+SELECT JSON_QUERY(jsonb '[{"a": 1, "b": "foo", "t": "aaa", "js": [1, "2", {}], "jb": {"x": [1, "2", {}]}},  {"a": 2}]', '$[0]' RETURNING sqljsonb_rec);
+                     json_query                      
+-----------------------------------------------------
+ (1,aaa,"[1, ""2"", {}]","{""x"": [1, ""2"", {}]}",)
+(1 row)
+
+SELECT * FROM unnest((JSON_QUERY(jsonb '{"jsa":  [{"a": 1, "b": ["foo"]}, {"a": 2, "c": {}}, 123]}', '$' RETURNING sqljsonb_rec)).jsa);
+         unnest         
+------------------------
+ {"a": 1, "b": ["foo"]}
+ {"a": 2, "c": {}}
+ 123
+(3 rows)
+
+SELECT * FROM unnest((JSON_QUERY(jsonb '{"reca": [{"a": 1, "t": ["foo", []]}, {"a": 2, "jb": [{}, true]}]}', '$' RETURNING sqljsonb_reca)).reca);
+ a |      t      | js |     jb     | jsa 
+---+-------------+----+------------+-----
+ 1 | ["foo", []] |    |            | 
+ 2 |             |    | [{}, true] | 
+(2 rows)
+
+-- Extension: array types returning
+SELECT JSON_QUERY(jsonb '[1,2,null,"3"]', '$[*]' RETURNING int[] WITH WRAPPER);
+  json_query  
+--------------
+ {1,2,NULL,3}
+(1 row)
+
+SELECT * FROM unnest(JSON_QUERY(jsonb '[{"a": 1, "t": ["foo", []]}, {"a": 2, "jb": [{}, true]}]', '$' RETURNING sqljsonb_rec[]));
+ a |      t      | js |     jb     | jsa 
+---+-------------+----+------------+-----
+ 1 | ["foo", []] |    |            | 
+ 2 |             |    | [{}, true] | 
+(2 rows)
+
+-- Extension: domain types returning
+SELECT JSON_QUERY(jsonb '{"a": 1}', '$.a' RETURNING sqljsonb_int_not_null);
+ json_query 
+------------
+          1
+(1 row)
+
+SELECT JSON_QUERY(jsonb '{"a": 1}', '$.b' RETURNING sqljsonb_int_not_null);
+ERROR:  domain sqljsonb_int_not_null does not allow null values
 -- Test constraints
 CREATE TABLE test_jsonb_constraints (
 	js text,
