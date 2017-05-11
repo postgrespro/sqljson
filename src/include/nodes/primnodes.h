@@ -1274,6 +1274,7 @@ typedef struct JsonExpr
 	Node	   *raw_expr;		/* raw context item expression */
 	Node	   *formatted_expr;	/* formatted context item expression */
 	Node	   *result_expr;	/* resulting expression (coerced to RETURNING type) */
+	bool		coerce_via_populate; /* coerce result using json_populate_type() */
 	bool		coerce_via_io;	/* coerce result using type input function */
 	Oid			coerce_via_io_collation; /* collation for conversion through I/O */
 	JsonFormat	format;			/* context item format (JSON/JSONB) */
