@@ -1853,5 +1853,11 @@ DATA(insert OID = 3286 (  "-"	   PGNSP PGUID b f f 3802 23 3802 0 0 3303 - - ));
 DESCR("delete array element");
 DATA(insert OID = 3287 (  "#-"	   PGNSP PGUID b f f 3802 1009 3802 0 0 jsonb_delete_path - - ));
 DESCR("delete path");
+DATA(insert OID = 6075 (  "@*"	   PGNSP PGUID b f f 3802 6050 3802 0 0 6055 - - ));
+DESCR("jsonpath items");
+DATA(insert OID = 6076 (  "@?"	   PGNSP PGUID b f f 3802 6050 16 0 0 6054 contsel contjoinsel ));
+DESCR("jsonpath exists");
+DATA(insert OID = 6107 (  "@~"	   PGNSP PGUID b f f 3802 6050 16 0 0 6073 contsel contjoinsel ));
+DESCR("jsonpath predicate");
 
 #endif							/* PG_OPERATOR_H */
