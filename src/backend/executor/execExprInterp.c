@@ -70,6 +70,7 @@
 #include "pgstat.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
+#include "utils/jsonapi.h"
 #include "utils/jsonb.h"
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
@@ -3739,6 +3740,13 @@ ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
 	else if (op->d.jsonexpr.result_expr)
 		res = ExecEvalExprPassingCaseValue(op->d.jsonexpr.result_expr, econtext,
 										   isNull, res, *isNull);
+	else if (jexpr->coerce_via_populate)
+		res = json_populate_type(res, JSONBOID,
+								 jexpr->returning.typid,
+								 jexpr->returning.typmod,
+								 &op->d.jsonexpr.cache,
+								 econtext->ecxt_per_query_memory,
+								 isNull);
 	/* else no coercion, simply return item */
 
 	return res;
