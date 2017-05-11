@@ -586,6 +586,8 @@ typedef struct ExprEvalStep
 			ExprState  *default_on_error;
 			List	   *args;
 
+			void	   *cache;
+
 			struct JsonScalarCoercions
 			{
 				struct JsonScalarCoercionExprState

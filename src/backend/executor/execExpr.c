@@ -2096,6 +2096,8 @@ ExecInitExprRec(Expr *node, PlanState *parent, ExprState *state,
 					}
 				}
 
+				scratch.d.jsonexpr.cache = NULL;
+
 				memset(&scratch.d.jsonexpr.scalar, 0,
 					   sizeof(scratch.d.jsonexpr.scalar));
 

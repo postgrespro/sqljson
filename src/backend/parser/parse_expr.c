@@ -4324,9 +4324,7 @@ coerceJsonExpr(ParseState *pstate, Node *expr, JsonReturning *returning,
 
 	typtype = get_typtype(returning->typid);
 
-	if (!coerce_via_populate)
-		*coerce_via_io = true;
-	else if (returning->typid == RECORDOID ||
+	if (returning->typid == RECORDOID ||
 		typtype == TYPTYPE_COMPOSITE ||
 		typtype == TYPTYPE_DOMAIN ||
 		type_is_array(returning->typid))
@@ -4373,7 +4371,7 @@ transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 			jsexpr->result_expr = coerceJsonExpr(pstate, placeholder,
 												 &jsexpr->returning,
 												 &jsexpr->coerce_via_io,
-												 NULL);
+												 &jsexpr->coerce_via_populate);
 		}
 	}
 	else
