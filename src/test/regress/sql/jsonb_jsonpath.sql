@@ -19,6 +19,14 @@ select jsonb '[1]' @? '$[0.5]';
 select jsonb '[1]' @? '$[0.9]';
 select jsonb '[1]' @? '$[1.2]';
 select jsonb '[1]' @? 'strict $[1.2]';
+select jsonb '[1]' @* 'strict $[1.2]';
+select jsonb '{}' @* 'strict $[0.3]';
+select jsonb '{}' @? 'lax $[0.3]';
+select jsonb '{}' @* 'strict $[1.2]';
+select jsonb '{}' @? 'lax $[1.2]';
+select jsonb '{}' @* 'strict $[-2 to 3]';
+select jsonb '{}' @? 'lax $[-2 to 3]';
+
 select jsonb '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
 select jsonb '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >= @.b[*])';
 select jsonb '{"a": [1,2,3], "b": [3,4,"5"]}' @? '$ ? (@.a[*] >= @.b[*])';
@@ -42,12 +50,14 @@ select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0 to 10].a';
 select jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$[2.5 - 1 to @.size() - 2]';
 select jsonb '1' @* 'lax $[0]';
 select jsonb '1' @* 'lax $[*]';
+select jsonb '{}' @* 'lax $[0]';
 select jsonb '[1]' @* 'lax $[0]';
 select jsonb '[1]' @* 'lax $[*]';
 select jsonb '[1,2,3]' @* 'lax $[*]';
 select jsonb '[]' @* '$[last]';
 select jsonb '[]' @* 'strict $[last]';
 select jsonb '[1]' @* '$[last]';
+select jsonb '{}' @* 'lax $[last]';
 select jsonb '[1,2,3]' @* '$[last]';
 select jsonb '[1,2,3]' @* '$[last - 1]';
 select jsonb '[1,2,3]' @* '$[last ? (@.type() == "number")]';
@@ -415,3 +425,17 @@ select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}.*';
 select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}[*]';
 select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": ($[*], 4, 5)}';
 select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}';
+
+-- extension: object subscripting
+select jsonb '{"a": 1}' @? '$["a"]';
+select jsonb '{"a": 1}' @? '$["b"]';
+select jsonb '{"a": 1}' @? 'strict $["b"]';
+select jsonb '{"a": 1}' @? '$["b", "a"]';
+
+select jsonb '{"a": 1}' @* '$["a"]';
+select jsonb '{"a": 1}' @* 'strict $["b"]';
+select jsonb '{"a": 1}' @* 'lax $["b"]';
+select jsonb '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
+
+select jsonb 'null' @* '{"a": 1}["a"]';
+select jsonb 'null' @* '{"a": 1}["b"]';

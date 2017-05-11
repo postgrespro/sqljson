@@ -123,7 +123,7 @@ select json '[1]' @? 'strict $[1.2]';
 select json '[1]' @* 'strict $[1.2]';
 ERROR:  Invalid SQL/JSON subscript
 select json '{}' @* 'strict $[0.3]';
-ERROR:  SQL/JSON array not found
+ERROR:  Invalid SQL/JSON subscript
 select json '{}' @? 'lax $[0.3]';
  ?column? 
 ----------
@@ -131,7 +131,7 @@ select json '{}' @? 'lax $[0.3]';
 (1 row)
 
 select json '{}' @* 'strict $[1.2]';
-ERROR:  SQL/JSON array not found
+ERROR:  Invalid SQL/JSON subscript
 select json '{}' @? 'lax $[1.2]';
  ?column? 
 ----------
@@ -139,7 +139,7 @@ select json '{}' @? 'lax $[1.2]';
 (1 row)
 
 select json '{}' @* 'strict $[-2 to 3]';
-ERROR:  SQL/JSON array not found
+ERROR:  Invalid SQL/JSON subscript
 select json '{}' @? 'lax $[-2 to 3]';
  ?column? 
 ----------

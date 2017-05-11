@@ -120,6 +120,32 @@ select jsonb '[1]' @? 'strict $[1.2]';
  
 (1 row)
 
+select jsonb '[1]' @* 'strict $[1.2]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @* 'strict $[0.3]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @? 'lax $[0.3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select jsonb '{}' @* 'strict $[1.2]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @? 'lax $[1.2]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select jsonb '{}' @* 'strict $[-2 to 3]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @? 'lax $[-2 to 3]';
+ ?column? 
+----------
+ t
+(1 row)
+
 select jsonb '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
  ?column? 
 ----------
@@ -254,6 +280,12 @@ select jsonb '1' @* 'lax $[*]';
  1
 (1 row)
 
+select jsonb '{}' @* 'lax $[0]';
+ ?column? 
+----------
+ {}
+(1 row)
+
 select jsonb '[1]' @* 'lax $[0]';
  ?column? 
 ----------
@@ -285,6 +317,12 @@ select jsonb '[1]' @* '$[last]';
  ?column? 
 ----------
  1
+(1 row)
+
+select jsonb '{}' @* 'lax $[last]';
+ ?column? 
+----------
+ {}
 (1 row)
 
 select jsonb '[1,2,3]' @* '$[last]';
@@ -1870,4 +1908,62 @@ select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}';
 ---------------------------------------------------------
  {"a": 5, "b": {"x": [1, 2, 3], "y": false, "z": "foo"}}
 (1 row)
+
+-- extension: object subscripting
+select jsonb '{"a": 1}' @? '$["a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select jsonb '{"a": 1}' @? '$["b"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select jsonb '{"a": 1}' @? 'strict $["b"]';
+ ?column? 
+----------
+ 
+(1 row)
+
+select jsonb '{"a": 1}' @? '$["b", "a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select jsonb '{"a": 1}' @* '$["a"]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '{"a": 1}' @* 'strict $["b"]';
+ERROR:  SQL/JSON member not found
+select jsonb '{"a": 1}' @* 'lax $["b"]';
+ ?column? 
+----------
+(0 rows)
+
+select jsonb '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
+     ?column?     
+------------------
+ 2
+ 2
+ 1
+ {"a": 1, "b": 2}
+(4 rows)
+
+select jsonb 'null' @* '{"a": 1}["a"]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb 'null' @* '{"a": 1}["b"]';
+ ?column? 
+----------
+(0 rows)
 

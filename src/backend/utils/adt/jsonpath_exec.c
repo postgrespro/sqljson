@@ -118,6 +118,8 @@ static inline JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 static inline JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt,
 							JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 
+static inline JsonbValue *wrapItem(JsonbValue *jbv);
+
 static inline JsonbValue *wrapItemsInArray(const JsonValueList *items);
 
 static JsonTableJoinState *JsonTableInitPlanState(JsonTableContext *cxt,
@@ -1765,9 +1767,127 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				cxt->innermostArraySize = innermostArraySize;
 			}
-			else if (!jspIgnoreStructuralErrors(cxt))
+			else if (JsonbType(jb) == jbvObject)
 			{
-				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+				int			innermostArraySize = cxt->innermostArraySize;
+				int			i;
+				JsonbValue	bin;
+				JsonbValue *wrapped = NULL;
+
+				if (jb->type != jbvBinary)
+					jb = JsonbWrapInBinary(jb, &bin);
+
+				cxt->innermostArraySize = 1;
+
+				for (i = 0; i < jsp->content.array.nelems; i++)
+				{
+					JsonPathItem from;
+					JsonPathItem to;
+					JsonbValue *key;
+					JsonbValue	tmp;
+					JsonValueList keys = { 0 };
+					bool		range = jspGetArraySubscript(jsp, &from, &to, i);
+
+					if (range)
+					{
+						int		index_from;
+						int		index_to;
+
+						if (!jspAutoWrap(cxt))
+							return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+						if (!wrapped)
+							wrapped = wrapItem(jb);
+
+						res = getArrayIndex(cxt, &from, wrapped, &index_from);
+						if (jperIsError(res))
+							return res;
+
+						res = getArrayIndex(cxt, &to, wrapped, &index_to);
+						if (jperIsError(res))
+							return res;
+
+						res = jperNotFound;
+
+						if (index_from <= 0 && index_to >= 0)
+						{
+							res = recursiveExecuteNext(cxt, jsp, NULL, jb,
+													   found, true);
+							if (jperIsError(res))
+								return res;
+
+						}
+
+						if (res == jperOk && !found)
+							break;
+
+						continue;
+					}
+
+					res = recursiveExecute(cxt, &from, jb, &keys);
+
+					if (jperIsError(res))
+						return res;
+
+					if (JsonValueListLength(&keys) != 1)
+						return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+					key = JsonValueListHead(&keys);
+
+					if (JsonbType(key) == jbvScalar)
+						key = JsonbExtractScalar(key->val.binary.data, &tmp);
+
+					res = jperNotFound;
+
+					if (key->type == jbvNumeric && jspAutoWrap(cxt))
+					{
+						int			index = DatumGetInt32(
+								DirectFunctionCall1(numeric_int4,
+									DirectFunctionCall2(numeric_trunc,
+											NumericGetDatum(key->val.numeric),
+											Int32GetDatum(0))));
+
+						if (!index)
+						{
+							res = recursiveExecuteNext(cxt, jsp, NULL, jb,
+													   found, true);
+							if (jperIsError(res))
+								return res;
+						}
+						else if (!jspIgnoreStructuralErrors(cxt))
+							return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+					}
+					else if (key->type == jbvString)
+					{
+						key = findJsonbValueFromContainer(jb->val.binary.data,
+														  JB_FOBJECT, key);
+
+						if (key)
+						{
+							res = recursiveExecuteNext(cxt, jsp, NULL, key,
+													   found, false);
+							if (jperIsError(res))
+								return res;
+						}
+						else if (!jspIgnoreStructuralErrors(cxt))
+							return jperMakeError(ERRCODE_JSON_MEMBER_NOT_FOUND);
+					}
+					else if (!jspIgnoreStructuralErrors(cxt))
+						return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+					if (res == jperOk && !found)
+						break;
+				}
+
+				cxt->innermostArraySize = innermostArraySize;
+			}
+			else
+			{
+				if (jspAutoWrap(cxt))
+					res = recursiveExecuteNoUnwrap(cxt, jsp, wrapItem(jb),
+												   found);
+				else if (!jspIgnoreStructuralErrors(cxt))
+					res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
 			}
 			break;
 
@@ -2523,7 +2643,6 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				return recursiveExecuteUnwrap(cxt, jsp, jb, found);
 
 			case jpiAnyArray:
-			case jpiIndexArray:
 				jb = wrapItem(jb);
 				break;
 
