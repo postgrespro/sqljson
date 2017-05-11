@@ -110,6 +110,30 @@ select _jsonpath_exists(jsonb '[1]', '$.[1.2]');
 
 select _jsonpath_exists(jsonb '[1]', 'strict $.[1.2]');
 ERROR:  Invalid SQL/JSON subscript
+select _jsonpath_exists(jsonb '{}', 'strict $.[0.3]');
+ERROR:  Invalid SQL/JSON subscript
+select _jsonpath_exists(jsonb '{}', 'lax $.[0.3]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{}', 'strict $.[1.2]');
+ERROR:  Invalid SQL/JSON subscript
+select _jsonpath_exists(jsonb '{}', 'lax $.[1.2]');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '{}', 'strict $.[-2 to 3]');
+ERROR:  Invalid SQL/JSON subscript
+select _jsonpath_exists(jsonb '{}', 'lax $.[-2 to 3]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
 select _jsonpath_exists(jsonb '{"a": [1,2,3], "b": [3,4,5]}', '$ ? (@.a[*] >  @.b[*])');
  _jsonpath_exists 
 ------------------
@@ -244,6 +268,12 @@ select * from _jsonpath_query(jsonb '1', 'lax $[*]');
  1
 (1 row)
 
+select * from _jsonpath_query(jsonb '{}', 'lax $[0]');
+ _jsonpath_query 
+-----------------
+ {}
+(1 row)
+
 select * from _jsonpath_query(jsonb '[1]', 'lax $[0]');
  _jsonpath_query 
 -----------------
@@ -275,6 +305,12 @@ select * from _jsonpath_query(jsonb '[1]', '$[last]');
  _jsonpath_query 
 -----------------
  1
+(1 row)
+
+select * from _jsonpath_query(jsonb '{}', 'lax $[last]');
+ _jsonpath_query 
+-----------------
+ {}
 (1 row)
 
 select * from _jsonpath_query(jsonb '[1,2,3]', '$[last]');
@@ -1940,4 +1976,47 @@ select _jsonpath_query(jsonb '[1, 2, 3]', '{a: 2 + 3, "b": [$.map({x: @, y: @ < 
 -----------------------------------------------------------------------------------------------
  {"a": 5, "b": [{"x": 1, "y": true}, {"x": 2, "y": true}, {"x": 3, "y": false}, {"z": "foo"}]}
 (1 row)
+
+-- extension: object subscripting
+select _jsonpath_exists(jsonb '{"a": 1}', '$["a"]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": 1}', '$["b"]');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(jsonb '{"a": 1}', 'strict $["b"]');
+ERROR:  SQL/JSON member not found
+select _jsonpath_exists(jsonb '{"a": 1}', '$["b", "a"]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select * from _jsonpath_query(jsonb '{"a": 1}', '$["a"]');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select * from _jsonpath_query(jsonb '{"a": 1}', 'strict $["b"]');
+ERROR:  SQL/JSON member not found
+select * from _jsonpath_query(jsonb '{"a": 1}', 'lax $["b"]');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select * from _jsonpath_query(jsonb '{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]');
+ _jsonpath_query  
+------------------
+ 2
+ 2
+ 1
+ {"a": 1, "b": 2}
+(4 rows)
 
