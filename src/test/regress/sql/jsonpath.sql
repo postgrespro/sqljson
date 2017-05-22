@@ -205,3 +205,52 @@ select '$ ? (@0 > 1)'::jsonpath;
 select '$ ? (@1 > 1)'::jsonpath;
 select '$.a ? (@.b ? (@1 > @) > 5)'::jsonpath;
 select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
+
+-- jsonpath combination operators
+
+select jsonpath '$.a' == jsonpath '$[*] + 1';
+-- should fail
+select jsonpath '$.a' == jsonpath '$.b == 1';
+--select jsonpath '$.a' != jsonpath '$[*] + 1';
+select jsonpath '$.a' >  jsonpath '$[*] + 1';
+select jsonpath '$.a' <  jsonpath '$[*] + 1';
+select jsonpath '$.a' >= jsonpath '$[*] + 1';
+select jsonpath '$.a' <= jsonpath '$[*] + 1';
+select jsonpath '$.a' +  jsonpath '$[*] + 1';
+select jsonpath '$.a' -  jsonpath '$[*] + 1';
+select jsonpath '$.a' *  jsonpath '$[*] + 1';
+select jsonpath '$.a' /  jsonpath '$[*] + 1';
+select jsonpath '$.a' %  jsonpath '$[*] + 1';
+
+select jsonpath '$.a' == jsonb '"aaa"';
+--select jsonpath '$.a' != jsonb '1';
+select jsonpath '$.a' >   jsonb '12.34';
+select jsonpath '$.a' <   jsonb '"aaa"';
+select jsonpath '$.a' >=  jsonb 'true';
+select jsonpath '$.a' <=  jsonb 'false';
+select jsonpath '$.a' +   jsonb 'null';
+select jsonpath '$.a' -   jsonb '12.3';
+select jsonpath '$.a' *   jsonb '5';
+select jsonpath '$.a' /   jsonb '0';
+select jsonpath '$.a' %   jsonb '"1.23"';
+select jsonpath '$.a' ==  jsonb '[]';
+select jsonpath '$.a' >=  jsonb '[1, "2", true, null, [], {"a": [1], "b": 3}]';
+select jsonpath '$.a' +   jsonb '{}';
+select jsonpath '$.a' /   jsonb '{"a": 1, "b": [1, {}], "c": {}, "d": {"e": true, "f": {"g": "abc"}}}';
+
+
+select jsonpath '$' -> 'a';
+select jsonpath '$' -> 1;
+select jsonpath '$' -> 'a' -> 1;
+select jsonpath '$.a' ? jsonpath '$.x ? (@.y ? (@ > 3 + @1.b + $) == $) > $.z';
+
+select jsonpath '$.a.b[($[*]?(@ > @0).c + 1.23).**{2 to 5}] ? ({a: @, b: [$.x, [], @ % 5]}.b[2] > 3)' ?
+       jsonpath '$.**[$.size() + 3] ? (@ + $ ? (@ > @1 ? ($1 + $2 * @ - $ != 5) / $) < 10) > true';
+
+select jsonpath '$.a + $a' @ jsonb '"aaa"';
+select jsonpath '$.a + $a' @ jsonb '{"b": "abc"}';
+select jsonpath '$.a + $a' @ jsonb '{"a": "abc"}';
+select jsonpath '$.a + $a.double()' @ jsonb '{"a": "abc"}';
+select jsonpath '$.a + $a.x.double()' @ jsonb '{"a": {"x": -12.34}}';
+select jsonpath '$[*] ? (@ > $min && @ <= $max)' @ jsonb '{"min": -1.23, "max": 5.0}';
+select jsonpath '$[*] ? (@ > $min && @ <= $max)' @ jsonb '{"min": -1.23}' @ jsonb '{"max": 5.0}';
