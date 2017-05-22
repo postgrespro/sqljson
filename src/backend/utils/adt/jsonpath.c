@@ -18,35 +18,380 @@
 #include "utils/json.h"
 #include "utils/jsonpath.h"
 
+typedef struct JsonPathContext
+{
+	StringInfo	buf;
+	Jsonb	   *vars;
+} JsonPathContext;
+
+
+static bool replaceVariableReference(JsonPathContext *cxt, JsonPathItem *var,
+						 int32 pos);
+
 /*****************************INPUT/OUTPUT************************************/
 
-/*
- * Convert AST to flat jsonpath type representation
- */
-static int
-flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
-						 int nestingLevel, bool insideArraySubscript)
+static inline int32
+appendJsonPathItemHeader(StringInfo buf, JsonPathItemType type)
 {
-	/* position from begining of jsonpath data */
-	int32	pos = buf->len - JSONPATH_HDRSZ;
-	int32	chld, next;
-	int			argNestingLevel = 0;
+	int32		nextPos = 0;	/* fake value */
+	int32		nextOffs;
 
-	check_stack_depth();
-
-	appendStringInfoChar(buf, (char)(item->type));
+	appendStringInfoChar(buf, (char) type);
 	alignStringInfoInt(buf);
 
-	next = (item->next) ? buf->len : 0;
+	nextOffs = buf->len;
 
 	/*
 	 * actual value will be recorded later, after next and
 	 * children processing
 	 */
-	appendBinaryStringInfo(buf, (char*)&next /* fake value */, sizeof(next));
+	appendBinaryStringInfo(buf, (char *) &nextPos, sizeof(nextPos));
+
+	return nextOffs;
+}
+
+static int32
+copyJsonPathItem(JsonPathContext *cxt, JsonPathItem *item, int level,
+				 int32 *pLastOffset, int32 *pNextOffset)
+{
+	StringInfo	buf = cxt->buf;
+	int32		pos = buf->len - JSONPATH_HDRSZ;
+	JsonPathItem next;
+	int32		offs = 0;
+	int32		argLevel = level;
+	int32		nextOffs;
+
+	check_stack_depth();
+
+	nextOffs = appendJsonPathItemHeader(buf, item->type);
+
+	switch (item->type)
+	{
+		case jpiNull:
+		case jpiCurrent:
+		case jpiAnyArray:
+		case jpiAnyKey:
+		case jpiType:
+		case jpiSize:
+		case jpiAbs:
+		case jpiFloor:
+		case jpiCeiling:
+		case jpiDouble:
+		case jpiKeyValue:
+		case jpiLast:
+		case jpiMin:
+		case jpiMax:
+			break;
+
+		case jpiRoot:
+			if (level > 0)
+			{
+				/* replace $ with @N */
+				int32		lev = level - 1;
+
+				buf->data[pos + JSONPATH_HDRSZ] =
+					lev > 0 ? jpiCurrentN : jpiCurrent;
+
+				if (lev > 0)
+					appendBinaryStringInfo(buf, (const char *) &lev, sizeof(lev));
+			}
+			break;
+
+		case jpiCurrentN:
+			appendBinaryStringInfo(buf, (char *) &item->content.current.level,
+								   sizeof(item->content.current.level));
+			break;
+
+		case jpiKey:
+		case jpiString:
+		case jpiVariable:
+			{
+				int32		len;
+				char	   *data = jspGetString(item, &len);
+
+				if (item->type == jpiVariable && cxt->vars &&
+					replaceVariableReference(cxt, item, pos))
+					break;
+
+				appendBinaryStringInfo(buf, (const char *) &len, sizeof(len));
+				appendBinaryStringInfo(buf, data, len);
+				appendStringInfoChar(buf, '\0');
+				break;
+			}
+
+		case jpiNumeric:
+			{
+				Numeric		num = jspGetNumeric(item);
+
+				appendBinaryStringInfo(buf, (char *) num, VARSIZE(num));
+				break;
+			}
+
+		case jpiBool:
+			appendStringInfoChar(buf, jspGetBool(item) ? 1 : 0);
+			break;
+
+		case jpiMap:
+			if (level)
+				argLevel++;
+			/* fall through */
+		case jpiFilter:
+		case jpiReduce:
+			if (level)
+				argLevel++;
+			/* fall through */
+		case jpiNot:
+		case jpiExists:
+		case jpiIsUnknown:
+		case jpiPlus:
+		case jpiMinus:
+		case jpiDatetime:
+		case jpiArray:
+			{
+				JsonPathItem arg;
+				int32		argoffs;
+				int32		argpos;
+
+				argoffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				if (!item->content.arg)
+					break;
+
+				jspGetArg(item, &arg);
+				argpos = copyJsonPathItem(cxt, &arg, argLevel, NULL, NULL);
+				*(int32 *) &buf->data[argoffs] = argpos - pos;
+				break;
+			}
+
+		case jpiFold:
+		case jpiFoldl:
+		case jpiFoldr:
+			if (level)
+				argLevel++;
+			/* fall through */
+		case jpiAnd:
+		case jpiOr:
+		case jpiAdd:
+		case jpiSub:
+		case jpiMul:
+		case jpiDiv:
+		case jpiMod:
+		case jpiEqual:
+		case jpiNotEqual:
+		case jpiLess:
+		case jpiGreater:
+		case jpiLessOrEqual:
+		case jpiGreaterOrEqual:
+		case jpiStartsWith:
+			{
+				JsonPathItem larg;
+				JsonPathItem rarg;
+				int32		loffs;
+				int32		roffs;
+				int32		lpos;
+				int32		rpos;
+
+				loffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				roffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				jspGetLeftArg(item, &larg);
+				lpos = copyJsonPathItem(cxt, &larg, argLevel, NULL, NULL);
+				*(int32 *) &buf->data[loffs] = lpos - pos;
+
+				jspGetRightArg(item, &rarg);
+				rpos = copyJsonPathItem(cxt, &rarg, argLevel, NULL, NULL);
+				*(int32 *) &buf->data[roffs] = rpos - pos;
+
+				break;
+			}
+
+		case jpiLikeRegex:
+			{
+				JsonPathItem expr;
+				int32		eoffs;
+				int32		epos;
+
+				appendBinaryStringInfo(buf,
+									(char *) &item->content.like_regex.flags,
+									sizeof(item->content.like_regex.flags));
+
+				eoffs = buf->len;
+				appendBinaryStringInfo(buf, (char *) &offs /* fake value */, sizeof(offs));
+
+				appendBinaryStringInfo(buf,
+									(char *) &item->content.like_regex.patternlen,
+									sizeof(item->content.like_regex.patternlen));
+				appendBinaryStringInfo(buf, item->content.like_regex.pattern,
+									   item->content.like_regex.patternlen);
+				appendStringInfoChar(buf, '\0');
+
+				jspInitByBuffer(&expr, item->base, item->content.like_regex.expr);
+				epos = copyJsonPathItem(cxt, &expr, argLevel, NULL, NULL);
+				*(int32 *) &buf->data[eoffs] = epos - pos;
+			}
+			break;
+
+		case jpiIndexArray:
+			{
+				int32		nelems = item->content.array.nelems;
+				int32		i;
+				int			offset;
+
+				if (level)
+					argLevel++;
+
+				appendBinaryStringInfo(buf, (char *) &nelems, sizeof(nelems));
+				offset = buf->len;
+				appendStringInfoSpaces(buf, sizeof(int32) * 2 * nelems);
+
+				for (i = 0; i < nelems; i++, offset += 2 * sizeof(int32))
+				{
+					JsonPathItem from;
+					JsonPathItem to;
+					int32	   *ppos;
+					int32		frompos;
+					int32		topos;
+					bool		range;
+
+					range = jspGetArraySubscript(item, &from, &to, i);
+
+					frompos = copyJsonPathItem(cxt, &from, argLevel, NULL, NULL) - pos;
+
+					if (range)
+						topos = copyJsonPathItem(cxt, &to, argLevel, NULL, NULL) - pos;
+					else
+						topos = 0;
+
+					ppos = (int32 *) &buf->data[offset];
+					ppos[0] = frompos;
+					ppos[1] = topos;
+				}
+			}
+			break;
+
+		case jpiAny:
+			appendBinaryStringInfo(buf, (char *) &item->content.anybounds.first,
+								   sizeof(item->content.anybounds.first));
+			appendBinaryStringInfo(buf, (char *) &item->content.anybounds.last,
+								   sizeof(item->content.anybounds.last));
+			break;
+
+		case jpiSequence:
+			{
+				int32		nelems = item->content.sequence.nelems;
+				int32		i;
+				int			offset;
+
+				appendBinaryStringInfo(buf, (char *) &nelems, sizeof(nelems));
+				offset = buf->len;
+				appendStringInfoSpaces(buf, sizeof(int32) * nelems);
+
+				for (i = 0; i < nelems; i++, offset += sizeof(int32))
+				{
+					JsonPathItem el;
+					int32		elpos;
+
+					jspGetSequenceElement(item, i, &el);
+
+					elpos = copyJsonPathItem(cxt, &el, level, NULL, NULL);
+					*(int32 *) &buf->data[offset] = elpos - pos;
+				}
+			}
+			break;
+
+		case jpiObject:
+			{
+				int32		nfields = item->content.object.nfields;
+				int32		i;
+				int			offset;
+
+				appendBinaryStringInfo(buf, (char *) &nfields, sizeof(nfields));
+				offset = buf->len;
+				appendStringInfoSpaces(buf, sizeof(int32) * 2 * nfields);
+
+				for (i = 0; i < nfields; i++, offset += 2 * sizeof(int32))
+				{
+					JsonPathItem key;
+					JsonPathItem val;
+					int32		keypos;
+					int32		valpos;
+					int32	   *ppos;
+
+					jspGetObjectField(item, i, &key, &val);
+
+					keypos = copyJsonPathItem(cxt, &key, level, NULL, NULL);
+					valpos = copyJsonPathItem(cxt, &val, level, NULL, NULL);
+
+					ppos = (int32 *) &buf->data[offset];
+					ppos[0] = keypos - pos;
+					ppos[1] = valpos - pos;
+				}
+			}
+			break;
+
+		default:
+			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
+	}
+
+	if (jspGetNext(item, &next))
+	{
+		int32		nextPos = copyJsonPathItem(cxt, &next, level,
+											   pLastOffset, pNextOffset);
+
+		*(int32 *) &buf->data[nextOffs] = nextPos - pos;
+	}
+	else if (pLastOffset)
+	{
+		*pLastOffset = pos;
+		*pNextOffset = nextOffs;
+	}
+
+	return pos;
+}
+
+static int32
+copyJsonPath(JsonPathContext *cxt, JsonPath *jp, int level, int32 *last, int32 *next)
+{
+	JsonPathItem root;
+
+	alignStringInfoInt(cxt->buf);
+
+	jspInit(&root, jp);
+
+	return copyJsonPathItem(cxt, &root, level, last, next);
+}
+
+/*
+ * Convert AST to flat jsonpath type representation
+ */
+static int
+flattenJsonPathParseItem(JsonPathContext *cxt, JsonPathParseItem *item,
+						 int nestingLevel, bool insideArraySubscript)
+{
+	StringInfo buf = cxt->buf;
+	/* position from begining of jsonpath data */
+	int32	pos = buf->len - JSONPATH_HDRSZ;
+	int32	chld, next, last;
+	int			argNestingLevel = nestingLevel;
+
+	check_stack_depth();
+
+	if (item->type == jpiBinary)
+		pos = copyJsonPath(cxt, item->value.binary, nestingLevel, &last, &next);
+	else
+	{
+		next = appendJsonPathItemHeader(buf, item->type);
+		last = pos;
+	}
 
 	switch(item->type)
 	{
+		case jpiBinary:
+			break;
 		case jpiString:
 		case jpiVariable:
 		case jpiKey:
@@ -66,7 +411,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiFold:
 		case jpiFoldl:
 		case jpiFoldr:
-			argNestingLevel = 1;
+			argNestingLevel++;
 			/* fall through */
 		case jpiAnd:
 		case jpiOr:
@@ -95,12 +440,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				right = buf->len;
 				appendBinaryStringInfo(buf, (char*)&right /* fake value */, sizeof(right));
 
-				chld = flattenJsonPathParseItem(buf, item->value.args.left,
-												nestingLevel + argNestingLevel,
+				chld = flattenJsonPathParseItem(cxt, item->value.args.left,
+												argNestingLevel,
 												insideArraySubscript);
 				*(int32*)(buf->data + left) = chld - pos;
-				chld = flattenJsonPathParseItem(buf, item->value.args.right,
-												nestingLevel + argNestingLevel,
+				chld = flattenJsonPathParseItem(cxt, item->value.args.right,
+												argNestingLevel,
 												insideArraySubscript);
 				*(int32*)(buf->data + right) = chld - pos;
 			}
@@ -122,7 +467,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 									   item->value.like_regex.patternlen);
 				appendStringInfoChar(buf, '\0');
 
-				chld = flattenJsonPathParseItem(buf, item->value.like_regex.expr,
+				chld = flattenJsonPathParseItem(cxt, item->value.like_regex.expr,
 												nestingLevel,
 												insideArraySubscript);
 				*(int32 *)(buf->data + offs) = chld - pos;
@@ -150,8 +495,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				if (!item->value.arg)
 					break;
 
-				chld = flattenJsonPathParseItem(buf, item->value.arg,
-												nestingLevel + argNestingLevel,
+				chld = flattenJsonPathParseItem(cxt, item->value.arg,
+												argNestingLevel,
 												insideArraySubscript);
 				*(int32*)(buf->data + arg) = chld - pos;
 			}
@@ -202,12 +547,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32	   *ppos;
 					int32		topos;
 					int32		frompos =
-						flattenJsonPathParseItem(buf,
+						flattenJsonPathParseItem(cxt,
 												item->value.array.elems[i].from,
 												nestingLevel + 1, true) - pos;
 
 					if (item->value.array.elems[i].to)
-						topos = flattenJsonPathParseItem(buf,
+						topos = flattenJsonPathParseItem(cxt,
 												item->value.array.elems[i].to,
 												nestingLevel + 1, true) - pos;
 					else
@@ -253,7 +598,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				foreach(lc, item->value.sequence.elems)
 				{
 					int32		elempos =
-						flattenJsonPathParseItem(buf, lfirst(lc),
+						flattenJsonPathParseItem(cxt, lfirst(lc),
 												 nestingLevel,
 												 insideArraySubscript);
 
@@ -278,11 +623,11 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				{
 					JsonPathParseItem *field = lfirst(lc);
 					int32		keypos =
-						flattenJsonPathParseItem(buf, field->value.args.left,
+						flattenJsonPathParseItem(cxt, field->value.args.left,
 												 nestingLevel,
 												 insideArraySubscript);
 					int32		valpos =
-						flattenJsonPathParseItem(buf, field->value.args.right,
+						flattenJsonPathParseItem(cxt, field->value.args.right,
 												 nestingLevel,
 												 insideArraySubscript);
 					int32	   *ppos = (int32 *) &buf->data[offset];
@@ -300,10 +645,39 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 	if (item->next)
 		*(int32*)(buf->data + next) =
-			flattenJsonPathParseItem(buf, item->next, nestingLevel,
-									 insideArraySubscript) - pos;
+			flattenJsonPathParseItem(cxt, item->next, nestingLevel,
+									 insideArraySubscript) - last;
 
 	return  pos;
+}
+
+static JsonPath *
+encodeJsonPath(JsonPathParseItem *item, bool lax, int32 sizeEstimation,
+			   Jsonb *vars)
+{
+	JsonPath   *res;
+	JsonPathContext cxt;
+	StringInfoData buf;
+
+	if (!item)
+		return NULL;
+
+	initStringInfo(&buf);
+	enlargeStringInfo(&buf, sizeEstimation);
+
+	appendStringInfoSpaces(&buf, JSONPATH_HDRSZ);
+
+	cxt.buf = &buf;
+	cxt.vars = vars;
+	flattenJsonPathParseItem(&cxt, item, 0, false);
+
+	res = (JsonPath *) buf.data;
+	SET_VARSIZE(res, buf.len);
+	res->header = JSONPATH_VERSION;
+	if (lax)
+		res->header |= JSONPATH_LAX;
+
+	return res;
 }
 
 Datum
@@ -313,25 +687,13 @@ jsonpath_in(PG_FUNCTION_ARGS)
 	int32				len = strlen(in);
 	JsonPathParseResult	*jsonpath = parsejsonpath(in, len);
 	JsonPath			*res;
-	StringInfoData		buf;
-
-	initStringInfo(&buf);
-	enlargeStringInfo(&buf, 4 * len /* estimation */);
-
-	appendStringInfoSpaces(&buf, JSONPATH_HDRSZ);
 
 	if (!jsonpath)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for jsonpath: \"%s\"", in)));
 
-	flattenJsonPathParseItem(&buf, jsonpath->expr, 0, false);
-
-	res = (JsonPath*)buf.data;
-	SET_VARSIZE(res, buf.len);
-	res->header = JSONPATH_VERSION;
-	if (jsonpath->lax)
-		res->header |= JSONPATH_LAX;
+	res = encodeJsonPath(jsonpath->expr, jsonpath->lax, 4 * len, NULL);
 
 	PG_RETURN_JSONPATH_P(res);
 }
@@ -1074,4 +1436,525 @@ jspGetObjectField(JsonPathItem *v, int i, JsonPathItem *key, JsonPathItem *val)
 	Assert(v->type == jpiObject);
 	jspInitByBuffer(key, v->base, v->content.object.fields[i].key);
 	jspInitByBuffer(val, v->base, v->content.object.fields[i].val);
+}
+
+static void
+checkJsonPathArgsMismatch(JsonPath *jp1, JsonPath *jp2)
+{
+	if ((jp1->header & ~JSONPATH_LAX) != JSONPATH_VERSION ||
+		jp1->header != jp2->header)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("jsonpath headers does not match")));
+}
+
+static inline JsonPathParseItem *
+jspInitParseItem(JsonPathParseItem *item, JsonPathItemType type,
+				 JsonPathParseItem *next)
+{
+	if (!item)
+		item = palloc(sizeof(*item));
+
+	item->type = type;
+	item->next = next;
+
+	return item;
+}
+
+static inline void
+jspInitParseItemUnary(JsonPathParseItem *item, JsonPathItemType type,
+					  JsonPathParseItem *next, JsonPathParseItem *arg)
+{
+	item = jspInitParseItem(item, type, next);
+	item->value.arg = arg;
+}
+
+static inline void
+jspInitParseItemBinary(JsonPathParseItem *item, JsonPathItemType type,
+					   JsonPathParseItem *left, JsonPathParseItem *right,
+					   JsonPathParseItem *next)
+{
+	item = jspInitParseItem(item, type, next);
+	item->value.args.left = left;
+	item->value.args.right = right;
+}
+
+static inline void
+jspInitParseItemBin(JsonPathParseItem *item, JsonPath *path,
+					JsonPathParseItem *next)
+{
+	item = jspInitParseItem(item, jpiBinary, next);
+	item->value.binary = path;
+}
+
+static inline void
+jspInitParseItemString(JsonPathParseItem *item, JsonPathItemType type,
+					   char *str, uint32 len, JsonPathParseItem *next)
+{
+	item = jspInitParseItem(item, type, next);
+	item->value.string.val = str;
+	item->value.string.len = len;
+}
+
+static JsonPathParseItem *
+jspInitParseItemJsonbScalar(JsonPathParseItem *item, JsonbValue	*jbv)
+{
+	/* jbv and jpi scalar types have the same values */
+	item = jspInitParseItem(item, jbv->type, NULL);
+
+	switch (jbv->type)
+	{
+		case jbvNull:
+			break;
+
+		case jbvBool:
+			item->value.boolean = jbv->val.boolean;
+			break;
+
+		case jbvString:
+			item->value.string.val = jbv->val.string.val;
+			item->value.string.len = jbv->val.string.len;
+			break;
+
+		case jbvNumeric:
+			item->value.numeric = jbv->val.numeric;
+			break;
+
+		default:
+			elog(ERROR, "invalid scalar jsonb value type: %d", jbv->type);
+			break;
+	}
+
+	return item;
+}
+
+static JsonPathParseItem *
+jspInitParseItemJsonb(JsonPathParseItem *item, Jsonb *jb)
+{
+	JsonbValue	jbv;
+
+	if (JB_ROOT_IS_SCALAR(jb))
+	{
+		JsonbExtractScalar(&jb->root, &jbv);
+
+		return jspInitParseItemJsonbScalar(item, &jbv);
+	}
+	else
+	{
+		JsonbIterator *it;
+		JsonbIteratorToken tok;
+		JsonPathParseItem *res = NULL;
+		JsonPathParseItem *stack = NULL;
+
+		it = JsonbIteratorInit(&jb->root);
+
+		while ((tok = JsonbIteratorNext(&it, &jbv, false)) != WJB_DONE)
+		{
+			switch (tok)
+			{
+				case WJB_BEGIN_OBJECT:
+					/* push object */
+					stack = jspInitParseItem(NULL, jpiObject, stack);
+					stack->value.object.fields = NIL;
+					break;
+
+				case WJB_BEGIN_ARRAY:
+					/* push array */
+					stack = jspInitParseItem(NULL, jpiArray, stack);
+					stack->value.arg = jspInitParseItem(NULL, jpiSequence, NULL);
+					stack->value.arg->value.sequence.elems = NIL;
+					break;
+
+				case WJB_END_OBJECT:
+				case WJB_END_ARRAY:
+					/* save and pop current container */
+					res = stack;
+					stack = stack->next;
+					res->next = NULL;
+
+					if (stack)
+					{
+						if (stack->type == jpiArray)
+						{
+							/* add container to the list of array elements */
+							stack->value.arg->value.sequence.elems =
+								lappend(stack->value.arg->value.sequence.elems,
+										res);
+						}
+						else if (stack->type == jpiObjectField)
+						{
+							/* save result into the object field value */
+							stack->value.args.right = res;
+
+							/* pop current object field */
+							res = stack;
+							stack = stack->next;
+							res->next = NULL;
+							Assert(stack && stack->type == jpiObject);
+						}
+					}
+					break;
+
+				case WJB_KEY:
+					{
+						JsonPathParseItem *key = palloc0(sizeof(*key));
+						JsonPathParseItem *field = palloc0(sizeof(*field));
+
+						Assert(stack->type == jpiObject);
+
+						jspInitParseItem(field, jpiObjectField, stack);
+						field->value.args.left = key;
+						field->value.args.right = NULL;
+
+						jspInitParseItemJsonbScalar(key, &jbv);
+
+						stack->value.object.fields =
+							lappend(stack->value.object.fields, field);
+
+						/* push current object field */
+						stack = field;
+						break;
+					}
+
+				case WJB_VALUE:
+					Assert(stack->type == jpiObjectField);
+					stack->value.args.right =
+						jspInitParseItemJsonbScalar(NULL, &jbv);
+
+					/* pop current object field */
+					res = stack;
+					stack = stack->next;
+					res->next = NULL;
+					Assert(stack && stack->type == jpiObject);
+					break;
+
+				case WJB_ELEM:
+					Assert(stack->type == jpiArray);
+					stack->value.arg->value.sequence.elems =
+						lappend(stack->value.arg->value.sequence.elems,
+								jspInitParseItemJsonbScalar(NULL, &jbv));
+					break;
+
+				default:
+					elog(ERROR, "unexpected jsonb iterator token: %d", tok);
+			}
+		}
+
+		return res;
+	}
+}
+
+/* Subroutine for implementation of operators jsonpath OP jsonpath */
+static Datum
+jsonpath_op_jsonpath(FunctionCallInfo fcinfo, JsonPathItemType op)
+{
+	JsonPath   *jp1 = PG_GETARG_JSONPATH_P(0);
+	JsonPath   *jp2 = PG_GETARG_JSONPATH_P(1);
+	JsonPathParseItem jpi1;
+	JsonPathParseItem jpi2;
+	JsonPathParseItem jpi;
+
+	checkJsonPathArgsMismatch(jp1, jp2);
+
+	jspInitParseItemBin(&jpi1, jp1, NULL);
+	jspInitParseItemBin(&jpi2, jp2, NULL);
+	jspInitParseItemBinary(&jpi, op, &jpi1, &jpi2, NULL);
+
+	PG_RETURN_JSONPATH_P(encodeJsonPath(&jpi,
+										(jp1->header & JSONPATH_LAX) != 0,
+										VARSIZE(jp1) + VARSIZE(jp2) -
+										JSONPATH_HDRSZ + 16, NULL));
+}
+
+/* Subroutine for implementation of operators jsonpath OP jsonb */
+static Datum
+jsonpath_op_jsonb(FunctionCallInfo fcinfo, JsonPathItemType op)
+{
+	JsonPath   *jp = PG_GETARG_JSONPATH_P(0);
+	Jsonb	   *jb = PG_GETARG_JSONB_P(1);
+	JsonPathParseItem jpi1;
+	JsonPathParseItem *jpi2;
+	JsonPathParseItem jpi;
+
+	jspInitParseItemBin(&jpi1, jp, NULL);
+	jpi2 = jspInitParseItemJsonb(NULL, jb);
+	jspInitParseItemBinary(&jpi, op, &jpi1, jpi2, NULL);
+
+	PG_RETURN_JSONPATH_P(encodeJsonPath(&jpi,
+										(jp->header & JSONPATH_LAX) != 0,
+										VARSIZE(jp) + VARSIZE(jb), NULL));
+}
+
+/* Implementation of operator jsonpath == jsonpath */
+Datum
+jsonpath_eq_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiEqual);
+}
+
+/* Implementation of operator jsonpath == jsonb */
+Datum
+jsonpath_eq_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiEqual);
+}
+
+/* Implementation of operator jsonpath != jsonpath */
+Datum
+jsonpath_ne_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiNotEqual);
+}
+
+/* Implementation of operator jsonpath != jsonb */
+Datum
+jsonpath_ne_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiNotEqual);
+}
+
+/* Implementation of operator jsonpath < jsonpath */
+Datum
+jsonpath_lt_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiLess);
+}
+
+/* Implementation of operator jsonpath < jsonb */
+Datum
+jsonpath_lt_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiLess);
+}
+
+/* Implementation of operator jsonpath <= jsonpath */
+Datum
+jsonpath_le_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiLessOrEqual);
+}
+
+/* Implementation of operator jsonpath <= jsonb */
+Datum
+jsonpath_le_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiLessOrEqual);
+}
+
+/* Implementation of operator jsonpath > jsonpath */
+Datum
+jsonpath_gt_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiGreater);
+}
+
+/* Implementation of operator jsonpath > jsonb */
+Datum
+jsonpath_gt_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiGreater);
+}
+
+/* Implementation of operator jsonpath >= jsonpath */
+Datum
+jsonpath_ge_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiGreaterOrEqual);
+}
+
+/* Implementation of operator jsonpath >= jsonb */
+Datum
+jsonpath_ge_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiGreaterOrEqual);
+}
+
+/* Implementation of operator jsonpath + jsonpath */
+Datum
+jsonpath_pl_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiAdd);
+}
+
+/* Implementation of operator jsonpath + jsonb */
+Datum
+jsonpath_pl_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiAdd);
+}
+
+/* Implementation of operator jsonpath - jsonpath */
+Datum
+jsonpath_mi_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiSub);
+}
+
+/* Implementation of operator jsonpath - jsonb */
+Datum
+jsonpath_mi_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiSub);
+}
+
+/* Implementation of operator jsonpath / jsonpath */
+Datum
+jsonpath_mul_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiMul);
+}
+
+/* Implementation of operator jsonpath * jsonb */
+Datum
+jsonpath_mul_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiMul);
+}
+
+/* Implementation of operator jsonpath / jsonpath */
+Datum
+jsonpath_div_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiDiv);
+}
+
+/* Implementation of operator jsonpath / jsonb */
+Datum
+jsonpath_div_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiDiv);
+}
+
+/* Implementation of operator jsonpath % jsonpath */
+Datum
+jsonpath_mod_jsonpath(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonpath(fcinfo, jpiMod);
+}
+
+/* Implementation of operator jsonpath % jsonb */
+Datum
+jsonpath_mod_jsonb(PG_FUNCTION_ARGS)
+{
+	return jsonpath_op_jsonb(fcinfo, jpiMod);
+}
+
+/* Implementation of operator jsonpath -> text */
+Datum
+jsonpath_object_field(PG_FUNCTION_ARGS)
+{
+	JsonPath   *jpObj = PG_GETARG_JSONPATH_P(0);
+	text	   *jpFld = PG_GETARG_TEXT_PP(1);
+	JsonPathParseItem jpiObj;
+	JsonPathParseItem jpiFld;
+
+	jspInitParseItemBin(&jpiObj, jpObj, &jpiFld);
+	jspInitParseItemString(&jpiFld, jpiKey,
+						   VARDATA_ANY(jpFld), VARSIZE_ANY_EXHDR(jpFld), NULL);
+
+	PG_RETURN_JSONPATH_P(encodeJsonPath(&jpiObj,
+										(jpObj->header & JSONPATH_LAX) != 0,
+										INTALIGN(VARSIZE(jpObj)) + 8 +
+										jpiFld.value.string.len, NULL));
+}
+
+/* Implementation of operator jsonpath -> int */
+Datum
+jsonpath_array_element(PG_FUNCTION_ARGS)
+{
+	JsonPath   *arr = PG_GETARG_JSONPATH_P(0);
+	int32		idx = PG_GETARG_INT32(1);
+	JsonPathParseItem jpiArr;
+	JsonPathParseItem jpiArrIdx;
+	JsonPathParseItem jpiIdx;
+	struct JsonPathParseArraySubscript subscript;
+
+	jspInitParseItemBin(&jpiArr, arr, &jpiArrIdx);
+
+	jspInitParseItem(&jpiArrIdx, jpiIndexArray, NULL);
+	jpiArrIdx.value.array.nelems = 1;
+	jpiArrIdx.value.array.elems = &subscript;
+
+	subscript.from = &jpiIdx;
+	subscript.to = NULL;
+
+	jspInitParseItem(&jpiIdx, jpiNumeric, NULL);
+	jpiIdx.value.numeric = DatumGetNumeric(
+			DirectFunctionCall1(int4_numeric, Int32GetDatum(idx)));
+
+	PG_RETURN_JSONPATH_P(encodeJsonPath(&jpiArr,
+										(arr->header & JSONPATH_LAX) != 0,
+										INTALIGN(VARSIZE(arr)) + 28 +
+										VARSIZE(jpiIdx.value.numeric), NULL));
+}
+
+/* Implementation of operator jsonpath ? jsonpath */
+Datum
+jsonpath_filter(PG_FUNCTION_ARGS)
+{
+	JsonPath   *jpRoot = PG_GETARG_JSONPATH_P(0);
+	JsonPath   *jpFilter = PG_GETARG_JSONPATH_P(1);
+	JsonPathItem root;
+	JsonPathParseItem jppiRoot;
+	JsonPathParseItem jppiFilter;
+	JsonPathParseItem jppiFilterArg;
+
+	checkJsonPathArgsMismatch(jpRoot, jpFilter);
+
+	jspInit(&root, jpFilter);
+
+	if (!jspIsBooleanOp(root.type))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("jsonpath filter must be boolean expression")));
+
+	jspInitParseItemBin(&jppiRoot, jpRoot, &jppiFilter);
+	jspInitParseItemUnary(&jppiFilter, jpiFilter, NULL, &jppiFilterArg);
+	jspInitParseItemBin(&jppiFilterArg, jpFilter, NULL);
+
+	PG_RETURN_JSONPATH_P(encodeJsonPath(&jppiRoot,
+										(jpRoot->header & JSONPATH_LAX) != 0,
+										INTALIGN(VARSIZE(jpRoot)) + 12 +
+										VARSIZE(jpFilter), NULL));
+}
+
+static bool
+replaceVariableReference(JsonPathContext *cxt, JsonPathItem *var, int32 pos)
+{
+	JsonbValue	name;
+	JsonbValue *value;
+	JsonPathParseItem tmp;
+	JsonPathParseItem *item;
+
+	name.type = jbvString;
+	name.val.string.val = jspGetString(var, &name.val.string.len);
+
+	value = findJsonbValueFromContainer(&cxt->vars->root, JB_FOBJECT, &name);
+
+	if (!value)
+		return false;
+
+	cxt->buf->len = pos + JSONPATH_HDRSZ;	/* reset buffer */
+
+	item = jspInitParseItemJsonb(&tmp, JsonbValueToJsonb(value));
+
+	flattenJsonPathParseItem(cxt, item, false, false);
+
+	return true;
+}
+
+/* Implementation of operator jsonpath @ jsonb */
+Datum
+jsonpath_bind_jsonb(PG_FUNCTION_ARGS)
+{
+	JsonPath   *jpRoot = PG_GETARG_JSONPATH_P(0);
+	Jsonb	   *jbVars = PG_GETARG_JSONB_P(1);
+	JsonPathParseItem jppiRoot;
+
+	jspInitParseItemBin(&jppiRoot, jpRoot, NULL);
+
+	PG_RETURN_JSONPATH_P(encodeJsonPath(&jppiRoot,
+										(jpRoot->header & JSONPATH_LAX) != 0,
+										INTALIGN(VARSIZE(jpRoot)) +
+										VARSIZE(jbVars) * 2, jbVars));
 }

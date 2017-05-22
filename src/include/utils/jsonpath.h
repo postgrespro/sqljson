@@ -98,6 +98,8 @@ typedef enum JsonPathItemType {
 		jpiFoldr,
 		jpiMin,
 		jpiMax,
+
+		jpiBinary = 0xFF /* for jsonpath operators implementation only */
 } JsonPathItemType;
 
 /* XQuery regex mode flags for LIKE_REGEX predicate */
@@ -105,6 +107,21 @@ typedef enum JsonPathItemType {
 #define JSP_REGEX_SLINE		0x02	/* s flag, single-line mode */
 #define JSP_REGEX_MLINE		0x04	/* m flag, multi-line mode */
 #define JSP_REGEX_WSPACE	0x08	/* x flag, expanded syntax */
+
+#define jspIsBooleanOp(type) ( \
+	(type) == jpiAnd || \
+	(type) == jpiOr || \
+	(type) == jpiNot || \
+	(type) == jpiIsUnknown || \
+	(type) == jpiEqual || \
+	(type) == jpiNotEqual || \
+	(type) == jpiLess || \
+	(type) == jpiGreater || \
+	(type) == jpiLessOrEqual || \
+	(type) == jpiGreaterOrEqual || \
+	(type) == jpiExists || \
+	(type) == jpiStartsWith \
+)
 
 /*
  * Support functions to parse/construct binary value.
@@ -223,7 +240,7 @@ struct JsonPathParseItem {
 		/* storage for jpiIndexArray: indexes of array */
 		struct {
 			int		nelems;
-			struct
+			struct JsonPathParseArraySubscript
 			{
 				JsonPathParseItem *from;
 				JsonPathParseItem *to;
@@ -254,6 +271,8 @@ struct JsonPathParseItem {
 		struct {
 			int		level;
 		} current;
+
+		JsonPath   *binary;
 
 		/* scalars */
 		Numeric		numeric;
