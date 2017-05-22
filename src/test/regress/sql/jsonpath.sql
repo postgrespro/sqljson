@@ -158,3 +158,44 @@ select '$ ? (@0 > 1)'::jsonpath;
 select '$ ? (@1 > 1)'::jsonpath;
 select '$.a ? (@.b ? (@1 > @) > 5)'::jsonpath;
 select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
+
+-- jsonpath combination operators
+
+select jsonpath '$.a' == jsonpath '$[*] + 1';
+-- should fail
+select jsonpath '$.a' == jsonpath '$.b == 1';
+--select jsonpath '$.a' != jsonpath '$[*] + 1';
+select jsonpath '$.a' >  jsonpath '$[*] + 1';
+select jsonpath '$.a' <  jsonpath '$[*] + 1';
+select jsonpath '$.a' >= jsonpath '$[*] + 1';
+select jsonpath '$.a' <= jsonpath '$[*] + 1';
+select jsonpath '$.a' +  jsonpath '$[*] + 1';
+select jsonpath '$.a' -  jsonpath '$[*] + 1';
+select jsonpath '$.a' *  jsonpath '$[*] + 1';
+select jsonpath '$.a' /  jsonpath '$[*] + 1';
+select jsonpath '$.a' %  jsonpath '$[*] + 1';
+
+-- should fail
+select jsonpath '$.a' == jsonb '[]';
+-- should fail
+select jsonpath '$.a' == jsonb '{}';
+
+select jsonpath '$.a' == jsonb '"aaa"';
+--select jsonpath '$.a' != jsonb '1';
+select jsonpath '$.a' >   jsonb '12.34';
+select jsonpath '$.a' <   jsonb '"aaa"';
+select jsonpath '$.a' >=  jsonb 'true';
+select jsonpath '$.a' <=  jsonb 'false';
+select jsonpath '$.a' +   jsonb 'null';
+select jsonpath '$.a' -   jsonb '12.3';
+select jsonpath '$.a' *   jsonb '5';
+select jsonpath '$.a' /   jsonb '0';
+select jsonpath '$.a' %   jsonb '"1.23"';
+
+select jsonpath '$' -> 'a';
+select jsonpath '$' -> 1;
+select jsonpath '$' -> 'a' -> 1;
+select jsonpath '$.a' ? jsonpath '$.x ? (@.y ? (@ > 3 + @1.b + $) == $) > $.z';
+
+select jsonpath '$.a.b[(@[*]?(@ > @1).c + 1.23).**{2,5}].map({a: @, b: [$.x, [], @ % 5]})' ?
+       jsonpath '$.**[@.size() + 3].map(@ + $?(@ > @1.reduce($1 + $2 * @ - $) / $)) > true';

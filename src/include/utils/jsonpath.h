@@ -97,8 +97,25 @@ typedef enum JsonPathItemType {
 		jpiFoldr,
 		jpiMin,
 		jpiMax,
+
+		jpiBinary = 0xFF /* for jsonpath operators implementation only */
 } JsonPathItemType;
 
+
+#define jspIsBooleanOp(type) ( \
+	(type) == jpiAnd || \
+	(type) == jpiOr || \
+	(type) == jpiNot || \
+	(type) == jpiIsUnknown || \
+	(type) == jpiEqual || \
+	(type) == jpiNotEqual || \
+	(type) == jpiLess || \
+	(type) == jpiGreater || \
+	(type) == jpiLessOrEqual || \
+	(type) == jpiGreaterOrEqual || \
+	(type) == jpiExists || \
+	(type) == jpiStartsWith \
+)
 
 /*
  * Support functions to parse/construct binary value.
@@ -210,7 +227,7 @@ struct JsonPathParseItem {
 		/* storage for jpiIndexArray: indexes of array */
 		struct {
 			int		nelems;
-			struct
+			struct JsonPathParseArraySubscript
 			{
 				JsonPathParseItem *from;
 				JsonPathParseItem *to;
@@ -234,6 +251,8 @@ struct JsonPathParseItem {
 		struct {
 			int		level;
 		} current;
+
+		JsonPath   *binary;
 
 		/* scalars */
 		Numeric		numeric;

@@ -5553,6 +5553,59 @@ DESCR("implementation of @? operator");
 DATA(insert OID =  6069 (  _jsonpath_predicate	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 16 "114 6050 114" _null_ _null_ _null_ _null_ _null_ json_jsonpath_predicate3 _null_ _null_ _null_ ));
 DESCR("jsonpath predicate test");
 
+DATA(insert OID =  6077 (  jsonpath_eq_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_eq_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of == operator");
+DATA(insert OID =  6078 (  jsonpath_ne_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_ne_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of != operator");
+DATA(insert OID =  6079 (  jsonpath_lt_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_lt_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of < operator");
+DATA(insert OID =  6080 (  jsonpath_le_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_le_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of <= operator");
+DATA(insert OID =  6081 (  jsonpath_gt_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_gt_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of > operator");
+DATA(insert OID =  6082 (  jsonpath_ge_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_ge_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of >= operator");
+DATA(insert OID =  6083 (  jsonpath_pl_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_pl_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of + operator");
+DATA(insert OID =  6084 (  jsonpath_mi_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_mi_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of - operator");
+DATA(insert OID =  6085 (  jsonpath_mul_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_mul_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of * operator");
+DATA(insert OID =  6086 (  jsonpath_div_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_div_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of / operator");
+DATA(insert OID =  6087 (  jsonpath_mod_jsonpath PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_mod_jsonpath _null_ _null_ _null_ ));
+DESCR("implementation of % operator");
+
+DATA(insert OID =  6088 (  jsonpath_eq_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_eq_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of == operator");
+DATA(insert OID =  6089 (  jsonpath_ne_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_ne_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of != operator");
+DATA(insert OID =  6090 (  jsonpath_lt_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_lt_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of < operator");
+DATA(insert OID =  6091 (  jsonpath_le_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_le_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of <= operator");
+DATA(insert OID =  6092 (  jsonpath_gt_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_gt_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of > operator");
+DATA(insert OID =  6093 (  jsonpath_ge_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_ge_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of >= operator");
+DATA(insert OID =  6094 (  jsonpath_pl_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_pl_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of + operator");
+DATA(insert OID =  6095 (  jsonpath_mi_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_mi_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of - operator");
+DATA(insert OID =  6096 (  jsonpath_mul_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_mul_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of * operator");
+DATA(insert OID =  6097 (  jsonpath_div_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_div_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of / operator");
+DATA(insert OID =  6098 (  jsonpath_mod_jsonb PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 3802" _null_ _null_ _null_ _null_ _null_ jsonpath_mod_jsonb _null_ _null_ _null_ ));
+DESCR("implementation of % operator");
+
+DATA(insert OID =  6099 (  jsonpath_object_field PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 25" _null_ _null_ _null_ _null_ _null_ jsonpath_object_field _null_ _null_ _null_ ));
+DESCR("implementation of -> operator");
+DATA(insert OID =  6015 (  jsonpath_array_element PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 23" _null_ _null_ _null_ _null_ _null_ jsonpath_array_element _null_ _null_ _null_ ));
+DESCR("implementation of -> operator");
+DATA(insert OID =  6016 (  jsonpath_filter PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 6050 "6050 6050" _null_ _null_ _null_ _null_ _null_ jsonpath_filter _null_ _null_ _null_ ));
+DESCR("implementation of ? operator");
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

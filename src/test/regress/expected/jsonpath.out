@@ -867,3 +867,170 @@ select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
 ERROR:  invalid outer item reference in jsonpath @
 LINE 1: select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
                ^
+-- jsonpath combination operators
+select jsonpath '$.a' == jsonpath '$[*] + 1';
+      ?column?       
+---------------------
+ ($."a" == $[*] + 1)
+(1 row)
+
+-- should fail
+select jsonpath '$.a' == jsonpath '$.b == 1';
+        ?column?         
+-------------------------
+ ($."a" == ($."b" == 1))
+(1 row)
+
+--select jsonpath '$.a' != jsonpath '$[*] + 1';
+select jsonpath '$.a' >  jsonpath '$[*] + 1';
+      ?column?      
+--------------------
+ ($."a" > $[*] + 1)
+(1 row)
+
+select jsonpath '$.a' <  jsonpath '$[*] + 1';
+      ?column?      
+--------------------
+ ($."a" < $[*] + 1)
+(1 row)
+
+select jsonpath '$.a' >= jsonpath '$[*] + 1';
+      ?column?       
+---------------------
+ ($."a" >= $[*] + 1)
+(1 row)
+
+select jsonpath '$.a' <= jsonpath '$[*] + 1';
+      ?column?       
+---------------------
+ ($."a" <= $[*] + 1)
+(1 row)
+
+select jsonpath '$.a' +  jsonpath '$[*] + 1';
+       ?column?       
+----------------------
+ ($."a" + ($[*] + 1))
+(1 row)
+
+select jsonpath '$.a' -  jsonpath '$[*] + 1';
+       ?column?       
+----------------------
+ ($."a" - ($[*] + 1))
+(1 row)
+
+select jsonpath '$.a' *  jsonpath '$[*] + 1';
+       ?column?       
+----------------------
+ ($."a" * ($[*] + 1))
+(1 row)
+
+select jsonpath '$.a' /  jsonpath '$[*] + 1';
+       ?column?       
+----------------------
+ ($."a" / ($[*] + 1))
+(1 row)
+
+select jsonpath '$.a' %  jsonpath '$[*] + 1';
+       ?column?       
+----------------------
+ ($."a" % ($[*] + 1))
+(1 row)
+
+-- should fail
+select jsonpath '$.a' == jsonb '[]';
+ERROR:  jsonpath operations with non-scalar jsonb are not yet supported
+-- should fail
+select jsonpath '$.a' == jsonb '{}';
+ERROR:  jsonpath operations with non-scalar jsonb are not yet supported
+select jsonpath '$.a' == jsonb '"aaa"';
+     ?column?     
+------------------
+ ($."a" == "aaa")
+(1 row)
+
+--select jsonpath '$.a' != jsonb '1';
+select jsonpath '$.a' >   jsonb '12.34';
+    ?column?     
+-----------------
+ ($."a" > 12.34)
+(1 row)
+
+select jsonpath '$.a' <   jsonb '"aaa"';
+    ?column?     
+-----------------
+ ($."a" < "aaa")
+(1 row)
+
+select jsonpath '$.a' >=  jsonb 'true';
+    ?column?     
+-----------------
+ ($."a" >= true)
+(1 row)
+
+select jsonpath '$.a' <=  jsonb 'false';
+     ?column?     
+------------------
+ ($."a" <= false)
+(1 row)
+
+select jsonpath '$.a' +   jsonb 'null';
+    ?column?    
+----------------
+ ($."a" + null)
+(1 row)
+
+select jsonpath '$.a' -   jsonb '12.3';
+    ?column?    
+----------------
+ ($."a" - 12.3)
+(1 row)
+
+select jsonpath '$.a' *   jsonb '5';
+  ?column?   
+-------------
+ ($."a" * 5)
+(1 row)
+
+select jsonpath '$.a' /   jsonb '0';
+  ?column?   
+-------------
+ ($."a" / 0)
+(1 row)
+
+select jsonpath '$.a' %   jsonb '"1.23"';
+     ?column?     
+------------------
+ ($."a" % "1.23")
+(1 row)
+
+select jsonpath '$' -> 'a';
+ ?column? 
+----------
+ $."a"
+(1 row)
+
+select jsonpath '$' -> 1;
+ ?column? 
+----------
+ $[1]
+(1 row)
+
+select jsonpath '$' -> 'a' -> 1;
+ ?column? 
+----------
+ $."a"[1]
+(1 row)
+
+select jsonpath '$.a' ? jsonpath '$.x ? (@.y ? (@ > 3 + @1.b + $) == $) > $.z';
+                          ?column?                           
+-------------------------------------------------------------
+ $."a"?(@."x"?(@."y"?(@ > (3 + @1."b") + @2) == @1) > @."z")
+(1 row)
+
+select jsonpath '$.a.b[(@[*]?(@ > @1).c + 1.23).**{2,5}].map({a: @, b: [$.x, [], @ % 5]})' ?
+       jsonpath '$.**[@.size() + 3].map(@ + $?(@ > @1.reduce($1 + $2 * @ - $) / $)) > true';
+                                                                                ?column?                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ $."a"."b"[@[*]?(@ > @1)."c" + 1.23.**{2,5}].map({"a": @, "b": [$."x", [], @ % 5]})?(@.**[@.size() + 3].map(@ + @2?(@ > @1.reduce(($"1" + $"2" * @) - @4) / @3)) > true)
+(1 row)
+
