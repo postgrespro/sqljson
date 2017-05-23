@@ -821,11 +821,15 @@ DATA(insert (	4036   3802 3802 7 s 3246 2742 0 ));
 DATA(insert (	4036   3802 25 9 s 3247 2742 0 ));
 DATA(insert (	4036   3802 1009 10 s 3248 2742 0 ));
 DATA(insert (	4036   3802 1009 11 s 3249 2742 0 ));
+DATA(insert (	4036   3802 6050 15 s 6076 2742 0 ));
+DATA(insert (	4036   3802 6050 16 s 6107 2742 0 ));
 
 /*
  * GIN jsonb_path_ops
  */
 DATA(insert (	4037   3802 3802 7 s 3246 2742 0 ));
+DATA(insert (	4037   3802 6050 15 s 6076 2742 0 ));
+DATA(insert (	4037   3802 6050 16 s 6107 2742 0 ));
 
 /*
  * SP-GiST range_ops
