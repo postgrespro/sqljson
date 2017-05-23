@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
 #include "access/gin.h"
 #include "access/hash.h"
 #include "access/stratnum.h"
@@ -20,6 +21,7 @@
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "utils/jsonb.h"
+#include "utils/jsonpath.h"
 #include "utils/varlena.h"
 
 typedef struct PathHashStack
@@ -28,8 +30,41 @@ typedef struct PathHashStack
 	struct PathHashStack *parent;
 } PathHashStack;
 
+typedef enum { eOr, eAnd, eEntry } JsonPathNodeType;
+
+typedef struct JsonPathNode
+{
+	JsonPathNodeType type;
+	union
+	{
+		int			nargs;
+		int			entry;
+	} val;
+	struct JsonPathNode *args[FLEXIBLE_ARRAY_MEMBER];
+} JsonPathNode;
+
+typedef struct JsonPathExtractionContext
+{
+	Datum	   *entries;
+	int32		nentries;
+	int32		nallocated;
+	void	 *(*addKey)(void *path, char *key, int len);
+	bool		pathOps;
+	bool		lax;
+} JsonPathExtractionContext;
+
+typedef struct JsonPathContext
+{
+	void	   *path;
+	JsonPathItemType last;
+} JsonPathContext;
+
 static Datum make_text_key(char flag, const char *str, int len);
 static Datum make_scalar_key(const JsonbValue *scalarVal, bool is_key);
+
+static JsonPathNode *gin_extract_jsonpath_expr_recursive(
+	JsonPathExtractionContext *cxt, JsonPathItem *jsp, bool not,
+	JsonPathContext path);
 
 /*
  *
@@ -119,6 +154,413 @@ gin_extract_jsonb(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(entries);
 }
 
+static bool
+gin_extract_jsonpath_path(JsonPathExtractionContext *cxt, JsonPathItem *jsp,
+						  JsonPathContext *pathcxt, List **filters)
+{
+	JsonPathItem next;
+
+	for (;;)
+	{
+		if (jsp->type != jpiFilter && jsp->type != jpiCurrent)
+			pathcxt->last = jsp->type;
+
+		switch (jsp->type)
+		{
+			case jpiRoot:
+				pathcxt->path = NULL;
+				break;
+
+			case jpiCurrent:
+				break;
+
+			case jpiKey:
+				pathcxt->path = cxt->addKey(pathcxt->path,
+											jsp->content.value.data,
+											jsp->content.value.datalen);
+				break;
+
+			case jpiIndexArray:
+			case jpiAnyArray:
+				break;
+
+			case jpiAny:
+			case jpiAnyKey:
+				if (cxt->pathOps)
+					/* jsonb_path_ops doesn't support wildcard paths */
+					return false;
+				break;
+
+			case jpiFilter:
+				{
+					JsonPathItem arg;
+					JsonPathNode *filter;
+
+					jspGetArg(jsp, &arg);
+
+					filter = gin_extract_jsonpath_expr_recursive(cxt, &arg, false, *pathcxt);
+
+					if (filter)
+						*filters = lappend(*filters, filter);
+
+					break;
+				}
+
+			default:
+				return false;
+		}
+
+		if (!jspGetNext(jsp, &next))
+			break;
+
+		jsp = &next;
+	}
+
+	return true;
+}
+
+static inline JsonPathNode *
+gin_jsonpath_make_entry_node(JsonPathExtractionContext *cxt, Datum entry)
+{
+	JsonPathNode *node = palloc(offsetof(JsonPathNode, args));
+
+	if (cxt->nentries >= cxt->nallocated)
+	{
+		if (cxt->entries)
+		{
+			cxt->nallocated *= 2;
+			cxt->entries = repalloc(cxt->entries,
+									sizeof(cxt->entries[0]) * cxt->nallocated);
+		}
+		else
+		{
+			cxt->nallocated = 8;
+			cxt->entries = palloc(sizeof(cxt->entries[0]) * cxt->nallocated);
+		}
+	}
+
+	node->type = eEntry;
+	node->val.entry = cxt->nentries;
+
+	cxt->entries[cxt->nentries++] = entry;
+
+	return node;
+}
+
+static inline JsonPathNode *
+gin_jsonpath_make_expr_node(JsonPathNodeType type, int nargs)
+{
+	JsonPathNode *node = palloc(offsetof(JsonPathNode, args) +
+								sizeof(node->args[0]) * nargs);
+
+	node->type = type;
+	node->val.nargs = nargs;
+
+	return node;
+}
+
+static inline JsonPathNode *
+gin_jsonpath_make_expr_node_from_list(JsonPathNodeType type, List *args)
+{
+	JsonPathNode *node = gin_jsonpath_make_expr_node(type, list_length(args));
+	ListCell   *lc;
+	int			i = 0;
+
+	foreach(lc, args)
+		node->args[i++] = lfirst(lc);
+
+	return node;
+}
+
+static JsonPathNode *
+gin_extract_jsonpath_node(JsonPathExtractionContext *cxt, JsonPathItem *jsp,
+						  JsonPathContext pathcxt, JsonbValue *scalar)
+{
+	JsonPathNode *node;
+	List	   *filters = NIL;
+	ListCell   *lc;
+
+	if (!gin_extract_jsonpath_path(cxt, jsp, &pathcxt, &filters))
+		return NULL;
+
+	if (cxt->pathOps)
+	{
+		if (scalar)
+		{
+			uint32		hash = (uint32)(uintptr_t) pathcxt.path;
+
+			JsonbHashScalarValue(scalar, &hash);
+			node = gin_jsonpath_make_entry_node(cxt, UInt32GetDatum(hash));
+		}
+		else
+			node = NULL; /* jsonb_path_ops doesn't support EXISTS queries */
+	}
+	else
+	{
+		List	   *entries = pathcxt.path;
+		List	   *nodes = NIL;
+
+		if (scalar)
+		{
+			bool lastIsArrayAccessor =
+				pathcxt.last == jpiIndexArray ||
+				pathcxt.last == jpiAnyArray ? GIN_TRUE :
+				pathcxt.last == jpiAnyArray ? GIN_MAYBE : GIN_FALSE;
+
+			if (lastIsArrayAccessor == GIN_MAYBE ||
+				(lastIsArrayAccessor == GIN_TRUE && cxt->lax))
+			{
+				node = gin_jsonpath_make_expr_node(eOr, 2);
+				node->args[0] = gin_jsonpath_make_entry_node(cxt,
+												make_scalar_key(scalar, true));
+				node->args[1] = gin_jsonpath_make_entry_node(cxt,
+												make_scalar_key(scalar, false));
+			}
+			else
+			{
+				Datum entry = make_scalar_key(scalar, lastIsArrayAccessor);
+
+				node = gin_jsonpath_make_entry_node(cxt, entry);
+			}
+
+			nodes = lappend(nodes, node);
+		}
+
+		foreach(lc, entries)
+			nodes = lappend(nodes, gin_jsonpath_make_entry_node(cxt,
+												PointerGetDatum(lfirst(lc))));
+
+		if (list_length(nodes) > 0)
+			node = gin_jsonpath_make_expr_node_from_list(eAnd, nodes);
+		else
+			node = NULL;	/* need full scan for EXISTS($) queries */
+	}
+
+	if (list_length(filters) <= 0)
+		return node;
+
+	if (node)
+		filters = lcons(node, filters);
+
+	return gin_jsonpath_make_expr_node_from_list(eAnd, filters);
+}
+
+static JsonPathNode *
+gin_extract_jsonpath_expr_recursive(JsonPathExtractionContext *cxt,
+									JsonPathItem *jsp, bool not,
+									JsonPathContext path)
+{
+	check_stack_depth();
+
+	switch (jsp->type)
+	{
+		case jpiAnd:
+		case jpiOr:
+			{
+				JsonPathItem arg;
+				JsonPathNode *larg;
+				JsonPathNode *rarg;
+				JsonPathNode *node;
+				JsonPathNodeType type;
+
+				jspGetLeftArg(jsp, &arg);
+				larg = gin_extract_jsonpath_expr_recursive(cxt, &arg, not, path);
+
+				jspGetRightArg(jsp, &arg);
+				rarg = gin_extract_jsonpath_expr_recursive(cxt, &arg, not, path);
+
+				if (!larg || !rarg)
+				{
+					if (jsp->type == jpiOr)
+						return NULL;
+					return larg ? larg : rarg;
+				}
+
+				type = not ^ (jsp->type == jpiAnd) ? eAnd : eOr;
+				node = gin_jsonpath_make_expr_node(type, 2);
+				node->args[0] = larg;
+				node->args[1] = rarg;
+
+				return node;
+			}
+
+		case jpiNot:
+			{
+				JsonPathItem arg;
+
+				jspGetArg(jsp, &arg);
+
+				return gin_extract_jsonpath_expr_recursive(cxt, &arg, !not, path);
+			}
+
+		case jpiExists:
+			{
+				JsonPathItem arg;
+
+				if (not)
+					return false;
+
+				jspGetArg(jsp, &arg);
+
+				return gin_extract_jsonpath_node(cxt, &arg, path, NULL);
+			}
+
+		case jpiEqual:
+			{
+				JsonPathItem leftItem;
+				JsonPathItem rightItem;
+				JsonPathItem *pathItem;
+				JsonPathItem *scalarItem;
+				JsonbValue	scalar;
+
+				if (not)
+					return NULL;
+
+				jspGetLeftArg(jsp, &leftItem);
+				jspGetRightArg(jsp, &rightItem);
+
+				if (jspIsScalar(leftItem.type))
+				{
+					scalarItem = &leftItem;
+					pathItem = &rightItem;
+				}
+				else if (jspIsScalar(rightItem.type))
+				{
+					scalarItem = &rightItem;
+					pathItem = &leftItem;
+				}
+				else
+					return NULL;
+
+				switch (scalarItem->type)
+				{
+					case jpiNull:
+						scalar.type = jbvNull;
+						break;
+					case jpiBool:
+						scalar.type = jbvBool;
+						scalar.val.boolean = !!*scalarItem->content.value.data;
+						break;
+					case jpiNumeric:
+						scalar.type = jbvNumeric;
+						scalar.val.numeric =
+							(Numeric) scalarItem->content.value.data;
+						break;
+					case jpiString:
+						scalar.type = jbvString;
+						scalar.val.string.val = scalarItem->content.value.data;
+						scalar.val.string.len = scalarItem->content.value.datalen;
+						break;
+					default:
+						elog(ERROR, "invalid scalar jsonpath item type: %d",
+							 scalarItem->type);
+						return NULL;
+				}
+
+				return gin_extract_jsonpath_node(cxt, pathItem, path, &scalar);
+			}
+
+		default:
+			return NULL;
+	}
+}
+
+static void *
+gin_jsonb_ops_add_key(void *path, char *key, int len)
+{
+	return lappend((List *) path, DatumGetPointer(
+									make_text_key(JGINFLAG_KEY, key, len)));
+}
+
+static void *
+gin_jsonb_path_ops_add_key(void *path, char *key, int len)
+{
+	JsonbValue 	jbv;
+	uint32		hash = (uint32)(uintptr_t) path;
+
+	jbv.type = jbvString;
+	jbv.val.string.val = key;
+	jbv.val.string.len = len;
+
+	JsonbHashScalarValue(&jbv, &hash);
+
+	return (void *)(uintptr_t) hash;
+}
+
+static Datum *
+gin_extract_jsonpath_query(JsonPath *jp, StrategyNumber strat, bool pathOps,
+						   int32 *nentries, Pointer **extra_data)
+{
+	JsonPathExtractionContext cxt = { 0 };
+	JsonPathItem root;
+	JsonPathNode *node;
+	JsonPathContext path = { NULL, GIN_FALSE };
+
+	cxt.addKey = pathOps ? gin_jsonb_path_ops_add_key : gin_jsonb_ops_add_key;
+	cxt.pathOps = pathOps;
+	cxt.lax = (jp->header & JSONPATH_LAX) != 0;
+
+	jspInit(&root, jp);
+
+	node = strat == JsonbJsonpathExistsStrategyNumber
+		? gin_extract_jsonpath_node(&cxt, &root, path, NULL)
+		: gin_extract_jsonpath_expr_recursive(&cxt, &root, false, path);
+
+	if (!node)
+	{
+		*nentries = 0;
+		return NULL;
+	}
+
+	*nentries = cxt.nentries;
+	*extra_data = palloc(sizeof(**extra_data) * cxt.nentries);
+	**extra_data = (Pointer) node;
+
+	return cxt.entries;
+}
+
+static GinTernaryValue
+gin_execute_jsonpath(JsonPathNode *node, GinTernaryValue *check)
+{
+	GinTernaryValue	res;
+	GinTernaryValue	v;
+	int			i;
+
+	switch (node->type)
+	{
+		case eAnd:
+			res = GIN_TRUE;
+			for (i = 0; i < node->val.nargs; i++)
+			{
+				v = gin_execute_jsonpath(node->args[i], check);
+				if (v == GIN_FALSE)
+					return GIN_FALSE;
+				else if (v == GIN_MAYBE)
+					res = GIN_MAYBE;
+			}
+			return res;
+
+		case eOr:
+			res = GIN_FALSE;
+			for (i = 0; i < node->val.nargs; i++)
+			{
+				v = gin_execute_jsonpath(node->args[i], check);
+				if (v == GIN_TRUE)
+					return GIN_TRUE;
+				else if (v == GIN_MAYBE)
+					res = GIN_MAYBE;
+			}
+			return res;
+
+		case eEntry:
+			return check[node->val.entry] ? GIN_MAYBE : GIN_FALSE;
+
+		default:
+			elog(ERROR, "invalid jsonpath gin node type: %d", node->type);
+			return GIN_FALSE;
+	}
+}
+
 Datum
 gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 {
@@ -181,6 +623,18 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 		if (j == 0 && strategy == JsonbExistsAllStrategyNumber)
 			*searchMode = GIN_SEARCH_MODE_ALL;
 	}
+	else if (strategy == JsonbJsonpathPredicateStrategyNumber ||
+			 strategy == JsonbJsonpathExistsStrategyNumber)
+	{
+		JsonPath   *jp = PG_GETARG_JSONPATH_P(0);
+		Pointer	  **extra_data = (Pointer **) PG_GETARG_POINTER(4);
+
+		entries = gin_extract_jsonpath_query(jp, strategy, false, nentries,
+											 extra_data);
+
+		if (!entries)
+			*searchMode = GIN_SEARCH_MODE_ALL;
+	}
 	else
 	{
 		elog(ERROR, "unrecognized strategy number: %d", strategy);
@@ -199,7 +653,7 @@ gin_consistent_jsonb(PG_FUNCTION_ARGS)
 	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
 	int32		nkeys = PG_GETARG_INT32(3);
 
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
+	Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(5);
 	bool		res = true;
 	int32		i;
@@ -256,6 +710,13 @@ gin_consistent_jsonb(PG_FUNCTION_ARGS)
 			}
 		}
 	}
+	else if (strategy == JsonbJsonpathPredicateStrategyNumber ||
+			 strategy == JsonbJsonpathExistsStrategyNumber)
+	{
+		*recheck = true;
+		res = nkeys <= 0 ||
+			gin_execute_jsonpath((JsonPathNode *) extra_data[0], check) != GIN_FALSE;
+	}
 	else
 		elog(ERROR, "unrecognized strategy number: %d", strategy);
 
@@ -270,8 +731,7 @@ gin_triconsistent_jsonb(PG_FUNCTION_ARGS)
 
 	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
 	int32		nkeys = PG_GETARG_INT32(3);
-
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
+	Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	GinTernaryValue res = GIN_MAYBE;
 	int32		i;
 
@@ -307,6 +767,12 @@ gin_triconsistent_jsonb(PG_FUNCTION_ARGS)
 				break;
 			}
 		}
+	}
+	else if (strategy == JsonbJsonpathPredicateStrategyNumber ||
+			 strategy == JsonbJsonpathExistsStrategyNumber)
+	{
+		res = nkeys <= 0 ? GIN_MAYBE :
+			gin_execute_jsonpath((JsonPathNode *) extra_data[0], check);
 	}
 	else
 		elog(ERROR, "unrecognized strategy number: %d", strategy);
@@ -432,18 +898,35 @@ gin_extract_jsonb_query_path(PG_FUNCTION_ARGS)
 	int32	   *searchMode = (int32 *) PG_GETARG_POINTER(6);
 	Datum	   *entries;
 
-	if (strategy != JsonbContainsStrategyNumber)
+	if (strategy == JsonbContainsStrategyNumber)
+	{
+		/* Query is a jsonb, so just apply gin_extract_jsonb_path ... */
+		entries = (Datum *)
+			DatumGetPointer(DirectFunctionCall2(gin_extract_jsonb_path,
+												PG_GETARG_DATUM(0),
+												PointerGetDatum(nentries)));
+
+		/* ... although "contains {}" requires a full index scan */
+		if (*nentries == 0)
+			*searchMode = GIN_SEARCH_MODE_ALL;
+	}
+	else if (strategy == JsonbJsonpathPredicateStrategyNumber ||
+			 strategy == JsonbJsonpathExistsStrategyNumber)
+	{
+		JsonPath   *jp = PG_GETARG_JSONPATH_P(0);
+		Pointer	  **extra_data = (Pointer **) PG_GETARG_POINTER(4);
+
+		entries = gin_extract_jsonpath_query(jp, strategy, true, nentries,
+											 extra_data);
+
+		if (!entries)
+			*searchMode = GIN_SEARCH_MODE_ALL;
+	}
+	else
+	{
 		elog(ERROR, "unrecognized strategy number: %d", strategy);
-
-	/* Query is a jsonb, so just apply gin_extract_jsonb_path ... */
-	entries = (Datum *)
-		DatumGetPointer(DirectFunctionCall2(gin_extract_jsonb_path,
-											PG_GETARG_DATUM(0),
-											PointerGetDatum(nentries)));
-
-	/* ... although "contains {}" requires a full index scan */
-	if (*nentries == 0)
-		*searchMode = GIN_SEARCH_MODE_ALL;
+		entries = NULL;
+	}
 
 	PG_RETURN_POINTER(entries);
 }
@@ -456,32 +939,40 @@ gin_consistent_jsonb_path(PG_FUNCTION_ARGS)
 
 	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
 	int32		nkeys = PG_GETARG_INT32(3);
-
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
+	Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(5);
 	bool		res = true;
 	int32		i;
 
-	if (strategy != JsonbContainsStrategyNumber)
-		elog(ERROR, "unrecognized strategy number: %d", strategy);
-
-	/*
-	 * jsonb_path_ops is necessarily lossy, not only because of hash
-	 * collisions but also because it doesn't preserve complete information
-	 * about the structure of the JSON object.  Besides, there are some
-	 * special rules around the containment of raw scalars in arrays that are
-	 * not handled here.  So we must always recheck a match.  However, if not
-	 * all of the keys are present, the tuple certainly doesn't match.
-	 */
-	*recheck = true;
-	for (i = 0; i < nkeys; i++)
+	if (strategy == JsonbContainsStrategyNumber)
 	{
-		if (!check[i])
+		/*
+		 * jsonb_path_ops is necessarily lossy, not only because of hash
+		 * collisions but also because it doesn't preserve complete information
+		 * about the structure of the JSON object.  Besides, there are some
+		 * special rules around the containment of raw scalars in arrays that are
+		 * not handled here.  So we must always recheck a match.  However, if not
+		 * all of the keys are present, the tuple certainly doesn't match.
+		 */
+		*recheck = true;
+		for (i = 0; i < nkeys; i++)
 		{
-			res = false;
-			break;
+			if (!check[i])
+			{
+				res = false;
+				break;
+			}
 		}
 	}
+	else if (strategy == JsonbJsonpathPredicateStrategyNumber ||
+			 strategy == JsonbJsonpathExistsStrategyNumber)
+	{
+		*recheck = true;
+		res = nkeys <= 0 ||
+			gin_execute_jsonpath((JsonPathNode *) extra_data[0], check);
+	}
+	else
+		elog(ERROR, "unrecognized strategy number: %d", strategy);
 
 	PG_RETURN_BOOL(res);
 }
@@ -494,27 +985,34 @@ gin_triconsistent_jsonb_path(PG_FUNCTION_ARGS)
 
 	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
 	int32		nkeys = PG_GETARG_INT32(3);
-
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
+	Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	GinTernaryValue res = GIN_MAYBE;
 	int32		i;
 
-	if (strategy != JsonbContainsStrategyNumber)
-		elog(ERROR, "unrecognized strategy number: %d", strategy);
-
-	/*
-	 * Note that we never return GIN_TRUE, only GIN_MAYBE or GIN_FALSE; this
-	 * corresponds to always forcing recheck in the regular consistent
-	 * function, for the reasons listed there.
-	 */
-	for (i = 0; i < nkeys; i++)
+	if (strategy == JsonbContainsStrategyNumber)
 	{
-		if (check[i] == GIN_FALSE)
+		/*
+		 * Note that we never return GIN_TRUE, only GIN_MAYBE or GIN_FALSE; this
+		 * corresponds to always forcing recheck in the regular consistent
+		 * function, for the reasons listed there.
+		 */
+		for (i = 0; i < nkeys; i++)
 		{
-			res = GIN_FALSE;
-			break;
+			if (check[i] == GIN_FALSE)
+			{
+				res = GIN_FALSE;
+				break;
+			}
 		}
 	}
+	else if (strategy == JsonbJsonpathPredicateStrategyNumber ||
+			 strategy == JsonbJsonpathExistsStrategyNumber)
+	{
+		res = nkeys <= 0 ? GIN_MAYBE :
+			gin_execute_jsonpath((JsonPathNode *) extra_data[0], check);
+	}
+	else
+		elog(ERROR, "unrecognized strategy number: %d", strategy);
 
 	PG_RETURN_GIN_TERNARY_VALUE(res);
 }
