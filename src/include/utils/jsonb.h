@@ -34,6 +34,8 @@ typedef enum
 #define JsonbExistsStrategyNumber		9
 #define JsonbExistsAnyStrategyNumber	10
 #define JsonbExistsAllStrategyNumber	11
+#define JsonbJsonpathStrategyNumber		15
+
 
 /*
  * In the standard jsonb_ops GIN opclass for jsonb, we choose to index both
