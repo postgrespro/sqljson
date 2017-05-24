@@ -158,3 +158,10 @@ select '$ ? (@.a < +0.1e+1)'::jsonpath;
 select '$ ? (@.a < 10.1e+1)'::jsonpath;
 select '$ ? (@.a < -10.1e+1)'::jsonpath;
 select '$ ? (@.a < +10.1e+1)'::jsonpath;
+
+select '@1'::jsonpath;
+select '@-1'::jsonpath;
+select '$ ? (@0 > 1)'::jsonpath;
+select '$ ? (@1 > 1)'::jsonpath;
+select '$.a ? (@.b ? (@1 > @) > 5)'::jsonpath;
+select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
