@@ -114,6 +114,13 @@ unicode		\\u[0-9A-Fa-f]{4}
 									BEGIN xCOMMENT;
 								}
 
+<INITIAL>@[0-9]+ /* @N */		{
+									addstring(true, yytext, yyleng);
+									addchar(false, '\0');
+									yylval->str = scanstring;
+									return CURRENT_P;
+								}
+
 <INITIAL>[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+  /* float */  {
 									addstring(true, yytext, yyleng);
 									addchar(false, '\0');
