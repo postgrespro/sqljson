@@ -449,3 +449,10 @@ select * from _jsonpath_query(jsonb '{"a": 1}', '$["a"]');
 select * from _jsonpath_query(jsonb '{"a": 1}', 'strict $["b"]');
 select * from _jsonpath_query(jsonb '{"a": 1}', 'lax $["b"]');
 select * from _jsonpath_query(jsonb '{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]');
+
+-- extension: outer item reference (@N)
+select _jsonpath_query(jsonb '[2,4,1,5,3]', '$[*] ? (!exists($[*] ? (@ < @1)))');
+select _jsonpath_query(jsonb '[2,4,1,5,3]', '$.map(@ + @1[0])');
+-- the first @1 and @2 reference array, the second @1 -- current mapped array element
+select _jsonpath_query(jsonb '[2,4,1,5,3]', '$.map(@ + @1[@1 - @2[2]])');
+select _jsonpath_query(jsonb '[[2,4,1,5,3]]', '$.map(@.reduce($1 + $2 + @2[0][2] + @1[3]))');
