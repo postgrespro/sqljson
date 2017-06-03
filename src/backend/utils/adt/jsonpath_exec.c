@@ -17,11 +17,16 @@
 #include "catalog/pg_type.h"
 #include "executor/execExpr.h"
 #include "lib/stringinfo.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_type.h"
+#include "parser/parser.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "utils/json.h"
+#include "utils/jsonapi.h"
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -29,8 +34,10 @@
 
 #ifdef JSONPATH_JSON_C
 #define JSONXOID JSONOID
+#define TO_JSONX_FUNC "to_json"
 #else
 #define JSONXOID JSONBOID
+#define TO_JSONX_FUNC "to_jsonb"
 #endif
 
 typedef struct JsonItemStackEntry
@@ -41,12 +48,45 @@ typedef struct JsonItemStackEntry
 
 typedef JsonItemStackEntry *JsonItemStack;
 
+typedef struct JsonPathExprCache
+{
+	Node	   *expr;				/* transformed expression */
+	ExprState  *estate;
+	List	   *params;				/* expression parameters */
+} JsonPathExprCache;
+
+typedef struct JsonPathCastCache
+{
+	JsonPathItem arg;
+	JsonPathExprCache expr;
+	JsonReturning returning;
+	struct JsonScalarCoercions coercions;
+	void	   *cache;				/* cache for json[b]_populate_record */
+	struct
+	{
+		FmgrInfo	func;
+		Oid			typioparam;
+	} input;
+	int32		castId;
+	bool		isMultiValued;
+} JsonPathCastCache;
+
+typedef struct JsonPathOpCache
+{
+	JsonPathExprCache expr;
+	Oid			typid;
+	int32		typmod;
+	bool		isMultiValuedBool;
+} JsonPathOpCache;
+
 typedef struct JsonPathExecContext
 {
 	List	   *vars;
 	bool		lax;
 	JsonbValue *root;				/* for $ evaluation */
 	JsonItemStack stack;			/* for @N evaluation */
+	void	  **cache;
+	MemoryContext cache_mcxt;
 	int			innermostArraySize;	/* for LAST array index evaluation */
 } JsonPathExecContext;
 
@@ -810,7 +850,23 @@ recursiveExecuteNext(JsonPathExecContext *cxt,
 	}
 
 	if (hasNext)
+	{
+#if 0
+		if (jspExtExec(next))
+		{
+			JsonPathExecCache **cache = cxt->cache;
+			JsonPathExecResult res;
+
+			Assert(cxt->cache);
+			cxt->cache = &(*cxt->cache)->next;
+			res = recursiveExecute(cxt, next, v, found);
+			cxt->cache = cache;
+
+			return res;
+		}
+#endif
 		return recursiveExecute(cxt, next, v, found);
+	}
 
 	if (found)
 		JsonValueListAppend(found, copy ? copyJsonbValue(v) : v);
@@ -1418,6 +1474,985 @@ appendBoolResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	}
 
 	return recursiveExecuteNext(cxt, jsp, &next, &jbv, found, true);
+}
+
+typedef struct JsonPathOpParam
+{
+	JsonPathItem item;
+	int			castId;
+	Oid			typid;
+	int32		typmod;
+	bool		multivalue;
+	bool		execCastExpr;
+} JsonPathOpParam;
+
+typedef struct JsonPathOpContext
+{
+	JsonPathExecContext *context;
+	List	   *params;
+} JsonPathOpContext;
+
+static Node *
+paramRefHook(ParseState *pstate, ParamRef *pref)
+{
+	Param	   *param;
+	JsonPathOpContext *cxt = pstate->p_ref_hook_state;
+	JsonPathOpParam *jsparam;
+	int			paramno = pref->number;
+
+	/* Check parameter number is valid */
+	if (paramno < 0 || paramno >= list_length(cxt->params))
+		return NULL;			/* unknown parameter number */
+
+	jsparam = list_nth(cxt->params, paramno);
+
+	param = makeNode(Param);
+	param->paramkind = PARAM_EXEC;
+	param->paramid = paramno;
+	param->paramtype = jsparam->typid;
+	param->paramtypmod = jsparam->typmod;
+	param->paramcollid = InvalidOid;
+	param->location = -1;
+
+	return (Node *) param;
+}
+
+static Node *
+addParam(JsonPathOpContext *cxt, JsonPathItem *jsp, Oid typid, int32 typmod,
+		 int castId, bool execCastExpr, JsonPathOpParam **pparam)
+{
+	ParamRef   *param = makeNode(ParamRef);
+	JsonPathOpParam *jsparam = palloc(sizeof(*jsparam));
+
+	jsparam->item = *jsp;		/* must be used reference to cached jsonpath */
+	jsparam->typid = typid;
+	jsparam->typmod = typmod;
+	jsparam->castId = castId;
+	jsparam->multivalue = false;
+	jsparam->execCastExpr = execCastExpr;
+
+	param->number = list_length(cxt->params);
+	param->location = -1;
+
+	cxt->params = lappend(cxt->params, jsparam);
+
+	if (pparam)
+		*pparam = jsparam;
+
+	return (Node *) param;
+}
+
+static inline bool
+jspCanReturnMany(JsonPathItem *item, bool lax)
+{
+	JsonPathItem next;
+	bool		hasNext;
+
+	do
+	{
+		switch (item->type)
+		{
+			case jpiAny:
+			case jpiAnyKey:
+			case jpiAnyArray:
+			case jpiKeyValue:
+			case jpiSequence:
+				return true;
+
+			case jpiKey:
+			case jpiFilter:
+			case jpiPlus:
+			case jpiMinus:
+			/* all methods excluding type() and size() */
+			case jpiAbs:
+			case jpiFloor:
+			case jpiCeiling:
+			case jpiDouble:
+			case jpiDatetime:
+				if (lax)
+					return true;
+				break;
+
+			case jpiIndexArray:
+				{
+					JsonPathItem from;
+					JsonPathItem to;
+
+					if (item->content.array.nelems > 1)
+						return true;
+					if (jspGetArraySubscript(item, &from, &to, 0))
+						return true;
+					if (jspCanReturnMany(&from, lax))
+						return true;
+
+					break;
+				}
+
+			case jpiCast:
+				{
+					JsonPathItem arg;
+
+					if (jspCanReturnMany(jspGetCastArg(item, &arg), lax))
+						return true;
+
+					break;
+				}
+
+			default:
+				break;
+		}
+
+		hasNext = jspGetNext(item, &next);
+
+		item = &next;
+	}
+	while (hasNext);
+
+	return false;
+}
+
+static Datum
+executeCastFromJson(JsonPathExecContext *cxt, ExprContext *econtext,
+					JsonPathCastCache *cache, JsonbValue *jbv, bool *isnull)
+{
+	Datum			  res;
+	struct JsonScalarCoercionExprState *cestate;
+
+	*isnull = jbv->type == jbvNull; /* FIXME coercion to json/jsonb */
+
+	if (cache->returning.typid == JSONXOID)
+		return *isnull ? (Datum) 0 : JsonbPGetDatum(JsonbValueToJsonb(jbv));
+
+	if (cache->returning.typid == JSONOID ||
+		cache->returning.typid == JSONBOID)
+	{
+		StringInfoData buf;
+		char	   *str;
+
+		Assert(JSONXOID == (cache->returning.typid == JSONOID ? JSONBOID : JSONOID));
+
+		if (*isnull)
+			return (Datum) 0;
+
+		initStringInfo(&buf);
+
+		str = JsonbToCString(&buf, &JsonbValueToJsonb(jbv)->root, 0);
+
+		return cache->returning.typid == JSONBOID
+			? DirectFunctionCall1(jsonb_in, CStringGetDatum(str))
+			: PointerGetDatum(cstring_to_text(str));
+	}
+
+	res = // FIXME *isnull ? (Datum) 0 :
+		ExecPrepareJsonItemCoercion(jbv, JSONXOID == JSONBOID,
+									&cache->returning,
+									&cache->coercions,
+									cxt->cache_mcxt, &cestate);
+
+	if (cestate->coerce_via_io)
+	{
+		Jsonb	   *jb = JsonbValueToJsonb(jbv);
+		char	   *str = *isnull ? NULL : JsonbUnquote(jb);
+
+		res = InputFunctionCall(&cache->input.func, str,
+								cache->input.typioparam,
+								cache->returning.typmod);
+	}
+	else if (cestate->coerce_via_populate)
+	{
+		res = json_populate_type(res, JSONXOID,
+								 cache->returning.typid,
+								 cache->returning.typmod,
+								 &cache->cache,
+								 econtext->ecxt_per_query_memory,
+								 isnull);
+	}
+	else if (cestate->result_expr_state)
+	{
+		res = ExecEvalExprPassingCaseValue(cestate->result_expr_state, econtext,
+										   isnull, res, *isnull);
+	}
+	/* else no coercion */
+
+	return res;
+}
+
+static Datum
+executeJsonCast(JsonPathExecContext *cxt, JsonbValue *jbv, int castId,
+				bool execCastExpr, ExprContext *econtext, bool *isnull)
+{
+	JsonPathCastCache *cache = cxt->cache[castId];
+	JsonPathCastCache *cache2 = cache->expr.estate ? cxt->cache[cache->castId] : cache;
+	Datum		value = executeCastFromJson(cxt, econtext, cache2, jbv, isnull);
+
+	if (cache->expr.estate && execCastExpr)
+	{
+		ExprContext *ecxt = CreateStandaloneExprContext(); /* FIXME cache */
+
+		Assert(list_length(cache->expr.params) == 1);
+
+		ecxt->ecxt_param_exec_vals = palloc0(sizeof(ParamExecData));
+
+		ecxt->ecxt_param_exec_vals[0].value = value;
+		ecxt->ecxt_param_exec_vals[0].isnull = *isnull;
+
+		value = ExecEvalExpr(cache->expr.estate, ecxt, isnull);
+	}
+
+	return value;
+}
+
+static JsonPathExecResult
+executeSingleValueCast(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					   JsonbValue *jb, Datum *value, bool *isnull);
+
+static JsonPathExecResult
+executeOp(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+		  bool convertToJsonb, Datum *value, bool *isnull, bool *isbool);
+
+static JsonPathOpCache *
+prepareOp(JsonPathExecContext *cxt, JsonPathItem *jsp, bool to_jsonb);
+
+static inline Node *
+prepareOpArg(JsonPathOpContext *cxt, JsonPathItem *op, int32 pos,
+			 JsonPathOpParam **pparam, bool forceParam);
+
+static Node *
+prepareExpr(JsonPathOpContext *cxt, JsonPathItem *expr,
+			JsonPathOpParam **pparam, bool forceParam);
+
+static Node *
+buildOpExpr(JsonPathOpContext *cxt, JsonPathItem *jsp,
+			JsonPathOpParam **lparam, JsonPathOpParam **rparam,
+			bool forceParams)
+{
+	Node 	   *lexpr;
+	Node 	   *rexpr;
+
+	lexpr = prepareOpArg(cxt, jsp, jsp->content.op.left, lparam, forceParams);
+	rexpr = prepareOpArg(cxt, jsp, jsp->content.op.right, rparam, forceParams);
+
+	return (Node *) makeSimpleA_Expr(AEXPR_OP, jsp->content.op.name,
+									 lexpr, rexpr, -1);
+}
+
+static TypeName *
+makeTypeNameForCast(JsonPathItem *jsp)
+{
+	TypeName   *typname;
+	List	   *names = NIL;
+	char	   *name =  jsp->content.cast.type_name;
+	int			i;
+
+	for (i = 0; i < jsp->content.cast.type_name_count; i++)
+	{
+		names = lappend(names, makeString(name));
+		name += jsp->content.cast.type_name_len[i] + 1;
+	}
+
+	typname = makeTypeNameFromNameList(names);
+
+	if (jsp->content.cast.type_is_array)
+		typname->arrayBounds = list_make1(makeInteger(-1));
+
+	/* TODO setof ??? */
+	/* FIXME if (jsp->content.cast.type_mods) */
+
+	return typname;
+}
+
+static Node *
+buildCastExpr(JsonPathOpContext *cxt, JsonPathItem *cast, JsonPathItem *arg)
+{
+	TypeCast   *typecast = makeNode(TypeCast);
+
+	typecast->arg = prepareExpr(cxt, arg, NULL, false);
+	typecast->typeName = makeTypeNameForCast(cast);
+	typecast->location = -1;
+
+	return (Node *) typecast;
+}
+
+static JsonPathCastCache *
+prepareCast(JsonPathExecContext *cxt, JsonPathItem *jsp, bool convertToJson)
+{
+	JsonPathCastCache *cache = cxt->cache[jsp->content.cast.id];
+	JsonReturning *returning;
+	JsonPathItem arg;
+	TypeName   *typname;
+	Oid			typinput;
+	bool		argIsTyped;
+
+	if (cache)
+		return cache;
+
+	Assert(CurrentMemoryContext == cxt->cache_mcxt);
+
+	cache = cxt->cache[jsp->content.cast.id] = palloc0(sizeof(*cache));
+
+	returning = &cache->returning;
+
+	typname = makeTypeNameForCast(jsp);
+	typenameTypeIdAndMod(NULL, typname, &returning->typid, &returning->typmod);
+
+	returning->format.type = JS_FORMAT_DEFAULT;
+	returning->format.encoding = JS_ENC_DEFAULT;
+	returning->format.location = -1;
+
+	/* lookup the result type's input function */
+	getTypeInputInfo(returning->typid, &typinput, &cache->input.typioparam);
+	fmgr_info(typinput, &cache->input.func);
+
+	jspGetCastArg(jsp, &arg);
+
+	cache->arg = arg;
+
+	argIsTyped = !jspHasNext(&arg) &&
+		(arg.type == jpiCast || arg.type == jpiOperator);
+
+	if (convertToJson || argIsTyped)
+	{
+		JsonPathOpContext opcxt;
+		ParseState *pstate;
+		Node	   *aexpr;
+		Node	   *expr;
+
+		opcxt.context = cxt;
+		opcxt.params = NIL;
+
+		aexpr = argIsTyped
+			? buildCastExpr(&opcxt, jsp, &arg)
+			: addParam(&opcxt, &arg, returning->typid, returning->typmod,
+					   jsp->content.cast.id, false, NULL);
+
+		pstate = make_parsestate(NULL);
+
+		pstate->p_paramref_hook = paramRefHook;
+		pstate->p_ref_hook_state = &opcxt;
+
+		if (convertToJson)
+			aexpr = (Node *) makeFuncCall(SystemFuncName(TO_JSONX_FUNC),
+										  list_make1(aexpr), -1);
+
+		expr = transformExpr(pstate, aexpr, EXPR_KIND_SELECT_TARGET);
+
+		if (!convertToJson &&
+			(returning->typid != exprType(expr) ||
+			 returning->typmod != exprTypmod(expr)))
+			elog(ERROR, "jsonpath cast type ids do not match");
+
+		cache->expr.expr = expr;
+		cache->expr.params = opcxt.params;
+		cache->expr.estate = ExecInitExpr((Expr *) cache->expr.expr, NULL);
+
+		cache->castId = jsp->content.cast.id;
+
+		while (arg.type == jpiCast && !jspHasNext(&arg))
+		{
+			cache->castId = arg.content.cast.id;
+			jspGetCastArg(&arg, &arg);
+		}
+
+		cache->arg = arg;
+
+		cache->isMultiValued = jspCanReturnMany(&arg, cxt->lax);
+
+		if (cache->isMultiValued)
+		{
+			JsonPathOpParam *param;
+
+			if (list_length(cache->expr.params) != 1)
+				elog(ERROR, "multi-valued jsonpath cast expression must have exactly one parameter");
+
+			param = linitial(cache->expr.params);
+
+			if ((argIsTyped ^ (cache->castId != jsp->content.cast.id)) ||
+				param->item.type != arg.type ||
+				param->item.flags != arg.flags ||
+				param->item.nextPos != arg.nextPos ||
+				param->item.base != arg.base
+				/* memcmp(&param->item, &arg, sizeof(arg)) */)
+				elog(ERROR, "invalid jsonpath reference in multi-valued jsonpath cast expression parameter");
+		}
+		else if (arg.type == jpiOperator && !jspHasNext(&arg))
+			cache->arg = *jsp;
+	}
+
+	return cache;
+}
+
+static Node *
+prepareExpr(JsonPathOpContext *cxt, JsonPathItem *expr,
+			JsonPathOpParam **pparam, bool forceParam)
+{
+	if (jspHasNext(expr))
+		return addParam(cxt, expr, JSONXOID, -1, -1, false, pparam);
+
+	switch (expr->type)
+	{
+		case jpiOperator:
+			{
+				JsonPathOpCache *cache = prepareOp(cxt->context, expr, false);
+				JsonPathOpParam *lparam;
+				JsonPathOpParam *rparam;
+
+				if (forceParam || cache->isMultiValuedBool)
+					return addParam(cxt, expr, cache->typid, cache->typmod, -1,
+									false, pparam);
+
+				return buildOpExpr(cxt, expr, &lparam, &rparam, false);
+			}
+
+		case jpiCast:
+			{
+				JsonPathItem arg;
+				JsonPathCastCache *cache =
+					prepareCast(cxt->context, expr, false);
+
+				if (forceParam || !cache->expr.expr)
+					return addParam(cxt, &cache->arg,
+									cache->returning.typid,
+									cache->returning.typmod,
+									expr->content.cast.id, true, pparam);
+
+				jspGetCastArg(expr, &arg);
+
+				return buildCastExpr(cxt, expr, &arg);
+			}
+
+		case jpiOr:
+		case jpiAnd:
+			elog(ERROR, "&& and || are not yet implemented");
+			break;
+
+		default:
+			return addParam(cxt, expr, JSONXOID, -1, -1, false, pparam);
+	}
+}
+
+static inline Node *
+prepareOpArg(JsonPathOpContext *cxt, JsonPathItem *op, int32 pos,
+			 JsonPathOpParam **pparam, bool forceParam)
+{
+	JsonPathItem arg;
+
+	*pparam = NULL;
+
+	if (!pos)
+		return NULL;
+
+	jspInitByBuffer(&arg, op->base, pos);
+
+	return prepareExpr(cxt, &arg, pparam, forceParam);
+}
+
+static JsonPathOpCache *
+prepareOp(JsonPathExecContext *cxt, JsonPathItem *jsp, bool to_jsonb)
+{
+	JsonPathOpContext opcxt;
+	JsonPathOpCache *cache = cxt->cache[jsp->content.op.id];
+	JsonPathOpParam	*lparam;
+	JsonPathOpParam *rparam;
+	ParseState *pstate;
+	Node	   *expr;
+	Node	   *aexpr;
+	Node	   *fexpr;
+
+	if (cache)
+		return cache;
+
+	Assert(CurrentMemoryContext == cxt->cache_mcxt);
+
+	cache = cxt->cache[jsp->content.op.id] = palloc0(sizeof(*cache));
+
+	memset(&opcxt, 0, sizeof(opcxt));
+	opcxt.context = cxt;
+
+	aexpr = buildOpExpr(&opcxt, jsp, &lparam, &rparam, false);
+
+	pstate = make_parsestate(NULL);
+
+	pstate->p_paramref_hook = paramRefHook;
+	pstate->p_ref_hook_state = &opcxt;
+
+	expr = transformExpr(pstate, aexpr, EXPR_KIND_SELECT_TARGET);
+
+	cache->typid = exprType(expr);
+	cache->typmod = exprTypmod(expr);
+	cache->isMultiValuedBool = false;
+
+	/* binary boolean operators with multi-value args need special processing */
+	if (cache->typid == BOOLOID &&
+		(jsp->content.op.left && jsp->content.op.right))
+	{
+		JsonPathItem larg;
+		JsonPathItem rarg;
+		bool		lmulti;
+		bool		rmulti;
+
+		jspInitByBuffer(&larg, jsp->base, jsp->content.op.left);
+		jspInitByBuffer(&rarg, jsp->base, jsp->content.op.right);
+
+		lmulti = jspCanReturnMany(&larg, cxt->lax) || cxt->lax;
+		rmulti = jspCanReturnMany(&rarg, cxt->lax) || cxt->lax;
+
+		cache->isMultiValuedBool = lmulti || rmulti;
+
+		if (cache->isMultiValuedBool)
+		{
+			if (!lparam || !rparam)
+			{
+				/* rebuild A_Expr using both ParamRefs */
+				opcxt.params = NIL;
+				aexpr = buildOpExpr(&opcxt, jsp, &lparam, &rparam, true);
+			}
+
+			lparam->multivalue = lmulti;
+			rparam->multivalue = rmulti;
+		}
+	}
+
+	if (to_jsonb && cache->typid != BOOLOID)
+		fexpr = (Node *) makeFuncCall(SystemFuncName(TO_JSONX_FUNC),
+									  list_make1(aexpr), -1);
+	else
+		fexpr = aexpr;
+
+	if (cache->isMultiValuedBool || fexpr != aexpr)
+		expr = transformExpr(pstate, fexpr, EXPR_KIND_SELECT_TARGET);
+
+	free_parsestate(pstate);
+
+	cache->expr.expr = expr;
+	cache->expr.params = opcxt.params;
+	cache->expr.estate = ExecInitExpr((Expr *) cache->expr.expr, NULL);
+
+	return cache;
+}
+
+static void
+assignParamValue(JsonPathExecContext *cxt, ExprContext *econtext,
+				 ParamExecData *param, JsonPathOpParam *jsparam,
+				 JsonbValue *jbv)
+{
+	param->execPlan = NULL;
+	param->isnull = false;
+	param->value = jsparam->castId >= 0
+		? executeJsonCast(cxt, jbv, jsparam->castId, jsparam->execCastExpr,
+						  econtext, &param->isnull)
+		: JsonbPGetDatum(JsonbValueToJsonb(jbv));
+}
+
+static JsonPathExecResult
+executeParam(JsonPathExecContext *cxt, ExprContext *econtext,
+			 JsonPathOpParam *jsparam, JsonbValue *jb, ParamExecData *param,
+			 JsonValueList *pvals)
+{
+	JsonValueList vals = { 0 };
+	JsonPathExecResult res;
+
+	if (jsparam->item.type == jpiOperator && !jspHasNext(&jsparam->item))
+	{
+		Assert(!jsparam->multivalue);
+
+		return executeOp(cxt, &jsparam->item, jb, false,
+						 &param->value, &param->isnull, NULL);
+	}
+
+	if (jsparam->item.type == jpiCast && !jspHasNext(&jsparam->item))
+	{
+		Assert(!jsparam->multivalue);
+
+		return executeSingleValueCast(cxt, &jsparam->item, jb,
+									  &param->value, &param->isnull);
+	}
+
+	res = pvals
+		? recursiveExecuteAndUnwrap(cxt, &jsparam->item, jb, &vals)
+		: recursiveExecute(cxt, &jsparam->item, jb, &vals);
+
+	if (jperIsError(res))
+		return res;
+
+	if (jsparam->multivalue)
+	{
+		Assert(pvals);
+		*pvals = vals;
+	}
+	else
+	{
+		JsonbValue *jbv;
+
+		if (JsonValueListLength(&vals) != 1)
+			return jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+
+		jbv = JsonValueListHead(&vals);
+
+		assignParamValue(cxt, econtext, param, jsparam, jbv);
+	}
+
+	return res;
+}
+
+static JsonPathExecResult
+executeBoolOp(JsonPathExecContext *cxt, ExprContext *econtext,
+			  JsonPathOpCache *op, JsonValueList *vals,
+			  JsonPathOpParam *param, ParamExecData *data,
+			  bool *found, bool *error)
+{
+	JsonValueListIterator it = { 0 };
+	JsonbValue *rval;
+
+	while ((rval = JsonValueListNext(vals, &it)))
+	{
+		bool		isnull;
+		Datum		value;
+
+		assignParamValue(cxt, econtext, data, param, rval);
+
+		value = ExecEvalExpr(op->expr.estate, econtext, &isnull);
+
+		/* FIXME PG_TRY/PG_CATCH ???
+		if (error)
+		{
+			if (!cxt->lax)
+				return jperError;
+
+			*error = true;
+		}
+		else
+		*/
+		if (isnull)
+		{
+			*error = true;
+		}
+		else if (DatumGetBool(value))
+		{
+			/* if (cxt->lax) */		/* errors are not possible now */
+				return jperOk;
+
+			*found = true;
+		}
+	}
+
+	return jperNotFound;
+}
+
+static JsonPathExecResult
+executeBinaryBoolOp(JsonPathExecContext *cxt, JsonPathOpCache *cache,
+					JsonbValue *jbv, ExprContext *econtext)
+{
+	JsonValueListIterator lseqit = { 0 };
+	JsonPathOpParam *lparam = linitial(cache->expr.params);
+	JsonPathOpParam *rparam = lsecond(cache->expr.params);
+	ParamExecData *ldata = &econtext->ecxt_param_exec_vals[0];
+	ParamExecData *rdata = &econtext->ecxt_param_exec_vals[1];
+	JsonValueList lseq;
+	JsonValueList rseq;
+	JsonPathExecResult res;
+	bool		found = false;
+	bool		error = false;
+
+	Assert(list_length(cache->expr.params) == 2);
+
+	res = executeParam(cxt, econtext, lparam, jbv, ldata, &lseq);
+	if (jperIsError(res))
+		return jperError;
+
+	res = executeParam(cxt, econtext, rparam, jbv, rdata, &rseq);
+	if (jperIsError(res))
+		return jperError;
+
+	if (lparam->multivalue && rparam->multivalue)
+	{
+		JsonbValue *lval;
+
+		while ((lval = JsonValueListNext(&lseq, &lseqit)))
+		{
+			assignParamValue(cxt, econtext, ldata, lparam, lval);
+
+			res = executeBoolOp(cxt, econtext, cache, &rseq, rparam, rdata,
+								&found, &error);
+
+			if (res != jperNotFound)
+				return res;
+		}
+	}
+	else if (lparam->multivalue)
+	{
+		res = executeBoolOp(cxt, econtext, cache, &lseq, lparam, ldata,
+							&found, &error);
+
+		if (res != jperNotFound)
+			return res;
+	}
+	else if (rparam->multivalue)
+	{
+		res = executeBoolOp(cxt, econtext, cache, &rseq, rparam, rdata,
+							&found, &error);
+
+		if (res != jperNotFound)
+			return res;
+	}
+	else
+		elog(ERROR, "multivalue jsonpath bool operator must have at least one multivalue operand");
+
+	if (found)
+		return jperOk;
+
+	if (error)
+		return jperError;
+
+	return jperNotFound;
+}
+
+static JsonPathExecResult
+executeOpExpr(JsonPathExecContext *cxt, ExprContext *econtext,
+			  JsonPathExprCache *cache, JsonbValue *jb, bool isBoolOperator,
+			  Datum *value, bool *isnull)
+{
+	ListCell   *lc;
+	int			i = 0;
+
+	foreach(lc, cache->params)
+	{
+		JsonPathOpParam *param = lfirst(lc);
+		JsonPathExecResult res =
+			executeParam(cxt, econtext, param, jb,
+						 &econtext->ecxt_param_exec_vals[i++], NULL);
+
+		if (jperIsError(res))
+		{
+			if (isBoolOperator)
+			{
+				*isnull = true;
+				*value = (Datum) 0;
+
+				return jperOk;
+			}
+
+			return res;
+		}
+	}
+
+	*value = ExecEvalExpr(cache->estate, econtext, isnull);
+
+	return jperOk;
+}
+
+static JsonPathExecResult
+executeOp(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+		  bool convertToJsonb, Datum *value, bool *isnull, bool *isbool)
+{
+	JsonPathOpCache *cache;
+	JsonPathExecResult res;
+	ExprContext *econtext;
+	ParamExecData *params;
+	MemoryContext oldcxt = MemoryContextSwitchTo(cxt->cache_mcxt);
+
+	cache = prepareOp(cxt, jsp, convertToJsonb);
+
+	MemoryContextSwitchTo(oldcxt);
+
+	if (isbool)
+		*isbool = cache->typid == BOOLOID;
+
+	params = palloc0(sizeof(*params) * list_length(cache->expr.params)); /* FIXME cache */
+
+	econtext = CreateStandaloneExprContext();
+	econtext->ecxt_param_exec_vals = params;
+
+	if (cache->isMultiValuedBool)
+	{
+		res = executeBinaryBoolOp(cxt, cache, jb, econtext);
+
+		if (jperIsError(res))
+		{
+			*isnull = true;
+			*value = (Datum) 0;
+		}
+		else
+		{
+			*isnull = false;
+			*value = BoolGetDatum(res == jperOk);
+		}
+
+		res = jperOk;
+	}
+	else
+	{
+		res = executeOpExpr(cxt, econtext, &cache->expr, jb,
+							cache->typid == BOOLOID, value, isnull);
+	}
+
+	pfree(params);
+
+	//FreeExprContext(econtext, true); /* FIXME result mcxt */
+
+	return res;
+}
+
+static JsonPathExecResult
+executeNextDatum(JsonPathExecContext *cxt, JsonPathItem *jsp,
+				 Datum value, bool isnull, bool isbool, JsonValueList *found)
+{
+	JsonbValue	jbv;
+
+	/* convert Datum to JsonbValue */
+	if (isbool)
+	{
+		/* value must be bool type */
+		if (isnull)
+			jbv.type = jbvNull; /* FIXME return jperError */
+		else
+		{
+			jbv.type = jbvBool;
+			jbv.val.boolean = DatumGetBool(value);
+		}
+	}
+	else
+	{
+		/* value must be jsonb type */
+		if (isnull)
+			jbv.type = jbvNull;
+		else
+			JsonbInitBinary(&jbv, DatumGetJsonbP(value));
+	}
+
+	return recursiveExecuteNext(cxt, jsp, NULL, &jbv, found, true);
+}
+
+static JsonPathExecResult
+executeOperator(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+				JsonValueList *found, bool needBool)
+{
+
+	Datum		value;
+	bool		isnull;
+	bool		isbool;
+	JsonPathExecResult res = executeOp(cxt, jsp, jb, true,
+									   &value, &isnull, &isbool);
+
+	if (jperIsError(res))
+		return res;
+
+	if (needBool)
+	{
+		if (!isbool)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("expected boolean operator")));
+
+		if (jspHasNext(jsp))
+			elog(ERROR, "boolean json path item can not have next item");
+
+		return isnull ? jperError : DatumGetBool(value) ? jperOk : jperNotFound;
+	}
+
+	return executeNextDatum(cxt, jsp, value, isnull, isbool, found);
+}
+
+static JsonPathExecResult
+executeSingleValueCast(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					   JsonbValue *jb, Datum *value, bool *isnull)
+{
+	ParamExecData *params;
+	ExprContext *econtext;
+	MemoryContext oldcxt = MemoryContextSwitchTo(cxt->cache_mcxt);
+	JsonPathCastCache *cache = prepareCast(cxt, jsp, true);
+
+	MemoryContextSwitchTo(oldcxt);
+
+	params = palloc0(sizeof(*params) * list_length(cache->expr.params)); /* FIXME cache */
+
+	econtext = CreateStandaloneExprContext(); /* FIXME cache */
+	econtext->ecxt_param_exec_vals = params;
+
+	Assert(cache->expr.expr && !cache->isMultiValued);
+
+	return executeOpExpr(cxt, econtext, &cache->expr, jb, false, value, isnull);
+}
+
+static JsonPathExecResult
+executeCast(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
+			JsonValueList *found, bool needBool)
+{
+	JsonValueList values = { 0 };
+	JsonbValue *jbv;
+	JsonPathExecResult res;
+	JsonPathCastCache *cache;
+	ParamExecData *params;
+	ExprContext *econtext;
+	MemoryContext oldcxt = MemoryContextSwitchTo(cxt->cache_mcxt);
+
+	cache = prepareCast(cxt, jsp, !needBool);
+
+	MemoryContextSwitchTo(oldcxt);
+
+	if (needBool)
+	{
+		if (cache->returning.typid != BOOLOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("expected cast to boolean type")));
+
+		if (jspHasNext(jsp))
+			elog(ERROR, "boolean json path item can not have next item");
+	}
+
+	params = palloc0(sizeof(*params) * list_length(cache->expr.params)); /* FIXME cache */
+
+	econtext = CreateStandaloneExprContext();
+	econtext->ecxt_param_exec_vals = params;
+
+	if (cache->expr.expr && !cache->isMultiValued)
+	{
+		Datum 		value;
+		bool		isnull;
+
+		res = executeOpExpr(cxt, econtext, &cache->expr, jb, false,
+							&value, &isnull);
+
+		if (needBool)
+			return jperIsError(res) || isnull ? jperError :
+				DatumGetBool(value) ? jperOk : jperNotFound;
+
+		if (!jperIsError(res))
+			res = executeNextDatum(cxt, jsp, value, isnull, false, found);
+	}
+	else
+	{
+		JsonValueListIterator it = { 0 };
+		int32		castId = /*cache->expr.expr ? cache->castId :*/ jsp->content.cast.id;
+		JsonPathItem *arg = /*cache->expr.expr
+			? &((JsonPathOpParam *) linitial(cache->expr.params))->item
+			: */ &cache->arg;
+
+		res = recursiveExecute(cxt, arg, jb, &values);
+		if (jperIsError(res))
+			return  needBool ? jperError : res;
+
+		if (needBool && JsonValueListLength(&values) != 1)
+			return jperError;
+
+		while ((jbv = JsonValueListNext(&values, &it)))
+		{
+			bool		isnull;
+			Datum		value = executeJsonCast(cxt, jbv, castId, true,
+												econtext, &isnull);
+
+			if (needBool)
+				return isnull ? jperError :
+					DatumGetBool(value) ? jperOk : jperNotFound;
+
+			res = executeNextDatum(cxt, jsp, value, isnull, false, found);
+
+			if (jperIsError(res))
+				return needBool ? jperError : res;
+		}
+	}
+
+	return res;
 }
 
 static inline JsonPathExecResult
@@ -2037,7 +3072,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			res = appendBoolResult(cxt, jsp, found, res, needBool);
 			break;
 		case jpiNull:
-		case jpiBool:
+		case jpiBool: /* FIXME predicates */
 		case jpiNumeric:
 		case jpiString:
 		case jpiVariable:
@@ -2846,6 +3881,15 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										   false);
 			}
 			break;
+
+		case jpiCast:
+			res = executeCast(cxt, jsp, jb, found, needBool);
+			break;
+
+		case jpiOperator:
+			res = executeOperator(cxt, jsp, jb, found, needBool);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
@@ -3005,6 +4049,8 @@ recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiExists:
 		case jpiStartsWith:
 		case jpiLikeRegex:
+		case jpiOperator:
+		case jpiCast:
 			break;
 
 		default:
@@ -3019,7 +4065,8 @@ recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
  * Public interface to jsonpath executor
  */
 JsonPathExecResult
-executeJsonPath(JsonPath *path, List *vars, Jsonb *json, JsonValueList *foundJson)
+executeJsonPath(JsonPath *path, List *vars, Jsonb *json,
+				JsonValueList *foundJson, void **pCache, MemoryContext cacheCxt)
 {
 	JsonPathExecContext cxt;
 	JsonPathItem	jsp;
@@ -3034,7 +4081,69 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, JsonValueList *foundJso
 	cxt.stack = NULL;
 	cxt.innermostArraySize = -1;
 
+	if (path->ext_items_count)
+	{
+		if (pCache)
+		{
+			struct
+			{
+				JsonPath   *path;
+				void	  **cache;
+			} *cache = *pCache;
+
+			if (!cache)
+				cache = *pCache = MemoryContextAllocZero(cacheCxt, sizeof(*cache));
+
+			if (cache->path &&
+				(VARSIZE(path) != VARSIZE(cache->path) ||
+				 memcmp(path, cache->path, VARSIZE(path))))
+			{
+				/* invalidate cache TODO optimize */
+				cache->path = NULL;
+
+				if (cache->cache)
+				{
+					pfree(cache->cache);
+					cache->cache = NULL;
+				}
+			}
+
+			if (cache->path)
+			{
+				Assert(cache->cache);
+			}
+			else
+			{
+				Assert(!cache->cache);
+
+				cache->path = MemoryContextAlloc(cacheCxt, VARSIZE(path));
+				memcpy(cache->path, path, VARSIZE(path));
+
+				cache->cache = MemoryContextAllocZero(cacheCxt,
+													  sizeof(cxt.cache[0]) *
+													  path->ext_items_count);
+			}
+
+			cxt.cache = cache->cache;
+			cxt.cache_mcxt = cacheCxt;
+
+			path = cache->path;		/* use cached jsonpath value */
+		}
+		else
+		{
+			cxt.cache = palloc0(sizeof(cxt.cache[0]) * path->ext_items_count);
+			cxt.cache_mcxt = CurrentMemoryContext;
+		}
+	}
+	else
+	{
+		cxt.cache = NULL;
+		cxt.cache_mcxt = NULL;
+	}
+
 	pushJsonItem(&cxt.stack, &root, cxt.root);
+
+	jspInit(&jsp, path);
 
 	if (!cxt.lax && !foundJson)
 	{
@@ -3206,7 +4315,8 @@ jsonb_jsonpath_exists(PG_FUNCTION_ARGS)
 	if (PG_NARGS() == 3)
 		vars = makePassingVars(PG_GETARG_JSONB_P(2));
 
-	res = executeJsonPath(jp, vars, jb, NULL);
+	res = executeJsonPath(jp, vars, jb, NULL,
+						  &fcinfo->flinfo->fn_extra, fcinfo->flinfo->fn_mcxt);
 
 	PG_FREE_IF_COPY(jb, 0);
 	PG_FREE_IF_COPY(jp, 1);
@@ -3237,7 +4347,9 @@ jsonb_jsonpath_predicate(FunctionCallInfo fcinfo, List *vars)
 	JsonValueList found = { 0 };
 	JsonPathExecResult res;
 
-	res = executeJsonPath(jp, vars, jb, &found);
+	res = executeJsonPath(jp, vars, jb, &found,
+						  &fcinfo->flinfo->fn_extra,
+						  fcinfo->flinfo->fn_mcxt);
 
 	throwJsonPathError(res);
 
@@ -3298,7 +4410,9 @@ jsonb_jsonpath_query(FunctionCallInfo fcinfo, bool safe)
 		if (PG_NARGS() == 3)
 			vars = makePassingVars(PG_GETARG_JSONB_P(2));
 
-		res = executeJsonPath(jp, vars, jb, &found);
+		res = executeJsonPath(jp, vars, jb, &found,
+							  &fcinfo->flinfo->fn_extra,
+							  fcinfo->flinfo->fn_mcxt);
 
 		if (jperIsError(res))
 		{
@@ -3384,7 +4498,7 @@ bool
 JsonbPathExists(Datum jb, JsonPath *jp, List *vars)
 {
 	JsonPathExecResult res = executeJsonPath(jp, vars, DatumGetJsonbP(jb),
-											 NULL);
+											 NULL, NULL, NULL);
 
 	throwJsonPathError(res);
 
@@ -3399,7 +4513,7 @@ JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 	bool		wrap;
 	JsonValueList found = { 0 };
 	JsonPathExecResult jper = executeJsonPath(jp, vars, DatumGetJsonbP(jb),
-											  &found);
+											  &found, NULL, NULL);
 	int			count;
 
 	throwJsonPathError(jper);
@@ -3446,7 +4560,7 @@ JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 	JsonbValue *res;
 	JsonValueList found = { 0 };
 	JsonPathExecResult jper = executeJsonPath(jp, vars, DatumGetJsonbP(jb),
-											  &found);
+											  &found, NULL, NULL);
 	int			count;
 
 	throwJsonPathError(jper);
@@ -3639,7 +4753,7 @@ JsonTableResetContextItem(JsonTableScanState *scan, Datum item)
 	oldcxt = MemoryContextSwitchTo(scan->mcxt);
 
 	res = executeJsonPath(scan->path, scan->args, DatumGetJsonbP(item),
-						  &scan->found);
+						  &scan->found, NULL /* FIXME */, NULL);
 
 	MemoryContextSwitchTo(oldcxt);
 

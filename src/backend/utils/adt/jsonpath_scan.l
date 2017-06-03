@@ -69,7 +69,18 @@ any			[^\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\" \t\n\r\f]
 blank		[ \t\n\r\f]
 unicode		\\u[0-9A-Fa-f]{4}
 
+/* FIXME @ is not in op_chars */
+op_chars		[\~\!\#\^\&\|\`\?\+\-\*\/\%\<\>\=]|(\\[\@\?])
+operator		{op_chars}+
+
 %%
+
+<INITIAL>\/\*{op_chars}*		{
+									addchar(true, '\0');
+									BEGIN xCOMMENT;
+									/* Put back any characters past slash-star; see above */
+									yyless(2);
+								}
 
 <INITIAL>\&\&					{ return AND_P; }
 
@@ -105,14 +116,98 @@ unicode		\\u[0-9A-Fa-f]{4}
 									BEGIN xVARQUOTED;
 								}
 
+<INITIAL>::						{ return TYPECAST_P; }
+
 <INITIAL>{special}				{ return *yytext; }
 
 <INITIAL>{blank}+				{ /* ignore */ }
 
-<INITIAL>\/\*					{
-									addchar(true, '\0');
-									BEGIN xCOMMENT;
-								}
+<INITIAL>{operator}	{
+					/*
+					 * Check for embedded slash-star or dash-dash; those
+					 * are comment starts, so operator must stop there.
+					 * Note that slash-star or dash-dash at the first
+					 * character will match a prior rule, not this one.
+					 */
+					int			nchars = yyleng;
+					char	   *slashstar = strstr(yytext, "/*");
+					char		opname[NAMEDATALEN];
+					char	   *src;
+					char	   *dst;
+
+					if (slashstar)
+						nchars = slashstar - yytext;
+
+					/*
+					 * For SQL compatibility, '+' and '-' cannot be the
+					 * last char of a multi-char operator unless the operator
+					 * contains chars that are not in SQL operators.
+					 * The idea is to lex '=-' as two operators, but not
+					 * to forbid operator names like '?-' that could not be
+					 * sequences of SQL operators.
+					 */
+					while (nchars > 1 &&
+						   (yytext[nchars - 1] == '+' ||
+							yytext[nchars - 1] == '-'))
+					{
+						int			ic;
+
+						for (ic = nchars - 2; ic >= 0; ic--)
+						{
+							if (strchr("~!@#^&|`?%", yytext[ic]))
+								break;
+						}
+						if (ic >= 0)
+							break; /* found a char that makes it OK */
+						nchars--; /* else remove the +/-, and check again */
+					}
+
+					/* SET_YYLLOC(); */
+
+					if (nchars < yyleng)
+					{
+						/* Strip the unwanted chars from the token */
+						yyless(nchars);
+						/*
+						 * If what we have left is only one char, and it's
+						 * one of the characters matching "special", then
+						 * return it as a character token the same way
+						 * that the "self" rule would have.
+						 */
+						if (nchars == 1 &&
+							strchr("?%$.[]{}()|&!=<>@#,*:-+/", yytext[0]))
+							return yytext[0];
+					}
+
+					/*
+					 * Complain if operator is too long.  Unlike the case
+					 * for identifiers, we make this an error not a notice-
+					 * and-truncate, because the odds are we are looking at
+					 * a syntactic mistake anyway.
+					 */
+					if (nchars >= NAMEDATALEN)
+						yyerror(NULL, "operator too long");
+
+					src = yytext;
+					dst = opname;
+
+					while (nchars-- > 0)
+					{
+						if (*src == '\\')
+						{
+							src++;
+							continue;
+						}
+
+						*dst++ = *src++;
+					}
+
+					addstring(true, opname, dst - opname);
+					addchar(false, '\0');
+					yylval->str = scanstring;
+
+					return OPERATOR_P;
+				}
 
 <INITIAL>@[0-9]+ /* @N */		{
 									addstring(true, yytext, yyleng);
@@ -231,11 +326,13 @@ unicode		\\u[0-9A-Fa-f]{4}
 
 <INITIAL><<EOF>>				{ yyterminate(); }
 
-<xCOMMENT>\*\/					{ BEGIN INITIAL; }
+<xCOMMENT>\*+\/					{ BEGIN INITIAL; }
 
 <xCOMMENT>[^\*]+				{ }
 
-<xCOMMENT>\*					{ }
+<xCOMMENT>{op_chars}			{ }
+
+<xCOMMENT>\*+					{ }
 
 <xCOMMENT><<EOF>>				{ yyerror(NULL, "Unexpected end of comment"); }
 
