@@ -39,6 +39,7 @@ makeItemType(int type)
 
 	v->type = type;
 	v->flags = 0;
+	v->datatype = JPI_JSON;
 	v->next = NULL;
 
 	return v;
@@ -118,6 +119,7 @@ makeItemBool(bool val) {
 	JsonPathParseItem *v = makeItemType(jpiBool);
 
 	v->value.boolean = val;
+	v->datatype = JPI_BOOL;
 
 	return v;
 }
@@ -127,8 +129,42 @@ makeItemBinary(int type, JsonPathParseItem* la, JsonPathParseItem *ra)
 {
 	JsonPathParseItem  *v = makeItemType(type);
 
+	if (la)
+		v->flags |= la->flags & JSPI_EXT_EXEC;
+	if (ra)
+		v->flags |= ra->flags & JSPI_EXT_EXEC;
 	v->value.args.left = la;
 	v->value.args.right = ra;
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemOperator(string *opname, JsonPathParseItem *la, JsonPathParseItem *ra)
+{
+	JsonPathParseItem *v = makeItemType(jpiOperator);
+
+	v->flags |= JSPI_EXT_EXEC;
+	v->datatype = JPI_UNKNOWN;
+	v->value.op.name = opname->val;
+	v->value.op.namelen = opname->len;
+	v->value.op.left = la;
+	v->value.op.right = ra;
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemCast(JsonPathParseItem *arg, struct JsonPathTypeName *type)
+{
+	JsonPathParseItem *v = makeItemType(jpiCast);
+
+	v->flags |= JSPI_EXT_EXEC;
+	v->datatype = JPI_UNKNOWN;
+	v->value.cast.type_name = type->name;
+	v->value.cast.type_is_array = type->isarray;
+	v->value.cast.type_mods = type->typmods;
+	v->value.cast.arg = arg;
 
 	return v;
 }
@@ -152,7 +188,132 @@ makeItemUnary(int type, JsonPathParseItem* a)
 
 	v = makeItemType(type);
 
+	if (a)
+		v->flags |= a->flags & JSPI_EXT_EXEC;
 	v->value.arg = a;
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemBinaryExpr(int type, JsonPathParseItem* la, JsonPathParseItem *ra)
+{
+	JsonPathParseItem  *v = makeItemBinary(type, la, ra);
+
+	if (type == jpiStartsWith)
+		v->datatype = JPI_BOOL;
+	else if ((la->datatype == JPI_UNKNOWN && !la->next) ||
+			 (ra->datatype == JPI_UNKNOWN && !ra->next))
+	{
+		string opname;
+
+		switch (type)
+		{
+			case jpiAdd:
+				opname.val = "+";
+				break;
+			case jpiSub:
+				opname.val = "-";
+				break;
+			case jpiMul:
+				opname.val = "*";
+				break;
+			case jpiDiv:
+				opname.val = "/";
+				break;
+			case jpiMod:
+				opname.val = "%";
+				break;
+			case jpiEqual:
+				opname.val = "="; /* FIXME == */
+				break;
+			case jpiNotEqual:
+				opname.val = "<>"; /* FIXME != */
+				break;
+			case jpiLess:
+				opname.val = "<";
+				break;
+			case jpiLessOrEqual:
+				opname.val = "<=";
+				break;
+			case jpiGreater:
+				opname.val = ">";
+				break;
+			case jpiGreaterOrEqual:
+				opname.val = ">=";
+				break;
+			case jpiAnd:
+				opname.val = "&&";
+				break;
+			case jpiOr:
+				opname.val = "||";
+				break;
+			default:
+				opname.val = NULL;
+				break;
+		}
+
+		if (opname.val)
+		{
+			opname.len = strlen(opname.val);
+			v = makeItemOperator(&opname, la, ra);
+		}
+		else
+			v->datatype = JPI_UNKNOWN;
+	}
+	else
+	{
+		switch (type)
+		{
+			case jpiAnd:
+			case jpiOr:
+				if (la->datatype != JPI_BOOL || la->next ||
+					ra->datatype != JPI_BOOL || ra->next)
+					yyerror(NULL, "expected boolean expression");
+				/* fall through */
+			case jpiEqual:
+			case jpiNotEqual:
+			case jpiLess:
+			case jpiLessOrEqual:
+			case jpiGreater:
+			case jpiGreaterOrEqual:
+				v->datatype = JPI_BOOL;
+				break;
+
+			default:
+				v->datatype = JPI_JSON;
+				break;
+		}
+	}
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemUnaryExpr(int type, JsonPathParseItem *a)
+{
+	JsonPathParseItem  *v = makeItemUnary(type, a);
+
+	if (type == jpiIsUnknown)
+	{
+		if ((a->datatype != JPI_UNKNOWN && a->datatype != JPI_BOOL) || a->next)
+			yyerror(NULL, "expected boolean expression in IS UNKNOWN argument");
+
+		v->datatype = JPI_BOOL;
+	}
+	else if (type == jpiExists)
+		v->datatype = JPI_BOOL;
+	else if (a->datatype == JPI_UNKNOWN && !a->next)
+		v->datatype = JPI_UNKNOWN;
+	else if (type == jpiNot)
+	{
+		if (a->datatype != JPI_BOOL || a->next)
+			yyerror(NULL, "expected boolean expression in NOT argument");
+
+		v->datatype = JPI_BOOL;
+	}
+	else
+		v->datatype = JPI_JSON;
 
 	return v;
 }
@@ -160,7 +321,7 @@ makeItemUnary(int type, JsonPathParseItem* a)
 static JsonPathParseItem*
 makeItemList(List *list)
 {
-	JsonPathParseItem *head, *end;
+	JsonPathParseItem *head, *end, *lastext = NULL;
 	ListCell   *cell = list_head(list);
 
 	head = end = (JsonPathParseItem *) lfirst(cell);
@@ -168,13 +329,35 @@ makeItemList(List *list)
 	if (!lnext(cell))
 		return head;
 
+	/* find last item with external execution */
+	for_each_cell(cell, lnext(cell))
+	{
+		JsonPathParseItem *c = (JsonPathParseItem *) lfirst(cell);
+
+		if (c->flags & JSPI_EXT_EXEC)
+			lastext = c;
+	}
+
 	/* append items to the end of already existing list */
 	while (end->next)
+	{
+		if (lastext)
+			end->flags |= JSPI_EXT_EXEC;		/* propagate flag  */
 		end = end->next;
+	}
+
+	cell = list_head(list);
 
 	for_each_cell(cell, lnext(cell))
 	{
 		JsonPathParseItem *c = (JsonPathParseItem *) lfirst(cell);
+
+		if (lastext)
+		{
+			end->flags |= JSPI_EXT_EXEC;		/* propagate flag  */
+			if (lastext == c)
+				lastext = NULL;		/* stop flag propagation */
+		}
 
 		end->next = c;
 		end = c;
@@ -203,6 +386,11 @@ makeIndexArray(List *list)
 
 		v->value.array.elems[i].from = jpi->value.args.left;
 		v->value.array.elems[i++].to = jpi->value.args.right;
+
+		v->flags |= jpi->value.args.left->flags & JSPI_EXT_EXEC;
+
+		if (jpi->value.args.right)
+			v->flags |= jpi->value.args.right->flags & JSPI_EXT_EXEC;
 	}
 
 	return v;
@@ -223,8 +411,12 @@ static JsonPathParseItem *
 makeItemSequence(List *elems)
 {
 	JsonPathParseItem  *v = makeItemType(jpiSequence);
+	ListCell   *lc;
 
 	v->value.sequence.elems = elems;
+
+	foreach(lc, elems)
+		v->flags |= ((JsonPathParseItem *) lfirst(lc))->flags & JSPI_EXT_EXEC;
 
 	return v;
 }
@@ -233,16 +425,25 @@ static JsonPathParseItem *
 makeItemObject(List *fields)
 {
 	JsonPathParseItem *v = makeItemType(jpiObject);
+	ListCell   *lc;
 
 	v->value.object.fields = fields;
+
+	foreach(lc, fields)
+	{
+		JsonPathParseItem *field = lfirst(lc);
+
+		v->flags |= (field->value.args.left->flags |
+					 field->value.args.right->flags) & JSPI_EXT_EXEC;
+	}
 
 	return v;
 }
 
-static JsonPathParseItem *
+static inline JsonPathParseItem *
 setItemOutPathMode(JsonPathParseItem *jpi)
 {
-	jpi->flags |= 1;
+	jpi->flags |= JSPI_OUT_PATH;
 	return jpi;
 }
 
@@ -252,10 +453,7 @@ setItemsOutPathMode(List *items)
 	ListCell   *cell;
 
 	foreach(cell, items)
-	{
-		JsonPathParseItem *jpi = lfirst(cell);
-		jpi->flags |= 1;
-	}
+		setItemOutPathMode(lfirst(cell));
 
 	return items;
 }
@@ -277,43 +475,53 @@ setItemsOutPathMode(List *items)
 	JsonPathParseResult *result;
 	JsonPathItemType	optype;
 	bool				boolean;
+	struct JsonPathTypeName {
+		List			   *name;
+		List			   *typmods;
+		bool				isarray;
+	} type_name;
 }
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P STARTS_P WITH_P
 %token	<str>		STRING_P NUMERIC_P INT_P EXISTS_P STRICT_P LAX_P LAST_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
 %token	<str>		KEYVALUE_P MAP_P REDUCE_P FOLD_P FOLDL_P FOLDR_P
-%token	<str>		MIN_P MAX_P CURRENT_P
+%token	<str>		MIN_P MAX_P CURRENT_P TYPECAST_P
 
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
-%token	<str>		ANY_P
+%token	<str>		ANY_P OPERATOR_P
 
 %type	<result>	result
 
 %type	<value>		scalar_value path_primary expr pexpr array_accessor
-					any_path accessor_op key predicate delimited_predicate
+					any_path accessor_op key delimited_predicate
 					index_elem starts_with_initial opt_datetime_template
-					expr_or_predicate expr_or_seq expr_seq object_field
+					expr_or_seq expr_seq object_field
 
-%type	<elems>		accessor_expr accessor_ops expr_list object_field_list
+%type	<elems>		accessor_expr accessor_ops expr_list object_field_list qualified_name
 
 %type	<indexs>	index_list
 
 %type	<optype>	comp_op method fold
 
-%type	<boolean>	mode
+%type	<boolean>	mode opt_type_array_bounds
 
 %type	<str>		key_name
 
+%type	<type_name>	type_name
 
 %left	OR_P
 %left	AND_P
 %right	NOT_P
+%left	EQUAL_P NOTEQUAL_P LESS_P LESSEQUAL_P GREATER_P GREATEREQUAL_P STARTS_P
+%left	POSTFIXOP		/* dummy for postfix OPERATOR_P rules */
+%left	OPERATOR_P		/* multi-character ops and user-defined operators */
 %left	'+' '-'
 %left	'*' '/' '%'
 %left	UMINUS
 %nonassoc '(' ')'
+%left	TYPECAST_P
 
 /* Grammar follows */
 %%
@@ -327,13 +535,8 @@ result:
 	| /* EMPTY */					{ *result = NULL; }
 	;
 
-expr_or_predicate:
-	expr							{ $$ = $1; }
-	| predicate						{ $$ = $1; }
-	;
-
 expr_or_seq:
-	expr_or_predicate				{ $$ = $1; }
+	expr							{ $$ = $1; }
 	| expr_seq						{ $$ = $1; }
 	;
 
@@ -342,8 +545,8 @@ expr_seq:
 	;
 
 expr_list:
-	expr_or_predicate ',' expr_or_predicate	{ $$ = list_make2($1, $3); }
-	| expr_list ',' expr_or_predicate		{ $$ = lappend($1, $3); }
+	expr ',' expr					{ $$ = list_make2($1, $3); }
+	| expr_list ',' expr			{ $$ = lappend($1, $3); }
 	;
 
 mode:
@@ -373,22 +576,8 @@ comp_op:
 	;
 
 delimited_predicate:
-	'(' predicate ')'					{ $$ = $2; }
-	| EXISTS_P '(' accessor_expr ')'	{ $$ = makeItemUnary(jpiExists, makeItemList($3)); }
-	;
-
-predicate:
-	delimited_predicate				{ $$ = $1; }
-	| pexpr comp_op pexpr			{ $$ = makeItemBinary($2, $1, $3); }
-	| predicate AND_P predicate		{ $$ = makeItemBinary(jpiAnd, $1, $3); }
-	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
-	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }
-	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
-	| pexpr STARTS_P WITH_P starts_with_initial
-		{ $$ = makeItemBinary(jpiStartsWith, $1, $4); }
-/* Left for the future (needs XQuery support)
-	| pexpr LIKE_REGEX pattern [FLAG_P flags]	{ $$ = ...; };
-*/
+	'(' expr ')'						{ $$ = $2; }
+	| EXISTS_P '(' accessor_expr ')'	{ $$ = makeItemUnaryExpr(jpiExists, makeItemList($3)); }
 	;
 
 starts_with_initial:
@@ -415,7 +604,7 @@ object_field_list:
 	;
 
 object_field:
-	key_name ':' expr_or_predicate
+	key_name ':' expr
 		{ $$ = makeItemBinary(jpiObjectField, makeItemString(&$1), $3); }
 	;
 
@@ -423,7 +612,6 @@ accessor_expr:
 	path_primary					{ $$ = list_make1($1); }
 	| '.' key						{ $$ = list_make2(makeItemType(jpiCurrent), $2); }
 	| '(' expr ')' accessor_op		{ $$ = list_make2($2, $4); }
-	| '(' predicate ')'	accessor_op	{ $$ = list_make2($2, $4); }
 	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
 	| accessor_expr '.' '(' key ')'
 		{ $$ = lappend($1, setItemOutPathMode($4)); }
@@ -453,15 +641,47 @@ pexpr:
 	| '(' expr ')'					{ $$ = $2; }
 	;
 
+opt_type_array_bounds:
+	'[' ']'							{ $$ = TRUE; }
+	| /* empty */					{ $$ = FALSE; }
+	;
+
+qualified_name:
+	key_name	 					{ $$ = list_make1(makeItemKey(&$1)); }
+	| qualified_name '.' key_name	{ $$ = lappend($1, makeItemKey(&$3)); }
+	;
+
+type_name:
+	qualified_name opt_type_array_bounds
+		{ $$.name = $1; $$.typmods = NIL; $$.isarray = $2; }
+	| qualified_name '(' expr_list ')' opt_type_array_bounds
+		{ $$.name = $1; $$.typmods = $3; $$.isarray = $5; }
+	;
+
 expr:
 	accessor_expr						{ $$ = makeItemList($1); }
-	| '+' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiPlus, $2); }
-	| '-' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiMinus, $2); }
-	| pexpr '+' pexpr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
-	| pexpr '-' pexpr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
-	| pexpr '*' pexpr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
-	| pexpr '/' pexpr					{ $$ = makeItemBinary(jpiDiv, $1, $3); }
-	| pexpr '%' pexpr					{ $$ = makeItemBinary(jpiMod, $1, $3); }
+	| EXISTS_P '(' accessor_expr ')'	{ $$ = makeItemUnaryExpr(jpiExists, makeItemList($3)); }
+	| pexpr comp_op pexpr %prec EQUAL_P	{ $$ = makeItemBinaryExpr($2, $1, $3); }
+	| pexpr AND_P pexpr					{ $$ = makeItemBinaryExpr(jpiAnd, $1, $3); }
+	| pexpr OR_P pexpr					{ $$ = makeItemBinaryExpr(jpiOr, $1, $3); }
+	| NOT_P delimited_predicate			{ $$ = makeItemUnaryExpr(jpiNot, $2); }
+	| '(' expr ')' IS_P UNKNOWN_P		{ $$ = makeItemUnaryExpr(jpiIsUnknown, $2); }
+	| pexpr STARTS_P WITH_P starts_with_initial
+										{ $$ = makeItemBinaryExpr(jpiStartsWith, $1, $4); }
+/* Left for the future (needs XQuery support)
+	| pexpr LIKE_REGEX pattern [FLAG_P flags]	{ $$ = ...; };
+*/
+	| pexpr TYPECAST_P type_name		{ $$ = makeItemCast($1, &$3); }
+	| '+' pexpr %prec UMINUS			{ $$ = makeItemUnaryExpr(jpiPlus, $2); }
+	| '-' pexpr %prec UMINUS			{ $$ = makeItemUnaryExpr(jpiMinus, $2); }
+	| OPERATOR_P pexpr %prec OPERATOR_P	{ $$ = makeItemOperator(&$1, NULL, $2); }
+	| pexpr OPERATOR_P %prec POSTFIXOP	{ $$ = makeItemOperator(&$2, $1, NULL); }
+	| pexpr '+' pexpr					{ $$ = makeItemBinaryExpr(jpiAdd, $1, $3); }
+	| pexpr '-' pexpr					{ $$ = makeItemBinaryExpr(jpiSub, $1, $3); }
+	| pexpr '*' pexpr					{ $$ = makeItemBinaryExpr(jpiMul, $1, $3); }
+	| pexpr '/' pexpr					{ $$ = makeItemBinaryExpr(jpiDiv, $1, $3); }
+	| pexpr '%' pexpr					{ $$ = makeItemBinaryExpr(jpiMod, $1, $3); }
+	| pexpr OPERATOR_P pexpr			{ $$ = makeItemOperator(&$2, $1, $3); }
 	;
 
 index_elem:
@@ -498,13 +718,19 @@ accessor_op:
 	| '.' method '(' ')'			{ $$ = makeItemType($2); }
 	| '.' DATETIME_P '(' opt_datetime_template ')'
 									{ $$ = makeItemUnary(jpiDatetime, $4); }
-	| '.' MAP_P '(' expr_or_predicate ')'
+	| '.' MAP_P '(' expr ')'
 									{ $$ = makeItemUnary(jpiMap, $4); }
-	| '.' REDUCE_P '(' expr_or_predicate ')'
+//	| '.' COUNT_P '(' ')'			{ $$ = makeItemType(jpiCount); }
+	| '.' REDUCE_P '(' expr ')'
 									{ $$ = makeItemUnary(jpiReduce, $4); }
-	| '.' fold '(' expr_or_predicate ',' expr_or_predicate ')'
+	| '.' fold '(' expr ',' expr ')'
 									{ $$ = makeItemBinary($2, $4, $6); }
-	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
+	| '?' '(' expr ')'
+		{
+			if ($3->datatype == JPI_JSON || $3->next)
+				yyerror(NULL, "expected boolean expression");
+			$$ = makeItemUnary(jpiFilter, $3);
+		}
 	;
 
 fold:

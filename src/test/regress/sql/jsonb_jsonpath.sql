@@ -465,3 +465,64 @@ select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$
 select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.a[*].(b)');
 select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[*].(b)');
 select _jsonpath_query(jsonb '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a.[0 to 1].b)');
+
+-- extension: custom operators and type casts
+select _jsonpath_query(jsonb '"aaa"', '$::text || "bbb"::text || $::text');
+select _jsonpath_query(jsonb '"aaa"', '$::text || "bbb" || $');
+select _jsonpath_query(jsonb '[null, true, 1, "aaa",  {"a": 1}, [1, 2]]', '$.map(@::text || "xyz"::text)');
+
+select _jsonpath_query(jsonb '123.45', '$::int4');
+select _jsonpath_query(jsonb '123.45', '$::float4');
+select _jsonpath_query(jsonb '123.45', '$::text');
+select _jsonpath_query(jsonb '123.45', '$::text::int4');
+select _jsonpath_query(jsonb '123.45', '$::text::float4');
+select _jsonpath_query(jsonb '123.45', '$::text::float4::int4');
+select _jsonpath_query(jsonb '4000000000', '$::int8');
+
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::text');
+select _jsonpath_query(jsonb '[123.45, null, 0.67, "8.9"]', '$[*]::text::float4::int4');
+
+
+select _jsonpath_query(jsonb '[123.45, 0.67]', '$[*]::int4 > $[0]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4 > $[0]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4 > $[1]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4 > $[2]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[0]::int4 > $[*]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4 > $[2]::text::float4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::text::float4 > $[2]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::text::float4 > $[2]::text::float4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4 > $[0 to 1]::int4');
+select _jsonpath_query(jsonb '[123.45, null, 0.67]', '$[*]::int4 > $[1 to 2]::int4');
+select _jsonpath_query(jsonb '[123.45, 100000.2, 10000.67, "1"]', '$[0]::int8 > $[*]::int4::int8');
+
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}]', '$[*] -> "a"::text');
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}]', '$[0] -> "a"::text');
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}]', '$[1] -> $[0].a::text');
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}]', '$[0] \? "a"::text');
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}]', '$[*] \? "b"::text');
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}]', '$[*] \? "c"::text');
+select _jsonpath_query(jsonb '[{"a": "b"}, {"b": [1, "2"]}, null, 1]', '$[*] ? (@ \? "a"::text)');
+
+select _jsonpath_query(jsonb '[1, "t", 0, "f", null]', '$[*] ? (@::int4)');
+select _jsonpath_query(jsonb '[1, "t", 0, "f", null]', '$[*] ? (@::bool)');
+select _jsonpath_query(jsonb '[1, "t", 0, "f", null]', '$[*] ? (!(@::bool))');
+select _jsonpath_query(jsonb '[1, "t", 0, "f", null]', '$[*] ? (@::bool == false::bool)');
+select _jsonpath_query(jsonb '[1, "t", 0, "f", null]', '$[*] ? (@::bool || !(@::bool))');
+
+
+select _jsonpath_query(jsonb '[1, 2, 3]', '$[*] ? (@::int4 > 1::int4)');
+
+select jsonb '1' @* '$ ? (@ \@> 1)';
+select jsonb '1' @* '$ ? (@ \@> 2)';
+
+select jsonpath '$::a' + '1';
+
+select jsonpath '$ ? ($.a::jsonb || 1)';
+select jsonpath '$ ? ($.a::jsonb || ==== 1)';
+select jsonpath '$::jsonb';
+
+select jsonb '{"tags": [{"term": "a"}, {"term": "NYC"}]}' @? 'strict $.tags \@> [{term: "NYC"}]';
+select jsonb '{"tags": [{"term": "a"}, {"term": "NYC"}]}' @? 'lax    $.tags \@>  {term: "NYC"}';
+
+select jsonb '"str"' @? '$ == "str"::jsonb';

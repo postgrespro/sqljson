@@ -43,7 +43,7 @@ appendJsonPathItemHeader(StringInfo buf, JsonPathItemType type, char flags)
 
 static int32
 copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
-				 int32 *pLastOffset, int32 *pNextOffset)
+				 int32 *pLastOffset, int32 *pNextOffset, int32 *id)
 {
 	int32		pos = buf->len - JSONPATH_HDRSZ;
 	JsonPathItem next;
@@ -145,7 +145,7 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 					break;
 
 				jspGetArg(item, &arg);
-				argpos = copyJsonPathItem(buf, &arg, argLevel, NULL, NULL);
+				argpos = copyJsonPathItem(buf, &arg, argLevel, NULL, NULL, id);
 				*(int32 *) &buf->data[argoffs] = argpos - pos;
 				break;
 			}
@@ -185,12 +185,56 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
 
 				jspGetLeftArg(item, &larg);
-				lpos = copyJsonPathItem(buf, &larg, argLevel, NULL, NULL);
+				lpos = copyJsonPathItem(buf, &larg, argLevel, NULL, NULL, id);
 				*(int32 *) &buf->data[loffs] = lpos - pos;
 
 				jspGetRightArg(item, &rarg);
-				rpos = copyJsonPathItem(buf, &rarg, argLevel, NULL, NULL);
+				rpos = copyJsonPathItem(buf, &rarg, argLevel, NULL, NULL, id);
 				*(int32 *) &buf->data[roffs] = rpos - pos;
+
+				break;
+			}
+
+		case jpiOperator:
+			{
+				JsonPathItem larg;
+				JsonPathItem rarg;
+				int32		loffs;
+				int32		roffs;
+				int32		lpos;
+				int32		rpos;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) id, sizeof(*id));
+				++*id;
+
+				loffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				roffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				appendBinaryStringInfo(buf,
+									   (const char *) &item->content.op.namelen,
+									   sizeof(item->content.op.namelen));
+				appendBinaryStringInfo(buf,
+									   (const char *) &item->content.op.name,
+									   sizeof(item->content.op.name));
+				appendStringInfoChar(buf, '\0');
+
+				if (item->content.op.left)
+				{
+					jspInitByBuffer(&larg, item->base, item->content.op.left);
+					lpos = copyJsonPathItem(buf, &larg, argLevel, NULL, NULL, id);
+					*(int32 *) &buf->data[loffs] = lpos - pos;
+				}
+
+				if (item->content.op.right)
+				{
+					jspInitByBuffer(&rarg, item->base, item->content.op.right);
+					rpos = copyJsonPathItem(buf, &rarg, argLevel, NULL, NULL, id);
+					*(int32 *) &buf->data[roffs] = rpos - pos;
+				}
 
 				break;
 			}
@@ -219,10 +263,10 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 
 					range = jspGetArraySubscript(item, &from, &to, i);
 
-					frompos = copyJsonPathItem(buf, &from, argLevel, NULL, NULL) - pos;
+					frompos = copyJsonPathItem(buf, &from, argLevel, NULL, NULL, id) - pos;
 
 					if (range)
-						topos = copyJsonPathItem(buf, &to, argLevel, NULL, NULL) - pos;
+						topos = copyJsonPathItem(buf, &to, argLevel, NULL, NULL, id) - pos;
 					else
 						topos = 0;
 
@@ -257,7 +301,7 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 
 					jspGetSequenceElement(item, i, &el);
 
-					elpos = copyJsonPathItem(buf, &el, level, NULL, NULL);
+					elpos = copyJsonPathItem(buf, &el, level, NULL, NULL, id);
 					*(int32 *) &buf->data[offset] = elpos - pos;
 				}
 			}
@@ -283,8 +327,8 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 
 					jspGetObjectField(item, i, &key, &val);
 
-					keypos = copyJsonPathItem(buf, &key, level, NULL, NULL);
-					valpos = copyJsonPathItem(buf, &val, level, NULL, NULL);
+					keypos = copyJsonPathItem(buf, &key, level, NULL, NULL, id);
+					valpos = copyJsonPathItem(buf, &val, level, NULL, NULL, id);
 
 					ppos = (int32 *) &buf->data[offset];
 					ppos[0] = keypos - pos;
@@ -293,6 +337,42 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 			}
 			break;
 
+		case jpiCast:
+			{
+				JsonPathItem arg;
+				int32		argpos;
+				int32		argoffs;
+				int32		size = 0;
+				int32		i;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) id, sizeof(*id));
+				++*id;
+
+				argoffs = buf->len;
+				appendBinaryStringInfo(buf, (char *) &argpos /* fake value */, sizeof(argpos));
+
+				appendBinaryStringInfo(buf,
+									   (const char *) &item->content.cast.type_name_count,
+									   sizeof(item->content.cast.type_name_count));
+
+				appendBinaryStringInfo(buf,
+									   (const char *) item->content.cast.type_name_len,
+									   sizeof(item->content.cast.type_name_len[0]) *
+									   item->content.cast.type_name_count);
+
+				appendStringInfoChar(buf, (char)(item->content.cast.type_is_array ? 1 : 0));
+
+				for (i = 0; i < item->content.cast.type_name_count; i++)
+					size += item->content.cast.type_name_len[i] + 1;
+
+				appendBinaryStringInfo(buf, item->content.cast.type_name, size);
+
+				jspInitByBuffer(&arg, item->base, item->content.cast.arg);
+				argpos = copyJsonPathItem(buf, &arg, level, NULL, NULL, id);
+				*(int32 *) &buf->data[argoffs] = argpos - pos;
+			}
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -300,7 +380,7 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 	if (jspGetNext(item, &next))
 	{
 		int32		nextPos = copyJsonPathItem(buf, &next, level,
-											   pLastOffset, pNextOffset);
+											   pLastOffset, pNextOffset, id);
 
 		*(int32 *) &buf->data[nextOffs] = nextPos - pos;
 	}
@@ -314,7 +394,8 @@ copyJsonPathItem(StringInfo buf, JsonPathItem *item, int level,
 }
 
 static int32
-copyJsonPath(StringInfo buf, JsonPath *jp, int level, int32 *last, int32 *next)
+copyJsonPath(StringInfo buf, JsonPath *jp, int level, int32 *last, int32 *next,
+			 int32 *id)
 {
 	JsonPathItem root;
 
@@ -322,7 +403,7 @@ copyJsonPath(StringInfo buf, JsonPath *jp, int level, int32 *last, int32 *next)
 
 	jspInit(&root, jp);
 
-	return copyJsonPathItem(buf, &root, level, last, next);
+	return copyJsonPathItem(buf, &root, level, last, next, id);
 }
 
 /*
@@ -330,7 +411,7 @@ copyJsonPath(StringInfo buf, JsonPath *jp, int level, int32 *last, int32 *next)
  */
 static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
-						 int nestingLevel, bool insideArraySubscript)
+						 int nestingLevel, bool insideArraySubscript, int32 *id)
 {
 	/* position from begining of jsonpath data */
 	int32	pos = buf->len - JSONPATH_HDRSZ;
@@ -340,7 +421,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 	check_stack_depth();
 
 	if (item->type == jpiBinary)
-		pos = copyJsonPath(buf, item->value.binary, nestingLevel, &last, &next);
+		pos = copyJsonPath(buf, item->value.binary, nestingLevel, &last, &next,
+						   id);
 	else
 	{
 		next = appendJsonPathItemHeader(buf, item->type, item->flags);
@@ -401,14 +483,55 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 				chld = flattenJsonPathParseItem(buf, item->value.args.left,
 												argNestingLevel,
-												insideArraySubscript);
+												insideArraySubscript, id);
 				*(int32*)(buf->data + left) = chld - pos;
 				chld = flattenJsonPathParseItem(buf, item->value.args.right,
 												argNestingLevel,
-												insideArraySubscript);
+												insideArraySubscript, id);
 				*(int32*)(buf->data + right) = chld - pos;
 			}
 			break;
+		case jpiOperator:
+			{
+				int32		loffs;
+				int32		roffs;
+				int32		offs = 0;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) id, sizeof(*id));
+				++*id;
+
+				loffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				roffs = buf->len;
+				appendBinaryStringInfo(buf, (const char *) &offs, sizeof(offs));
+
+				appendBinaryStringInfo(buf,
+									   (const char *) &item->value.op.namelen,
+									   sizeof(item->value.op.namelen));
+				appendBinaryStringInfo(buf, item->value.op.name,
+									   item->value.op.namelen);
+				appendStringInfoChar(buf, '\0');
+
+				if (item->value.op.left)
+				{
+					chld = flattenJsonPathParseItem(buf, item->value.op.left,
+													nestingLevel,
+													insideArraySubscript, id);
+					*(int32 *)(buf->data + loffs) = chld - pos;
+				}
+
+				if (item->value.op.right)
+				{
+					chld = flattenJsonPathParseItem(buf, item->value.op.right,
+													nestingLevel,
+													insideArraySubscript, id);
+					*(int32 *)(buf->data + roffs) = chld - pos;
+				}
+			}
+			break;
+
 		case jpiMap:
 			argNestingLevel++;
 			/* fall through */
@@ -433,7 +556,49 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 				chld = flattenJsonPathParseItem(buf, item->value.arg,
 												argNestingLevel,
-												insideArraySubscript);
+												insideArraySubscript, id);
+				*(int32*)(buf->data + arg) = chld - pos;
+			}
+			break;
+		case jpiCast:
+			{
+				int32		arg;
+				int32	 	typname_len = list_length(item->value.cast.type_name);
+				ListCell   *lc;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) id, sizeof(*id));
+				++*id;
+
+				arg = buf->len;
+				appendBinaryStringInfo(buf, (char *) &arg /* fake value */, sizeof(arg));
+				appendBinaryStringInfo(buf, (char *) &typname_len, sizeof(typname_len));
+
+				/* append array of typename component lengths */
+				foreach(lc, item->value.cast.type_name)
+				{
+					JsonPathParseItem *jpi = lfirst(lc);
+
+					appendBinaryStringInfo(buf,
+										   (const char *) &jpi->value.string.len,
+										   sizeof(jpi->value.string.len));
+				}
+
+				appendStringInfoChar(buf, (char)(item->value.cast.type_is_array ? 1 : 0));
+
+				/* append array of typename components */
+				foreach(lc, item->value.cast.type_name)
+				{
+					JsonPathParseItem *jpi = lfirst(lc);
+
+					appendBinaryStringInfo(buf, jpi->value.string.val,
+										   jpi->value.string.len);
+					appendStringInfoChar(buf, '\0');
+				}
+
+				chld = flattenJsonPathParseItem(buf, item->value.cast.arg,
+												argNestingLevel,
+												insideArraySubscript, id);
 				*(int32*)(buf->data + arg) = chld - pos;
 			}
 			break;
@@ -485,12 +650,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32		frompos =
 						flattenJsonPathParseItem(buf,
 												item->value.array.elems[i].from,
-												nestingLevel + 1, true) - pos;
+												nestingLevel + 1, true, id) - pos;
 
 					if (item->value.array.elems[i].to)
 						topos = flattenJsonPathParseItem(buf,
 												item->value.array.elems[i].to,
-												nestingLevel + 1, true) - pos;
+												nestingLevel + 1, true, id) - pos;
 					else
 						topos = 0;
 
@@ -536,7 +701,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32		elempos =
 						flattenJsonPathParseItem(buf, lfirst(lc),
 												 nestingLevel,
-												 insideArraySubscript);
+												 insideArraySubscript, id);
 
 					*(int32 *) &buf->data[offset] = elempos - pos;
 					offset += sizeof(int32);
@@ -561,11 +726,11 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32		keypos =
 						flattenJsonPathParseItem(buf, field->value.args.left,
 												 nestingLevel,
-												 insideArraySubscript);
+												 insideArraySubscript, id);
 					int32		valpos =
 						flattenJsonPathParseItem(buf, field->value.args.right,
 												 nestingLevel,
-												 insideArraySubscript);
+												 insideArraySubscript, id);
 					int32	   *ppos = (int32 *) &buf->data[offset];
 
 					ppos[0] = keypos - pos;
@@ -582,7 +747,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 	if (item->next)
 		*(int32*)(buf->data + next) =
 			flattenJsonPathParseItem(buf, item->next, nestingLevel,
-									 insideArraySubscript) - last;
+									 insideArraySubscript, id) - last;
 
 	return  pos;
 }
@@ -592,6 +757,7 @@ encodeJsonPath(JsonPathParseItem *item, bool lax, int32 sizeEstimation)
 {
 	JsonPath   *res;
 	StringInfoData buf;
+	int32		id = 0;
 
 	if (!item)
 		return NULL;
@@ -601,13 +767,14 @@ encodeJsonPath(JsonPathParseItem *item, bool lax, int32 sizeEstimation)
 
 	appendStringInfoSpaces(&buf, JSONPATH_HDRSZ);
 
-	flattenJsonPathParseItem(&buf, item, 0, false);
+	flattenJsonPathParseItem(&buf, item, 0, false, &id);
 
 	res = (JsonPath *) buf.data;
 	SET_VARSIZE(res, buf.len);
 	res->header = JSONPATH_VERSION;
 	if (lax)
 		res->header |= JSONPATH_LAX;
+	res->ext_items_count = id;
 
 	return res;
 }
@@ -685,6 +852,7 @@ operationPriority(JsonPathItemType op)
 		case jpiGreaterOrEqual:
 		case jpiStartsWith:
 			return 2;
+		case jpiOperator:
 		case jpiAdd:
 		case jpiSub:
 			return 3;
@@ -695,8 +863,10 @@ operationPriority(JsonPathItemType op)
 		case jpiPlus:
 		case jpiMinus:
 			return 5;
-		default:
+		case jpiCast:
 			return 6;
+		default:
+			return 7;
 	}
 }
 
@@ -707,6 +877,11 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 	int				i;
 
 	check_stack_depth();
+
+#if 1
+	if (v->flags & JSPI_EXT_EXEC)
+		appendBinaryStringInfo(buf, " ext ", 5);
+#endif
 
 	switch(v->type)
 	{
@@ -761,6 +936,31 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			printJsonPathItem(buf, &elem, false,
 							  operationPriority(elem.type) <=
 							  operationPriority(v->type));
+			if (printBracketes)
+				appendStringInfoChar(buf, ')');
+			break;
+		case jpiOperator:
+			if (printBracketes)
+				appendStringInfoChar(buf, '(');
+			if (v->content.op.left)
+			{
+				jspInitByBuffer(&elem, v->base, v->content.op.left);
+				printJsonPathItem(buf, &elem, false,
+								  operationPriority(elem.type) <=
+								  operationPriority(v->type));
+			}
+
+			appendStringInfo(buf, " '%-*s' ",
+							 v->content.op.namelen, v->content.op.name);
+
+			if (v->content.op.right)
+			{
+				jspInitByBuffer(&elem, v->base, v->content.op.right);
+				printJsonPathItem(buf, &elem, false,
+								  operationPriority(elem.type) <=
+								  operationPriority(v->type));
+			}
+
 			if (printBracketes)
 				appendStringInfoChar(buf, ')');
 			break;
@@ -973,6 +1173,36 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 		case jpiMax:
 			appendBinaryStringInfo(buf, ".max()", 6);
 			break;
+		case jpiCast:
+			{
+				const char *name = v->content.cast.type_name;
+
+				if (printBracketes)
+					appendStringInfoChar(buf, '(');
+
+				jspInitByBuffer(&elem, v->base, v->content.cast.arg);
+				printJsonPathItem(buf, &elem, false,
+								  operationPriority(elem.type) <=
+								  operationPriority(v->type));
+
+				appendBinaryStringInfo(buf, "::", 2);
+
+				for (i = 0; i < v->content.cast.type_name_count; i++)
+				{
+					if (i > 0)
+						appendStringInfoChar(buf, '.');
+
+					escape_json(buf, name);
+					name += v->content.cast.type_name_len[i] + 1;
+				}
+
+				if (v->content.cast.type_is_array)
+					appendBinaryStringInfo(buf, "[]", 2);
+
+				if (printBracketes)
+					appendStringInfoChar(buf, ')');
+			}
+			break;
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", v->type);
 	}
@@ -995,6 +1225,7 @@ jsonpath_out(PG_FUNCTION_ARGS)
 		appendBinaryStringInfo(&buf, "strict ", 7);
 
 	jspInit(&v, in);
+
 	printJsonPathItem(&buf, &v, false, v.type != jpiSequence);
 
 	PG_RETURN_CSTRING(buf.data);
@@ -1094,6 +1325,13 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32(v->content.args.left, base, pos);
 			read_int32(v->content.args.right, base, pos);
 			break;
+		case jpiOperator:
+			read_int32(v->content.op.id, base, pos);
+			read_int32(v->content.op.left, base, pos);
+			read_int32(v->content.op.right, base, pos);
+			read_int32(v->content.op.namelen, base, pos);
+			v->content.op.name = base + pos;
+			break;
 		case jpiNot:
 		case jpiExists:
 		case jpiIsUnknown:
@@ -1105,6 +1343,15 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiArray:
 		case jpiReduce:
 			read_int32(v->content.arg, base, pos);
+			break;
+		case jpiCast:
+			read_int32(v->content.cast.id, base, pos);
+			read_int32(v->content.cast.arg, base, pos);
+			read_int32(v->content.cast.type_name_count, base, pos);
+			read_int32_n(v->content.cast.type_name_len, base, pos,
+						 v->content.cast.type_name_count);
+			read_byte(v->content.cast.type_is_array, base, pos);
+			v->content.cast.type_name = base + pos;
 			break;
 		case jpiIndexArray:
 			read_int32(v->content.array.nelems, base, pos);
@@ -1206,7 +1453,9 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			v->type == jpiFoldl ||
 			v->type == jpiFoldr ||
 			v->type == jpiMin ||
-			v->type == jpiMax
+			v->type == jpiMax ||
+			v->type == jpiOperator ||
+			v->type == jpiCast
 		);
 
 		if (a)
@@ -1329,6 +1578,16 @@ jspGetObjectField(JsonPathItem *v, int i, JsonPathItem *key, JsonPathItem *val)
 	Assert(v->type == jpiObject);
 	jspInitByBuffer(key, v->base, v->content.object.fields[i].key);
 	jspInitByBuffer(val, v->base, v->content.object.fields[i].val);
+}
+
+JsonPathItem *
+jspGetCastArg(JsonPathItem *cast, JsonPathItem *arg)
+{
+	Assert(cast->type == jpiCast);
+
+	jspInitByBuffer(arg, cast->base, cast->content.cast.arg);
+
+	return arg;
 }
 
 static void
