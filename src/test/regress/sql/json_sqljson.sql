@@ -298,3 +298,7 @@ SELECT JSON_QUERY(json '{"a": 123}', '$' || '.' || 'a');
 SELECT JSON_QUERY(json '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
 -- Should fail (invalid path)
 SELECT JSON_QUERY(json '{"a": 123}', 'error' || ' ' || 'error');
+
+-- JSON_TABLE
+
+SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo text));

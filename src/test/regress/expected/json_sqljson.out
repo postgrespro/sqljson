@@ -1026,3 +1026,7 @@ SELECT JSON_QUERY(json '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
 SELECT JSON_QUERY(json '{"a": 123}', 'error' || ' ' || 'error');
 ERROR:  bad jsonpath representation
 DETAIL:  syntax error, unexpected IDENT_P at or near " "
+-- JSON_TABLE
+SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo text));
+ERROR:  JSON_TABLE() is not yet implemented for json type
+LINE 1: SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo ...

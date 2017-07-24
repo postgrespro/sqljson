@@ -701,5 +701,8 @@ extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *item, bool is_jsonb,
 							JsonReturning *returning,
 							struct JsonCoercionsState *coercions,
 							struct JsonCoercionState **pjcstate);
+extern Datum ExecEvalExprPassingCaseValue(ExprState *estate,
+									ExprContext *econtext, bool *isnull,
+									Datum caseval_datum, bool caseval_isnull);
 
 #endif							/* EXEC_EXPR_H */

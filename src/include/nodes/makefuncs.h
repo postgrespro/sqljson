@@ -88,6 +88,8 @@ extern GroupingSet *makeGroupingSet(GroupingSetKind kind, List *content, int loc
 
 extern JsonValueExpr *makeJsonValueExpr(Expr *expr, JsonFormat format);
 extern JsonBehavior *makeJsonBehavior(JsonBehaviorType type, Node *expr);
+extern Node *makeJsonTableJoinedPlan(JsonTablePlanJoinType type,
+									 Node *plan1, Node *plan2, int location);
 extern Node *makeJsonKeyValue(Node *key, Node *value);
 extern Node *makeJsonIsPredicate(Node *expr, JsonFormat format,
 							   JsonValueType vtype, bool unique_keys);
