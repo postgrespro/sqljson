@@ -302,6 +302,10 @@ INSERT INTO test_json_constraints VALUES ('{"a": 10}', 1);
 
 DROP TABLE test_json_constraints;
 
+-- JSON_TABLE
+
+SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo text));
+
 -- Extension: non-constant JSON path
 SELECT JSON_EXISTS(json '{"a": 123}', '$' || '.' || 'a');
 SELECT JSON_VALUE(json '{"a": 123}', '$' || '.' || 'a');

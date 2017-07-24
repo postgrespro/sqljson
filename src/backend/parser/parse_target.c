@@ -1944,6 +1944,9 @@ FigureColnameInternal(Node *node, char **name)
 				case IS_JSON_EXISTS:
 					*name = "json_exists";
 					return 2;
+				case IS_JSON_TABLE:
+					*name = "json_table";
+					return 2;
 			}
 			break;
 		default:
