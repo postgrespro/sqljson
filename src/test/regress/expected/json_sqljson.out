@@ -1038,6 +1038,11 @@ INSERT INTO test_json_constraints VALUES ('{"a": 10}', 1);
 ERROR:  new row for relation "test_json_constraints" violates check constraint "test_json_constraint4"
 DETAIL:  Failing row contains ({"a": 10}, 1, [1, 2]).
 DROP TABLE test_json_constraints;
+-- JSON_TABLE
+SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo text));
+ERROR:  JSON_TABLE() is not yet implemented for json type
+LINE 1: SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo ...
+                                 ^
 -- Extension: non-constant JSON path
 SELECT JSON_EXISTS(json '{"a": 123}', '$' || '.' || 'a');
  json_exists 

@@ -2309,6 +2309,8 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(tf->coldefexprs, context))
 					return true;
+				if (walker(tf->colvalexprs, context))
+					return true;
 			}
 			break;
 		case T_JsonValueExpr:
@@ -3211,6 +3213,7 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->rowexpr, tf->rowexpr, Node *);
 				MUTATE(newnode->colexprs, tf->colexprs, List *);
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
+				MUTATE(newnode->colvalexprs, tf->colvalexprs, List *);
 				return (Node *) newnode;
 			}
 			break;
@@ -4030,6 +4033,30 @@ raw_expression_tree_walker(Node *node,
 				if (walker(jfe->on_empty, context))
 					return true;
 				if (walker(jfe->on_error, context))
+					return true;
+			}
+			break;
+		case T_JsonTable:
+			{
+				JsonTable  *jt = (JsonTable *) node;
+
+				if (walker(jt->common, context))
+					return true;
+				if (walker(jt->columns, context))
+					return true;
+			}
+			break;
+		case T_JsonTableColumn:
+			{
+				JsonTableColumn  *jtc = (JsonTableColumn *) node;
+
+				if (walker(jtc->typeName, context))
+					return true;
+				if (walker(jtc->on_empty, context))
+					return true;
+				if (walker(jtc->on_error, context))
+					return true;
+				if (jtc->coltype == JTC_NESTED && walker(jtc->columns, context))
 					return true;
 			}
 			break;
