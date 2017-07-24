@@ -1662,7 +1662,8 @@ addRangeTableEntryForTableFunc(ParseState *pstate,
 							   bool inFromCl)
 {
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
-	char	   *refname = alias ? alias->aliasname : pstrdup("xmltable");
+	char	   *refname = alias ? alias->aliasname :
+		pstrdup(tf->functype == TFT_XMLTABLE ? "xmltable" : "json_table");
 	Alias	   *eref;
 	int			numaliases;
 
