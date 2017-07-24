@@ -1043,6 +1043,7 @@ _outTableFunc(StringInfo str, const TableFunc *node)
 {
 	WRITE_NODE_TYPE("TABLEFUNC");
 
+	WRITE_ENUM_FIELD(functype, TableFuncType);
 	WRITE_NODE_FIELD(ns_uris);
 	WRITE_NODE_FIELD(ns_names);
 	WRITE_NODE_FIELD(docexpr);
@@ -1053,7 +1054,9 @@ _outTableFunc(StringInfo str, const TableFunc *node)
 	WRITE_NODE_FIELD(colcollations);
 	WRITE_NODE_FIELD(colexprs);
 	WRITE_NODE_FIELD(coldefexprs);
+	WRITE_NODE_FIELD(colvalexprs);
 	WRITE_BITMAPSET_FIELD(notnulls);
+	WRITE_NODE_FIELD(plan);
 	WRITE_INT_FIELD(ordinalitycol);
 	WRITE_LOCATION_FIELD(location);
 }
@@ -1725,6 +1728,29 @@ _outJsonExpr(StringInfo str, const JsonExpr *node)
 	WRITE_ENUM_FIELD(wrapper, JsonWrapper);
 	WRITE_BOOL_FIELD(omit_quotes);
 	WRITE_LOCATION_FIELD(location);
+}
+
+static void
+_outJsonTableParentNode(StringInfo str, const JsonTableParentNode *node)
+{
+	WRITE_NODE_TYPE("JSONTABPNODE");
+
+	WRITE_NODE_FIELD(path);
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(child);
+	WRITE_BOOL_FIELD(outerJoin);
+	WRITE_INT_FIELD(colMin);
+	WRITE_INT_FIELD(colMax);
+}
+
+static void
+_outJsonTableSiblingNode(StringInfo str, const JsonTableSiblingNode *node)
+{
+	WRITE_NODE_TYPE("JSONTABSNODE");
+
+	WRITE_NODE_FIELD(larg);
+	WRITE_NODE_FIELD(rarg);
+	WRITE_BOOL_FIELD(cross);
 }
 
 /*****************************************************************************
@@ -4269,6 +4295,12 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_JsonExpr:
 				_outJsonExpr(str, obj);
+				break;
+			case T_JsonTableParentNode:
+				_outJsonTableParentNode(str, obj);
+				break;
+			case T_JsonTableSiblingNode:
+				_outJsonTableSiblingNode(str, obj);
 				break;
 
 			default:
