@@ -2254,6 +2254,8 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(tf->coldefexprs, context))
 					return true;
+				if (walker(tf->colvalexprs, context))
+					return true;
 			}
 			break;
 		case T_JsonExpr:
@@ -3088,6 +3090,7 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->rowexpr, tf->rowexpr, Node *);
 				MUTATE(newnode->colexprs, tf->colexprs, List *);
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
+				MUTATE(newnode->colvalexprs, tf->colvalexprs, List *);
 				return (Node *) newnode;
 			}
 			break;

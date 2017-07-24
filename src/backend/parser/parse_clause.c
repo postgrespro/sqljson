@@ -43,10 +43,22 @@
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "rewrite/rewriteManip.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/json.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
+typedef struct JsonTableContext
+{
+	JsonTable  *table;
+	TableFunc  *tablefunc;
+	List	   *pathnames;
+	int			pathNameId;
+	Oid			contextItemTypid;
+	ColumnRef  *passingArgsRef;
+	RangeVar   *passingArgsRte;
+} JsonTableContext;
 
 /* Convenience macro for the most common makeNamespaceItem() case */
 #define makeDefaultNSItem(rte)	makeNamespaceItem(rte, true, true, false, true)
@@ -99,6 +111,10 @@ static List *addTargetToGroupList(ParseState *pstate, TargetEntry *tle,
 static WindowClause *findWindowClause(List *wclist, const char *name);
 static Node *transformFrameOffset(ParseState *pstate, int frameOptions,
 					 Node *clause);
+static JsonTableParentNode * transformJsonTableColumns(ParseState *pstate,
+						JsonTableContext *cxt, JsonTablePlan *plan,
+						List *columns, char *pathSpec, char **pathName,
+						int location);
 
 
 /*
@@ -782,6 +798,8 @@ transformRangeTableFunc(ParseState *pstate, RangeTableFunc *rtf)
 	Assert(!pstate->p_lateral_active);
 	pstate->p_lateral_active = true;
 
+	tf->functype = TFT_XMLTABLE;
+
 	/* Transform and apply typecast to the row-generating expression ... */
 	Assert(rtf->rowexpr != NULL);
 	tf->rowexpr = coerce_to_specific_type(pstate,
@@ -1071,6 +1089,594 @@ transformRangeTableSample(ParseState *pstate, RangeTableSample *rts)
 	return tablesample;
 }
 
+/*
+ * Transform
+ *   - regular column into JSON_VALUE()
+ *   - formatted column into JSON_QUERY()
+ */
+static Node *
+transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
+						 List *passingArgs, bool errorOnError)
+{
+	JsonFuncExpr *jfexpr = makeNode(JsonFuncExpr);
+	JsonValueExpr *jvexpr = makeNode(JsonValueExpr);
+	JsonCommon *common = makeNode(JsonCommon);
+	JsonOutput *output = makeNode(JsonOutput);
+
+	jfexpr->op = jtc->coltype == JTC_REGULAR ?
+				IS_JSON_VALUE : IS_JSON_QUERY;
+	jfexpr->common = common;
+	jfexpr->output = output;
+	jfexpr->on_empty = jtc->on_empty;
+	jfexpr->on_error = jtc->on_error;
+	if (!jfexpr->on_error && errorOnError)
+		jfexpr->on_error = makeJsonBehavior(JSON_BEHAVIOR_ERROR, NULL);
+	jfexpr->omit_quotes = jtc->omit_quotes;
+	jfexpr->wrapper = jtc->wrapper;
+	jfexpr->location = jtc->location;
+
+	output->typename = jtc->typename;
+	output->returning.format = jtc->format;
+
+	common->pathname = NULL;
+	common->expr = jvexpr;
+	common->passing = passingArgs;
+
+	if (jtc->pathspec)
+		common->pathspec = jtc->pathspec;
+	else
+	{
+		/* Construct default path as '$."column_name"' */
+		StringInfoData path;
+
+		initStringInfo(&path);
+
+		appendStringInfoString(&path, "$.");
+		escape_json(&path, jtc->name);
+
+		common->pathspec = path.data;
+	}
+
+	jvexpr->expr = (Expr *) contextItemExpr;
+	jvexpr->format.type = JS_FORMAT_DEFAULT;
+	jvexpr->format.encoding = JS_ENC_DEFAULT;
+
+	return (Node *) jfexpr;
+}
+
+static bool
+isJsonTablePathNameDuplicate(JsonTableContext *cxt, const char *pathname)
+{
+	ListCell *lc;
+
+	foreach(lc, cxt->pathnames)
+	{
+		if (!strcmp(pathname, (const char *) lfirst(lc)))
+			return true;
+	}
+
+	return false;
+}
+
+static void
+registerJsonTableColumn(JsonTableContext *cxt, char *colname)
+{
+	if (isJsonTablePathNameDuplicate(cxt, colname))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_ALIAS),
+				 errmsg("duplicate JSON_TABLE column name: %s", colname),
+				 errhint("JSON_TABLE path names and column names shall be "
+						 "distinct from one another")));
+
+	cxt->pathnames = lappend(cxt->pathnames, colname);
+}
+
+static void
+registerAllJsonTableColumns(JsonTableContext *cxt, List *columns)
+{
+	ListCell   *lc;
+
+	foreach(lc, columns)
+	{
+		JsonTableColumn *jtc = castNode(JsonTableColumn, lfirst(lc));
+
+		if (jtc->coltype == JTC_NESTED)
+		{
+			if (jtc->pathname)
+				registerJsonTableColumn(cxt, jtc->pathname);
+
+			registerAllJsonTableColumns(cxt, jtc->columns);
+		}
+		else
+		{
+			registerJsonTableColumn(cxt, jtc->name);
+		}
+	}
+}
+
+static char *
+generateJsonTablePathName(JsonTableContext *cxt,
+						  const char *prefix, int *counter)
+{
+	char		aliasbuf[32];
+	char	   *alias = aliasbuf;
+
+	do
+	{
+		snprintf(aliasbuf, sizeof(aliasbuf), "%s_%d", prefix, ++*counter);
+	} while (isJsonTablePathNameDuplicate(cxt, alias));
+
+	alias = pstrdup(alias);
+	cxt->pathnames = lappend(cxt->pathnames, alias);
+
+	return alias;
+}
+
+static char *
+generateJsonTableAlias(JsonTableContext *cxt)
+{
+	return generateJsonTablePathName(cxt, "json_table_path", &cxt->pathNameId);
+}
+
+static void
+collectSiblingPathsInJsonTablePlan(JsonTablePlan *plan, List **paths)
+{
+	if (plan->plan_type == JSTP_SIMPLE)
+		*paths = lappend(*paths, plan->pathname);
+	else if (plan->plan_type == JSTP_JOINED)
+	{
+		if (plan->join_type == JSTP_INNER ||
+			plan->join_type == JSTP_OUTER)
+		{
+			Assert(plan->plan1->plan_type == JSTP_SIMPLE);
+			*paths = lappend(*paths, plan->plan1->pathname);
+		}
+		else if (plan->join_type == JSTP_CROSS ||
+				 plan->join_type == JSTP_UNION)
+		{
+			collectSiblingPathsInJsonTablePlan(plan->plan1, paths);
+			collectSiblingPathsInJsonTablePlan(plan->plan2, paths);
+		}
+		else
+			elog(ERROR, "invalid JSON_TABLE jsoin type %d",
+				 plan->join_type);
+	}
+}
+
+static void
+checkJsonTableChildPlan(ParseState *pstate, JsonTablePlan *plan, List *columns)
+{
+	ListCell   *lc1;
+	List	   *siblings = NIL;
+	int			nchilds = 0;
+
+	if (plan)
+		collectSiblingPathsInJsonTablePlan(plan, &siblings);
+
+	foreach(lc1, columns)
+	{
+		JsonTableColumn *jtc = castNode(JsonTableColumn, lfirst(lc1));
+
+		if (jtc->coltype == JTC_NESTED)
+		{
+			ListCell   *lc2;
+			bool		found = false;
+
+			if (!jtc->pathname)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("nested JSON_TABLE columns shall contain "
+								"explicit AS pathname specification if "
+								"explicit PLAN clause is used"),
+						 parser_errposition(pstate, jtc->location)));
+
+			foreach(lc2, siblings)
+			{
+				if ((found = !strcmp(jtc->pathname, lfirst(lc2))))
+					break;
+			}
+
+			if (!found)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("invalid JSON_TABLE plan"),
+						 errdetail("plan node for nested path %s "
+								   "was not found in plan", jtc->pathname),
+						 parser_errposition(pstate, jtc->location)));
+
+			nchilds++;
+		}
+	}
+
+	if (list_length(siblings) > nchilds)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("invalid JSON_TABLE plan"),
+				 errdetail("plan node contains some extra or "
+						   "duplicate sibling nodes"),
+				 parser_errposition(pstate, plan ? plan->location : -1)));
+}
+
+static JsonTableColumn *
+findNestedJsonTableColumn(List *columns, const char *pathname)
+{
+	ListCell   *lc;
+
+	foreach(lc, columns)
+	{
+		JsonTableColumn *jtc = castNode(JsonTableColumn, lfirst(lc));
+
+		if (jtc->coltype == JTC_NESTED &&
+			jtc->pathname &&
+			!strcmp(jtc->pathname, pathname))
+			return jtc;
+	}
+
+	return NULL;
+}
+
+static Node *
+transformNestedJsonTableColumn(ParseState *pstate, JsonTableContext *cxt,
+							   JsonTableColumn *jtc, JsonTablePlan *plan)
+{
+	JsonTableParentNode *node;
+	char	   *pathname = jtc->pathname;
+
+	node = transformJsonTableColumns(pstate, cxt, plan,
+									 jtc->columns, jtc->pathspec,
+									 &pathname, jtc->location);
+	node->name = pstrdup(pathname);
+
+	return (Node *) node;
+}
+
+static Node *
+makeJsonTableSiblingJoin(bool cross, Node *lnode, Node *rnode)
+{
+	JsonTableSiblingNode *join = makeNode(JsonTableSiblingNode);
+
+	join->larg = lnode;
+	join->rarg = rnode;
+	join->cross = cross;
+
+	return (Node *) join;
+}
+
+static Node *
+transformJsonTableChildPlan(ParseState *pstate, JsonTableContext *cxt,
+							JsonTablePlan *plan, List *columns)
+{
+	JsonTableColumn *jtc = NULL;
+
+	if (!plan || plan->plan_type == JSTP_DEFAULT)
+	{
+		Node	   *res = NULL;
+		ListCell   *lc;
+		bool		cross = plan && (plan->join_type & JSTP_CROSS);
+
+		foreach(lc, columns)
+		{
+			JsonTableColumn *jtc = castNode(JsonTableColumn, lfirst(lc));
+			Node *node;
+
+			if (jtc->coltype != JTC_NESTED)
+				continue;
+
+			node = transformNestedJsonTableColumn(pstate, cxt, jtc, plan);
+			res = res ? makeJsonTableSiblingJoin(cross, res, node) : node;
+		}
+
+		return res;
+	}
+	else if (plan->plan_type == JSTP_SIMPLE)
+	{
+		jtc = findNestedJsonTableColumn(columns, plan->pathname);
+	}
+	else if (plan->plan_type == JSTP_JOINED)
+	{
+		if (plan->join_type == JSTP_INNER ||
+			plan->join_type == JSTP_OUTER)
+		{
+			Assert(plan->plan1->plan_type == JSTP_SIMPLE);
+			jtc = findNestedJsonTableColumn(columns, plan->plan1->pathname);
+		}
+		else
+		{
+			Node	   *node1 =
+				transformJsonTableChildPlan(pstate, cxt, plan->plan1, columns);
+			Node	   *node2 =
+				transformJsonTableChildPlan(pstate, cxt, plan->plan2, columns);
+
+			return makeJsonTableSiblingJoin(plan->join_type == JSTP_CROSS,
+											node1, node2);
+		}
+	}
+	else
+		elog(ERROR, "invalid JSON_TABLE plan type %d", plan->plan_type);
+
+	if (!jtc)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("invalid JSON_TABLE plan"),
+				 errdetail("path name was %s not found in nested columns list",
+						   plan->pathname),
+				 parser_errposition(pstate, plan->location)));
+
+	return transformNestedJsonTableColumn(pstate, cxt, jtc, plan);
+}
+
+static void
+appendJsonTableColumns(ParseState *pstate, JsonTableContext *cxt, List *columns)
+{
+	JsonTable  *jt = cxt->table;
+	TableFunc  *tf = cxt->tablefunc;
+	bool		errorOnError = jt->on_error &&
+							   jt->on_error->btype == JSON_BEHAVIOR_ERROR;
+	ListCell *col;
+
+	foreach(col, columns)
+	{
+		JsonTableColumn *rawc = castNode(JsonTableColumn, lfirst(col));
+		Oid			typid;
+		int32		typmod;
+		Node	   *colexpr;
+
+		if (rawc->name)
+		{
+			/* make sure column names are unique */
+			ListCell *colname;
+
+			foreach(colname, tf->colnames)
+				if (!strcmp((const char *) colname, rawc->name))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("column name \"%s\" is not unique",
+									rawc->name),
+							 parser_errposition(pstate, rawc->location)));
+
+			tf->colnames = lappend(tf->colnames,
+								   makeString(pstrdup(rawc->name)));
+		}
+
+		/*
+		 * Determine the type and typmod for the new column. FOR
+		 * ORDINALITY columns are INTEGER per spec; the others are
+		 * user-specified.
+		 */
+		switch (rawc->coltype)
+		{
+			case JTC_FOR_ORDINALITY:
+				colexpr = NULL;
+				typid = INT4OID;
+				typmod = -1;
+				break;
+
+			case JTC_REGULAR:
+			case JTC_FORMATTED:
+				{
+					Node	   *je;
+					CaseTestExpr *param = makeNode(CaseTestExpr);
+
+					param->collation = InvalidOid;
+					param->typeId = cxt->contextItemTypid;
+					param->typeMod = -1;
+
+					je = transformJsonTableColumn(rawc, (Node *) param,
+												  NIL, errorOnError);
+
+					colexpr = transformExpr(pstate, je, EXPR_KIND_FROM_FUNCTION);
+					assign_expr_collations(pstate, colexpr);
+
+					typid = exprType(colexpr);
+					typmod = exprTypmod(colexpr);
+					break;
+				}
+
+			case JTC_NESTED:
+				continue;
+
+			default:
+				elog(ERROR, "unknown JSON_TABLE column type: %d", rawc->coltype);
+				break;
+		}
+
+		tf->coltypes = lappend_oid(tf->coltypes, typid);
+		tf->coltypmods = lappend_int(tf->coltypmods, typmod);
+		tf->colcollations = lappend_oid(tf->colcollations,
+										type_is_collatable(typid)
+											? DEFAULT_COLLATION_OID
+											: InvalidOid);
+		tf->colvalexprs = lappend(tf->colvalexprs, colexpr);
+	}
+}
+
+static JsonTableParentNode *
+makeParentJsonTableNode(ParseState *pstate, JsonTableContext *cxt,
+						char *pathSpec, List *columns)
+{
+	JsonTableParentNode *node = makeNode(JsonTableParentNode);
+
+	node->path = makeConst(JSONPATHOID, -1, InvalidOid, -1,
+						   DirectFunctionCall1(jsonpath_in,
+											   CStringGetDatum(pathSpec)),
+						   false, false);
+
+	node->colMin = list_length(cxt->tablefunc->colvalexprs);
+
+	appendJsonTableColumns(pstate, cxt, columns);
+
+	node->colMax = list_length(cxt->tablefunc->colvalexprs) - 1;
+
+	node->errorOnError =
+		cxt->table->on_error &&
+		cxt->table->on_error->btype == JSON_BEHAVIOR_ERROR;
+
+	return node;
+}
+
+static JsonTableParentNode *
+transformJsonTableColumns(ParseState *pstate, JsonTableContext *cxt,
+						  JsonTablePlan *plan, List *columns,
+						  char *pathSpec, char **pathName, int location)
+{
+	JsonTableParentNode *node;
+	JsonTablePlan *childPlan;
+	bool		defaultPlan = !plan || plan->plan_type == JSTP_DEFAULT;
+
+	if (!*pathName)
+	{
+		if (cxt->table->plan)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid JSON_TABLE expression"),
+					 errdetail("JSON_TABLE columns shall contain "
+							   "explicit AS pathname specification if "
+							   "explicit PLAN clause is used"),
+					parser_errposition(pstate, location)));
+
+		*pathName = generateJsonTableAlias(cxt);
+	}
+
+	if (defaultPlan)
+		childPlan = plan;
+	else
+	{
+		JsonTablePlan *parentPlan =
+				plan->plan_type == JSTP_JOINED ? plan->plan1 : plan;
+
+		if (strcmp(parentPlan->pathname, *pathName))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid JSON_TABLE plan"),
+					 errdetail("path name mismatch: expected %s but %s is given",
+							   *pathName, parentPlan->pathname),
+					 parser_errposition(pstate, plan->location)));
+
+		if (plan->plan_type == JSTP_JOINED)
+		{
+			if (plan->join_type != JSTP_INNER &&
+				plan->join_type != JSTP_OUTER)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("invalid JSON_TABLE plan"),
+						 errdetail("expected INNER or OUTER JSON_TABLE plan node"),
+						 parser_errposition(pstate, plan->location)));
+
+			childPlan = plan->plan2;
+		}
+		else
+			childPlan = NULL;
+
+		checkJsonTableChildPlan(pstate, childPlan, columns);
+	}
+
+	node = makeParentJsonTableNode(pstate, cxt, pathSpec, columns);
+	node->name = pstrdup(*pathName);
+
+	if (childPlan || defaultPlan)
+	{
+		node->child = transformJsonTableChildPlan(pstate, cxt, childPlan,
+												  columns);
+		if (node->child)
+			node->outerJoin = !plan || (plan->join_type & JSTP_OUTER);
+		/* else: default plan case, no children found */
+	}
+
+	return node;
+}
+
+/*
+ * transformJsonTable -
+ *			Transform a raw JsonTable into TableFunc.
+ *
+ * Transform the document-generating expression, the row-generating expression,
+ * the column-generating expressions, and the default value expressions.
+ */
+static RangeTblEntry *
+transformJsonTable(ParseState *pstate, JsonTable *jt)
+{
+	JsonTableContext cxt;
+	TableFunc  *tf = makeNode(TableFunc);
+	JsonFuncExpr *jfe = makeNode(JsonFuncExpr);
+	JsonCommon *jscommon;
+	JsonTablePlan *plan = jt->plan;
+	char	   *rootPathName = jt->common->pathname;
+	bool		is_lateral;
+
+	cxt.table = jt;
+	cxt.tablefunc = tf;
+	cxt.pathnames = NIL;
+	cxt.pathNameId = 0;
+	cxt.passingArgsRef = NULL;
+	cxt.passingArgsRte = NULL;
+
+	if (rootPathName)
+		registerJsonTableColumn(&cxt, rootPathName);
+
+	registerAllJsonTableColumns(&cxt, jt->columns);
+
+	if (plan && plan->plan_type != JSTP_DEFAULT && !rootPathName)
+	{
+		/* Assign root path name and create corresponding plan node */
+		JsonTablePlan *rootNode = makeNode(JsonTablePlan);
+		JsonTablePlan *rootPlan = (JsonTablePlan *)
+				makeJsonTableJoinedPlan(JSTP_OUTER, (Node *) rootNode,
+										(Node *) plan, jt->location);
+
+		rootPathName = generateJsonTableAlias(&cxt);
+
+		rootNode->plan_type = JSTP_SIMPLE;
+		rootNode->pathname = rootPathName;
+
+		plan = rootPlan;
+	}
+
+	jscommon = copyObject(jt->common);
+	jscommon->pathspec = pstrdup("$");
+
+	jfe->op = IS_JSON_TABLE;
+	jfe->common = jscommon;
+	jfe->on_error = jt->on_error;
+	jfe->location = jt->common->location;
+
+	/*
+	 * We make lateral_only names of this level visible, whether or not the
+	 * RangeTableFunc is explicitly marked LATERAL.  This is needed for SQL
+	 * spec compliance and seems useful on convenience grounds for all
+	 * functions in FROM.
+	 *
+	 * (LATERAL can't nest within a single pstate level, so we don't need
+	 * save/restore logic here.)
+	 */
+	Assert(!pstate->p_lateral_active);
+	pstate->p_lateral_active = true;
+
+	tf->functype = TFT_JSON_TABLE;
+	tf->docexpr = transformExpr(pstate, (Node *) jfe, EXPR_KIND_FROM_FUNCTION);
+
+	cxt.contextItemTypid = exprType(tf->docexpr);
+
+	tf->plan = (Node *) transformJsonTableColumns(pstate, &cxt, plan,
+												  jt->columns,
+												  jt->common->pathspec,
+												  &rootPathName,
+												  jt->common->location);
+	/* undef ordinality column number */
+	tf->ordinalitycol = -1;
+	tf->location = jt->location;
+
+	pstate->p_lateral_active = false;
+
+	/*
+	 * Mark the RTE as LATERAL if the user said LATERAL explicitly, or if
+	 * there are any lateral cross-references in it.
+	 */
+	is_lateral = jt->lateral || contain_vars_of_level((Node *) tf, 0);
+
+	return addRangeTableEntryForTableFunc(pstate,
+										  tf, jt->alias, is_lateral, true);
+}
+
 
 static RangeTblEntry *
 getRTEForSpecialRelationTypes(ParseState *pstate, RangeVar *rv)
@@ -1222,6 +1828,31 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 
 		/* Transform TABLESAMPLE details and attach to the RTE */
 		rte->tablesample = transformRangeTableSample(pstate, rts);
+		return (Node *) rtr;
+	}
+	else if (IsA(n, JsonTable))
+	{
+		/* JsonTable is transformed into RangeSubselect */
+		/*
+		JsonTable *jt = castNode(JsonTable, n);
+		RangeSubselect *subselect = transformJsonTable(pstate, jt);
+
+		return transformFromClauseItem(pstate, (Node *) subselect,
+									   top_rte, top_rti, namespace);
+		*/
+		RangeTblRef *rtr;
+		RangeTblEntry *rte;
+		int			rtindex;
+
+		rte = transformJsonTable(pstate, (JsonTable *) n);
+		/* assume new rte is at end */
+		rtindex = list_length(pstate->p_rtable);
+		Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
+		*top_rte = rte;
+		*top_rti = rtindex;
+		*namespace = list_make1(makeDefaultNSItem(rte));
+		rtr = makeNode(RangeTblRef);
+		rtr->rtindex = rtindex;
 		return (Node *) rtr;
 	}
 	else if (IsA(n, JoinExpr))

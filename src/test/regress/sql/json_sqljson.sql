@@ -289,3 +289,7 @@ INSERT INTO test_json_constraints VALUES ('{"a": 7}', 1);
 INSERT INTO test_json_constraints VALUES ('{"a": 10}', 1);
 
 DROP TABLE test_json_constraints;
+
+-- JSON_TABLE
+
+SELECT * FROM JSON_TABLE(NULL FORMAT JSON, '$' COLUMNS (foo text));

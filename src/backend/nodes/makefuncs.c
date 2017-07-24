@@ -624,6 +624,21 @@ makeJsonBehavior(JsonBehaviorType type, Node *expr)
 	return behavior;
 }
 
+Node *
+makeJsonTableJoinedPlan(JsonTablePlanJoinType type, Node *plan1, Node *plan2,
+						int location)
+{
+	JsonTablePlan *n = makeNode(JsonTablePlan);
+
+	n->plan_type = JSTP_JOINED;
+	n->join_type = type;
+	n->plan1 = castNode(JsonTablePlan, plan1);
+	n->plan2 = castNode(JsonTablePlan, plan2);
+	n->location = location;
+
+	return (Node *) n;
+}
+
 JsonEncoding
 makeJsonEncoding(char *name)
 {

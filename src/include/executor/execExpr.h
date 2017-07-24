@@ -703,5 +703,8 @@ extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *jbv, bool is_jsonb,
 							struct JsonScalarCoercions *coercions,
 							MemoryContext mcxt,
 							struct JsonScalarCoercionExprState **pcestate);
+extern Datum ExecEvalExprPassingCaseValue(ExprState *estate,
+									ExprContext *econtext, bool *isnull,
+									Datum caseval_datum, bool caseval_isnull);
 
 #endif							/* EXEC_EXPR_H */

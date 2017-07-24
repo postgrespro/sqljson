@@ -1406,6 +1406,14 @@ typedef enum JsonQuotes
 	JS_QUOTES_OMIT
 } JsonQuotes;
 
+typedef enum
+{
+	JTC_FOR_ORDINALITY,
+	JTC_REGULAR,
+	JTC_FORMATTED,
+	JTC_NESTED,
+} JsonTableColumnType;
+
 typedef char *JsonPathSpec;
 
 typedef struct JsonOutput
@@ -1451,6 +1459,63 @@ typedef struct JsonFuncExpr
 	bool		omit_quotes;
 	int			location;
 } JsonFuncExpr;
+
+typedef struct JsonTableColumn
+{
+	NodeTag		type;
+	JsonTableColumnType coltype;
+	char	   *name;
+	TypeName   *typename;
+	JsonPathSpec pathspec;
+	char	   *pathname;
+	JsonFormat	format;
+	JsonWrapper	wrapper;
+	bool		omit_quotes;
+	List	   *columns;
+	JsonBehavior *on_empty;
+	JsonBehavior *on_error;
+	int			location;
+} JsonTableColumn;
+
+typedef enum JsonTablePlanType
+{
+	JSTP_DEFAULT,
+	JSTP_SIMPLE,
+	JSTP_JOINED,
+} JsonTablePlanType;
+
+typedef enum JsonTablePlanJoinType
+{
+	JSTP_INNER = 0x01,
+	JSTP_OUTER = 0x02,
+	JSTP_CROSS = 0x04,
+	JSTP_UNION = 0x08,
+} JsonTablePlanJoinType;
+
+typedef struct JsonTablePlan JsonTablePlan;
+
+struct JsonTablePlan
+{
+	NodeTag		type;
+	JsonTablePlanType plan_type;
+	JsonTablePlanJoinType join_type;
+	char	   *pathname;	/* for simple plan */
+	JsonTablePlan *plan1;	/* for joined plan */
+	JsonTablePlan *plan2;	/* for joined plan */
+	int			location;
+};
+
+typedef struct JsonTable
+{
+	NodeTag		type;
+	JsonCommon *common;
+	List	   *columns;
+	JsonTablePlan *plan;
+	JsonBehavior *on_error;
+	Alias	   *alias;
+	bool		lateral;
+	int			location;
+} JsonTable;
 
 typedef enum JsonValueType
 {
