@@ -4536,6 +4536,7 @@ ExecEvalJsonBehavior(ExprContext *econtext, JsonBehavior *behavior,
 
 		case JSON_BEHAVIOR_NULL:
 		case JSON_BEHAVIOR_UNKNOWN:
+		case JSON_BEHAVIOR_EMPTY:
 			*is_null = true;
 			return (Datum) 0;
 
@@ -4628,8 +4629,14 @@ EvalJsonPathVar(void *cxt, char *varName, int varNameLen,
 
 	if (!var->evaluated)
 	{
+		MemoryContext oldcxt = var->mcxt ?
+			MemoryContextSwitchTo(var->mcxt) : NULL;
+
 		var->value = ExecEvalExpr(var->estate, var->econtext, &var->isnull);
 		var->evaluated = true;
+
+		if (oldcxt)
+			MemoryContextSwitchTo(oldcxt);
 	}
 
 	if (var->isnull)
@@ -4772,6 +4779,7 @@ ExecEvalJsonExprSubtrans(JsonFunc func, ExprEvalStep *op,
 		PG_CATCH();
 		{
 			ErrorData  *edata;
+			int			ecategory;
 
 			/* Save error info in oldcontext */
 			MemoryContextSwitchTo(oldcontext);
@@ -4783,8 +4791,10 @@ ExecEvalJsonExprSubtrans(JsonFunc func, ExprEvalStep *op,
 			MemoryContextSwitchTo(oldcontext);
 			CurrentResourceOwner = oldowner;
 
-			if (ERRCODE_TO_CATEGORY(edata->sqlerrcode) !=
-				ERRCODE_DATA_EXCEPTION)
+			ecategory = ERRCODE_TO_CATEGORY(edata->sqlerrcode);
+
+			if (ecategory != ERRCODE_DATA_EXCEPTION &&
+				ecategory != ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION)	/* domain errors */
 				ReThrowError(edata);
 
 			res = (Datum) 0;
@@ -4912,6 +4922,10 @@ ExecEvalJsonExpr(ExprEvalStep *op, ExprContext *econtext,
 				op->d.jsonexpr.res_expr->isnull = *resnull;
 				break;
 			}
+
+		case IS_JSON_TABLE:
+			*resnull = false;
+			return item;
 
 		default:
 			elog(ERROR, "unrecognized SQL/JSON expression op %d", jexpr->op);

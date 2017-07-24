@@ -120,6 +120,7 @@ _equalRangeVar(const RangeVar *a, const RangeVar *b)
 static bool
 _equalTableFunc(const TableFunc *a, const TableFunc *b)
 {
+	COMPARE_SCALAR_FIELD(functype);
 	COMPARE_NODE_FIELD(ns_uris);
 	COMPARE_NODE_FIELD(ns_names);
 	COMPARE_NODE_FIELD(docexpr);
@@ -130,9 +131,31 @@ _equalTableFunc(const TableFunc *a, const TableFunc *b)
 	COMPARE_NODE_FIELD(colcollations);
 	COMPARE_NODE_FIELD(colexprs);
 	COMPARE_NODE_FIELD(coldefexprs);
+	COMPARE_NODE_FIELD(colvalexprs);
 	COMPARE_BITMAPSET_FIELD(notnulls);
+	COMPARE_NODE_FIELD(plan);
 	COMPARE_SCALAR_FIELD(ordinalitycol);
 	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+static bool
+_equalJsonTableParentNode(const JsonTableParentNode *a, const JsonTableParentNode *b)
+{
+	COMPARE_NODE_FIELD(path);
+	COMPARE_NODE_FIELD(child);
+	COMPARE_SCALAR_FIELD(colMin);
+	COMPARE_SCALAR_FIELD(colMax);
+
+	return true;
+}
+
+static bool
+_equalJsonTableSiblingNode(const JsonTableSiblingNode *a, const JsonTableSiblingNode *b)
+{
+	COMPARE_NODE_FIELD(larg);
+	COMPARE_NODE_FIELD(rarg);
 
 	return true;
 }
@@ -3478,6 +3501,12 @@ equal(const void *a, const void *b)
 			break;
 		case T_JsonItemCoercions:
 			retval = _equalJsonItemCoercions(a, b);
+			break;
+		case T_JsonTableParentNode:
+			retval = _equalJsonTableParentNode(a, b);
+			break;
+		case T_JsonTableSiblingNode:
+			retval = _equalJsonTableSiblingNode(a, b);
 			break;
 
 			/*
