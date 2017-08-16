@@ -314,6 +314,7 @@ extern Datum JsonPathQuery(Datum json, JsonPath *jp, JsonWrapper wrapper,
 
 extern Datum EvalJsonPathVar(void *cxt, bool *isnull);
 
+extern const TableFuncRoutine JsonTableRoutine;
 extern const TableFuncRoutine JsonbTableRoutine;
 
 #endif
