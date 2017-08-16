@@ -1,0 +1,1696 @@
+select json '{"a": 12}' @? '$.a.b';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": 12}' @? '$.b';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": {"a": 12}}' @? '$.a.a';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"a": 12}}' @? '$.*.a';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"b": {"a": 12}}' @? '$.*.a';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{}' @? '$.*';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": 1}' @? '$.*';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? 'lax $.**{1}';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? 'lax $.**{2}';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? 'lax $.**{3}';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '[]' @? '$[*]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '[1]' @? '$[*]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1]' @? '$[1]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '[1]' @? 'strict $[1]';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '[1]' @* 'strict $[1]';
+ERROR:  Invalid SQL/JSON subscript
+select json '[1]' @? '$[0]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1]' @? '$[0.3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1]' @? '$[0.5]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1]' @? '$[0.9]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1]' @? '$[1.2]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '[1]' @? 'strict $[1.2]';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '[1]' @* 'strict $[1.2]';
+ERROR:  Invalid SQL/JSON subscript
+select json '{}' @* 'strict $[0.3]';
+ERROR:  SQL/JSON array not found
+select json '{}' @? 'lax $[0.3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{}' @* 'strict $[1.2]';
+ERROR:  SQL/JSON array not found
+select json '{}' @? 'lax $[1.2]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{}' @* 'strict $[-2 to 3]';
+ERROR:  SQL/JSON array not found
+select json '{}' @? 'lax $[-2 to 3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >= @.b[*])';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": [1,2,3], "b": [3,4,"5"]}' @? '$ ? (@.a[*] >= @.b[*])';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": [1,2,3], "b": [3,4,"5"]}' @? 'strict $ ? (@.a[*] >= @.b[*])';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": [1,2,3], "b": [3,4,null]}' @? '$ ? (@.a[*] >= @.b[*])';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '1' @? '$ ? ((@ == "1") is unknown)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '1' @? '$ ? ((@ == 1) is unknown)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '[{"a": 1}, {"a": 2}]' @? '$[0 to 1] ? (@.a > 1)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": 12, "b": {"a": 13}}' @* '$.a';
+ ?column? 
+----------
+ 12
+(1 row)
+
+select json '{"a": 12, "b": {"a": 13}}' @* '$.b';
+ ?column?  
+-----------
+ {"a": 13}
+(1 row)
+
+select json '{"a": 12, "b": {"a": 13}}' @* '$.*';
+ ?column?  
+-----------
+ 12
+ {"a": 13}
+(2 rows)
+
+select json '{"a": 12, "b": {"a": 13}}' @* 'lax $.*.a';
+ ?column? 
+----------
+ 13
+(1 row)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[*].a';
+ ?column? 
+----------
+ 13
+(1 row)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[*].*';
+ ?column? 
+----------
+ 13
+ 14
+(2 rows)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0].a';
+ ?column? 
+----------
+(0 rows)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[1].a';
+ ?column? 
+----------
+ 13
+(1 row)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[2].a';
+ ?column? 
+----------
+(0 rows)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0,1].a';
+ ?column? 
+----------
+ 13
+(1 row)
+
+select json '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0 to 10].a';
+ ?column? 
+----------
+ 13
+(1 row)
+
+select json '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$[2.5 - 1 to @.size() - 2]';
+ ?column?  
+-----------
+ {"a": 13}
+ {"b": 14}
+ "ccc"
+(3 rows)
+
+select json '1' @* 'lax $[0]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '1' @* 'lax $[*]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{}' @* 'lax $[0]';
+ ?column? 
+----------
+ {}
+(1 row)
+
+select json '[1]' @* 'lax $[0]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '[1]' @* 'lax $[*]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '[1,2,3]' @* 'lax $[*]';
+ ?column? 
+----------
+ 1
+ 2
+ 3
+(3 rows)
+
+select json '[]' @* '$[last]';
+ ?column? 
+----------
+(0 rows)
+
+select json '[]' @* 'strict $[last]';
+ERROR:  Invalid SQL/JSON subscript
+select json '[1]' @* '$[last]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{}' @* 'lax $[last]';
+ ?column? 
+----------
+ {}
+(1 row)
+
+select json '[1,2,3]' @* '$[last]';
+ ?column? 
+----------
+ 3
+(1 row)
+
+select json '[1,2,3]' @* '$[last - 1]';
+ ?column? 
+----------
+ 2
+(1 row)
+
+select json '[1,2,3]' @* '$[last ? (@.type() == "number")]';
+ ?column? 
+----------
+ 3
+(1 row)
+
+select json '[1,2,3]' @* '$[last ? (@.type() == "string")]';
+ERROR:  Invalid SQL/JSON subscript
+select * from jsonpath_query(json '{"a": 10}', '$');
+ jsonpath_query 
+----------------
+ {"a": 10}
+(1 row)
+
+select * from jsonpath_query(json '{"a": 10}', '$ ? (.a < $value)');
+ERROR:  could not find 'value' passed variable
+select * from jsonpath_query(json '{"a": 10}', '$ ? (.a < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
+ {"a": 10}
+(1 row)
+
+select * from jsonpath_query(json '{"a": 10}', '$ ? (.a < $value)', '{"value" : 8}');
+ jsonpath_query 
+----------------
+(0 rows)
+
+select * from jsonpath_query(json '{"a": 10}', '$.a ? (@ < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
+ 10
+(1 row)
+
+select * from jsonpath_query(json '[10,11,12,13,14,15]', '$[*] ? (@ < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
+ 10
+ 11
+ 12
+(3 rows)
+
+select * from jsonpath_query(json '[10,11,12,13,14,15]', '$[0,1] ? (@ < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
+ 10
+ 11
+(2 rows)
+
+select * from jsonpath_query(json '[10,11,12,13,14,15]', '$[0 to 2] ? (@ < $value)', '{"value" : 15}');
+ jsonpath_query 
+----------------
+ 10
+ 11
+ 12
+(3 rows)
+
+select * from jsonpath_query(json '[1,"1",2,"2",null]', '$[*] ? (@ == "1")');
+ jsonpath_query 
+----------------
+ "1"
+(1 row)
+
+select * from jsonpath_query(json '[1,"1",2,"2",null]', '$[*] ? (@ == $value)', '{"value" : "1"}');
+ jsonpath_query 
+----------------
+ "1"
+(1 row)
+
+select json '[1, "2", null]' @* '$[*] ? (@ != null)';
+ ?column? 
+----------
+ 1
+ "2"
+(2 rows)
+
+select json '[1, "2", null]' @* '$[*] ? (@ == null)';
+ ?column? 
+----------
+ null
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**';
+    ?column?     
+-----------------
+ {"a": {"b": 1}}
+ {"b": 1}
+ 1
+(3 rows)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{1}';
+ ?column? 
+----------
+ {"b": 1}
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{1,}';
+ ?column? 
+----------
+ {"b": 1}
+ 1
+(2 rows)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{2}';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{2,}';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{3,}';
+ ?column? 
+----------
+(0 rows)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{0}.b ? (@ > 0)';
+ ?column? 
+----------
+(0 rows)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{1}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{0,}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{1,}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @* 'lax $.**{1,2}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**{0}.b ? (@ > 0)';
+ ?column? 
+----------
+(0 rows)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1}.b ? (@ > 0)';
+ ?column? 
+----------
+(0 rows)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**{0,}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1,}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1,2}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @* 'lax $.**{2,3}.b ? (@ > 0)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '{"a": {"b": 1}}' @? '$.**.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? '$.**{0}.b ? ( @ > 0)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": {"b": 1}}' @? '$.**{1}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? '$.**{0,}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? '$.**{1,}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"b": 1}}' @? '$.**{1,2}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**{0}.b ? ( @ > 0)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**{1}.b ? ( @ > 0)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**{0,}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**{1,}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**{1,2}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": {"c": {"b": 1}}}' @? '$.**{2,3}.b ? ( @ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"g": {"x": 2}}' @* '$.g ? (exists (@.x))';
+ ?column? 
+----------
+ {"x": 2}
+(1 row)
+
+select json '{"g": {"x": 2}}' @* '$.g ? (exists (@.y))';
+ ?column? 
+----------
+(0 rows)
+
+select json '{"g": {"x": 2}}' @* '$.g ? (exists (@.x ? (@ >= 2) ))';
+ ?column? 
+----------
+ {"x": 2}
+(1 row)
+
+--test ternary logic
+select
+	x, y,
+	jsonpath_query(
+		json '[true, false, null]',
+		'$[*] ? (@ == true  &&  ($x == true && $y == true) ||
+				 @ == false && !($x == true && $y == true) ||
+				 @ == null  &&  ($x == true && $y == true) is unknown)',
+		json_build_object('x', x, 'y', y)
+	) as "x && y"
+from
+	(values (json 'true'), ('false'), ('"null"')) x(x),
+	(values (json 'true'), ('false'), ('"null"')) y(y);
+   x    |   y    | x && y 
+--------+--------+--------
+ true   | true   | true
+ true   | false  | false
+ true   | "null" | null
+ false  | true   | false
+ false  | false  | false
+ false  | "null" | false
+ "null" | true   | null
+ "null" | false  | false
+ "null" | "null" | null
+(9 rows)
+
+select
+	x, y,
+	jsonpath_query(
+		json '[true, false, null]',
+		'$[*] ? (@ == true  &&  ($x == true || $y == true) ||
+				 @ == false && !($x == true || $y == true) ||
+				 @ == null  &&  ($x == true || $y == true) is unknown)',
+		json_build_object('x', x, 'y', y)
+	) as "x || y"
+from
+	(values (json 'true'), ('false'), ('"null"')) x(x),
+	(values (json 'true'), ('false'), ('"null"')) y(y);
+   x    |   y    | x || y 
+--------+--------+--------
+ true   | true   | true
+ true   | false  | true
+ true   | "null" | true
+ false  | true   | true
+ false  | false  | false
+ false  | "null" | null
+ "null" | true   | true
+ "null" | false  | null
+ "null" | "null" | null
+(9 rows)
+
+select json '{"a": 1, "b": 1}' @? '$ ? (.a == .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 1, "b": 1}}' @? '$ ? (.a == .b)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"c": {"a": 1, "b": 1}}' @? '$.c ? (.a == .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 1, "b": 1}}' @? '$.c ? ($.c.a == .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 1, "b": 1}}' @? '$.* ? (.a == .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": 1, "b": 1}' @? '$.** ? (.a == .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 1, "b": 1}}' @? '$.** ? (.a == .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 2, "b": 1}}' @* '$.** ? (.a == 1 + 1)';
+     ?column?     
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select json '{"c": {"a": 2, "b": 1}}' @* '$.** ? (.a == (1 + 1))';
+     ?column?     
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select json '{"c": {"a": 2, "b": 1}}' @* '$.** ? (.a == .b + 1)';
+     ?column?     
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select json '{"c": {"a": 2, "b": 1}}' @* '$.** ? (.a == (.b + 1))';
+     ?column?     
+------------------
+ {"a": 2, "b": 1}
+(1 row)
+
+select json '{"c": {"a": -1, "b": 1}}' @? '$.** ? (.a == - 1)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": -1, "b": 1}}' @? '$.** ? (.a == -1)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": -1, "b": 1}}' @? '$.** ? (.a == -.b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": -1, "b": 1}}' @? '$.** ? (.a == - .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 0, "b": 1}}' @? '$.** ? (.a == 1 - .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 2, "b": 1}}' @? '$.** ? (.a == 1 - - .b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"c": {"a": 0, "b": 1}}' @? '$.** ? (.a == 1 - +.b)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1,2,3]' @? '$ ? (+@[*] > +2)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1,2,3]' @? '$ ? (+@[*] > +3)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '[1,2,3]' @? '$ ? (-@[*] < -2)';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '[1,2,3]' @? '$ ? (-@[*] < -3)';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '1' @? '$ ? ($ > 0)';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- arithmetic errors
+select json '[1,2,0,3]' @* '$[*] ? (2 / @ > 0)';
+ ?column? 
+----------
+ 1
+ 2
+ 3
+(3 rows)
+
+select json '[1,2,0,3]' @* '$[*] ? ((2 / @ > 0) is unknown)';
+ ?column? 
+----------
+ 0
+(1 row)
+
+select json '0' @* '1 / $';
+ERROR:  division by zero
+-- unwrapping of operator arguments in lax mode
+select json '{"a": [2]}' @* 'lax $.a * 3';
+ ?column? 
+----------
+ 6
+(1 row)
+
+select json '{"a": [2]}' @* 'lax $.a + 3';
+ ?column? 
+----------
+ 5
+(1 row)
+
+select json '{"a": [2, 3, 4]}' @* 'lax -$.a';
+ ?column? 
+----------
+ -2
+ -3
+ -4
+(3 rows)
+
+-- should fail
+select json '{"a": [1, 2]}' @* 'lax $.a * 3';
+ERROR:  Singleton SQL/JSON item required
+-- extension: boolean expressions
+select json '2' @* '$ > 1';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '2' @* '$ <= 1';
+ ?column? 
+----------
+ false
+(1 row)
+
+select json '2' @* '$ == "2"';
+ ?column? 
+----------
+ null
+(1 row)
+
+select json '2' @~ '$ > 1';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '2' @~ '$ <= 1';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '2' @~ '$ == "2"';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '2' @~ '1';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '{}' @~ '$';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '[]' @~ '$';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '[1,2,3]' @~ '$[*]';
+ERROR:  Singleton SQL/JSON item required
+select json '[]' @~ '$[*]';
+ERROR:  Singleton SQL/JSON item required
+select jsonpath_predicate(json '[[1, true], [2, false]]', 'strict $[*] ? (@[0] > $x) [1]', '{"x": 1}');
+ jsonpath_predicate 
+--------------------
+ f
+(1 row)
+
+select jsonpath_predicate(json '[[1, true], [2, false]]', 'strict $[*] ? (@[0] < $x) [1]', '{"x": 2}');
+ jsonpath_predicate 
+--------------------
+ t
+(1 row)
+
+select json '[null,1,true,"a",[],{}]' @* '$.type()';
+ ?column? 
+----------
+ "array"
+(1 row)
+
+select json '[null,1,true,"a",[],{}]' @* 'lax $.type()';
+ ?column? 
+----------
+ "array"
+(1 row)
+
+select json '[null,1,true,"a",[],{}]' @* '$[*].type()';
+ ?column?  
+-----------
+ "null"
+ "number"
+ "boolean"
+ "string"
+ "array"
+ "object"
+(6 rows)
+
+select json 'null' @* 'null.type()';
+ ?column? 
+----------
+ "null"
+(1 row)
+
+select json 'null' @* 'true.type()';
+ ?column?  
+-----------
+ "boolean"
+(1 row)
+
+select json 'null' @* '123.type()';
+ ?column? 
+----------
+ "number"
+(1 row)
+
+select json 'null' @* '"123".type()';
+ ?column? 
+----------
+ "string"
+(1 row)
+
+select json '{"a": 2}' @* '($.a - 5).abs() + 10';
+ ?column? 
+----------
+ 13
+(1 row)
+
+select json '{"a": 2.5}' @* '-($.a * $.a).floor() + 10';
+ ?column? 
+----------
+ 4
+(1 row)
+
+select json '[1, 2, 3]' @* '($[*] > 2) ? (@ == true)';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[1, 2, 3]' @* '($[*] > 3).type()';
+ ?column?  
+-----------
+ "boolean"
+(1 row)
+
+select json '[1, 2, 3]' @* '($[*].a > 3).type()';
+ ?column?  
+-----------
+ "boolean"
+(1 row)
+
+select json '[1, 2, 3]' @* 'strict ($[*].a > 3).type()';
+ ?column? 
+----------
+ "null"
+(1 row)
+
+select json '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]' @* 'strict $[*].size()';
+ERROR:  SQL/JSON array not found
+select json '[1,null,true,"11",[],[1],[1,2,3],{},{"a":1,"b":2}]' @* 'lax $[*].size()';
+ ?column? 
+----------
+ 1
+ 1
+ 1
+ 1
+ 0
+ 1
+ 3
+ 1
+ 1
+(9 rows)
+
+select json '[0, 1, -2, -3.4, 5.6]' @* '$[*].abs()';
+ ?column? 
+----------
+ 0
+ 1
+ 2
+ 3.4
+ 5.6
+(5 rows)
+
+select json '[0, 1, -2, -3.4, 5.6]' @* '$[*].floor()';
+ ?column? 
+----------
+ 0
+ 1
+ -2
+ -4
+ 5
+(5 rows)
+
+select json '[0, 1, -2, -3.4, 5.6]' @* '$[*].ceiling()';
+ ?column? 
+----------
+ 0
+ 1
+ -2
+ -3
+ 6
+(5 rows)
+
+select json '[0, 1, -2, -3.4, 5.6]' @* '$[*].ceiling().abs()';
+ ?column? 
+----------
+ 0
+ 1
+ 2
+ 3
+ 6
+(5 rows)
+
+select json '[0, 1, -2, -3.4, 5.6]' @* '$[*].ceiling().abs().type()';
+ ?column? 
+----------
+ "number"
+ "number"
+ "number"
+ "number"
+ "number"
+(5 rows)
+
+select json '[{},1]' @* '$[*].keyvalue()';
+ERROR:  SQL/JSON object not found
+select json '{}' @* '$.keyvalue()';
+ ?column? 
+----------
+(0 rows)
+
+select json '{"a": 1, "b": [1, 2], "c": {"a": "bbb"}}' @* '$.keyvalue()';
+              ?column?               
+-------------------------------------
+ {"key": "a", "value": 1}
+ {"key": "b", "value": [1, 2]}
+ {"key": "c", "value": {"a": "bbb"}}
+(3 rows)
+
+select json '[{"a": 1, "b": [1, 2]}, {"c": {"a": "bbb"}}]' @* '$[*].keyvalue()';
+              ?column?               
+-------------------------------------
+ {"key": "a", "value": 1}
+ {"key": "b", "value": [1, 2]}
+ {"key": "c", "value": {"a": "bbb"}}
+(3 rows)
+
+select json '[{"a": 1, "b": [1, 2]}, {"c": {"a": "bbb"}}]' @* 'strict $.keyvalue()';
+ERROR:  SQL/JSON object not found
+select json '[{"a": 1, "b": [1, 2]}, {"c": {"a": "bbb"}}]' @* 'lax $.keyvalue()';
+              ?column?               
+-------------------------------------
+ {"key": "a", "value": 1}
+ {"key": "b", "value": [1, 2]}
+ {"key": "c", "value": {"a": "bbb"}}
+(3 rows)
+
+select json 'null' @* '$.double()';
+ERROR:  Non-numeric SQL/JSON item
+select json 'true' @* '$.double()';
+ERROR:  Non-numeric SQL/JSON item
+select json '[]' @* '$.double()';
+ ?column? 
+----------
+(0 rows)
+
+select json '[]' @* 'strict $.double()';
+ERROR:  Non-numeric SQL/JSON item
+select json '{}' @* '$.double()';
+ERROR:  Non-numeric SQL/JSON item
+select json '1.23' @* '$.double()';
+ ?column? 
+----------
+ 1.23
+(1 row)
+
+select json '"1.23"' @* '$.double()';
+ ?column? 
+----------
+ 1.23
+(1 row)
+
+select json '"1.23aaa"' @* '$.double()';
+ERROR:  Non-numeric SQL/JSON item
+select json '["", "a", "abc", "abcabc"]' @* '$[*] ? (@ starts with "abc")';
+ ?column? 
+----------
+ "abc"
+ "abcabc"
+(2 rows)
+
+select json '["", "a", "abc", "abcabc"]' @* 'strict $ ? (@[*] starts with "abc")';
+          ?column?          
+----------------------------
+ ["", "a", "abc", "abcabc"]
+(1 row)
+
+select json '["", "a", "abd", "abdabc"]' @* 'strict $ ? (@[*] starts with "abc")';
+ ?column? 
+----------
+(0 rows)
+
+select json '["abc", "abcabc", null, 1]' @* 'strict $ ? (@[*] starts with "abc")';
+ ?column? 
+----------
+(0 rows)
+
+select json '["abc", "abcabc", null, 1]' @* 'strict $ ? ((@[*] starts with "abc") is unknown)';
+          ?column?          
+----------------------------
+ ["abc", "abcabc", null, 1]
+(1 row)
+
+select json '[[null, 1, "abc", "abcabc"]]' @* 'lax $ ? (@[*] starts with "abc")';
+          ?column?          
+----------------------------
+ [null, 1, "abc", "abcabc"]
+(1 row)
+
+select json '[[null, 1, "abd", "abdabc"]]' @* 'lax $ ? ((@[*] starts with "abc") is unknown)';
+          ?column?          
+----------------------------
+ [null, 1, "abd", "abdabc"]
+(1 row)
+
+select json '[null, 1, "abd", "abdabc"]' @* 'lax $[*] ? ((@ starts with "abc") is unknown)';
+ ?column? 
+----------
+ null
+ 1
+(2 rows)
+
+select json '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]' @* 'lax $[*] ? (@ like_regex "^ab.*c")';
+ ?column? 
+----------
+ "abc"
+ "abdacb"
+(2 rows)
+
+select json '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]' @* 'lax $[*] ? (@ like_regex "^ab.*c" flag "i")';
+ ?column? 
+----------
+ "abc"
+ "aBdC"
+ "abdacb"
+(3 rows)
+
+select json 'null' @* '$.datetime()';
+ERROR:  Invalid argument for SQL/JSON datetime function
+select json 'true' @* '$.datetime()';
+ERROR:  Invalid argument for SQL/JSON datetime function
+select json '[]' @* '$.datetime()';
+ ?column? 
+----------
+(0 rows)
+
+select json '[]' @* 'strict $.datetime()';
+ERROR:  Invalid argument for SQL/JSON datetime function
+select json '{}' @* '$.datetime()';
+ERROR:  Invalid argument for SQL/JSON datetime function
+select json '""' @* '$.datetime()';
+ERROR:  Invalid argument for SQL/JSON datetime function
+select json '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy")';
+   ?column?   
+--------------
+ "2017-03-10"
+(1 row)
+
+select json '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy").type()';
+ ?column? 
+----------
+ "date"
+(1 row)
+
+select json '"10-03-2017 12:34"' @* '$.datetime("dd-mm-yyyy")';
+   ?column?   
+--------------
+ "2017-03-10"
+(1 row)
+
+select json '"10-03-2017 12:34"' @* '$.datetime("dd-mm-yyyy").type()';
+ ?column? 
+----------
+ "date"
+(1 row)
+
+select json '"10-03-2017 12:34"' @* '       $.datetime("dd-mm-yyyy HH24:MI").type()';
+           ?column?            
+-------------------------------
+ "timestamp without time zone"
+(1 row)
+
+select json '"10-03-2017 12:34 +05:20"' @* '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM").type()';
+          ?column?          
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select json '"12:34:56"' @*                '$.datetime("HH24:MI:SS").type()';
+         ?column?         
+--------------------------
+ "time without time zone"
+(1 row)
+
+select json '"12:34:56 +05:20"' @*         '$.datetime("HH24:MI:SS TZH:TZM").type()';
+       ?column?        
+-----------------------
+ "time with time zone"
+(1 row)
+
+set time zone '+00';
+select json '"10-03-2017 12:34"' @*        '$.datetime("dd-mm-yyyy HH24:MI")';
+       ?column?        
+-----------------------
+ "2017-03-10T12:34:00"
+(1 row)
+
+select json '"10-03-2017 12:34"' @*        '$.datetime("dd-mm-yyyy HH24:MI TZH")';
+          ?column?           
+-----------------------------
+ "2017-03-10T12:34:00+00:00"
+(1 row)
+
+select json '"10-03-2017 12:34 +05"' @*    '$.datetime("dd-mm-yyyy HH24:MI TZH")';
+          ?column?           
+-----------------------------
+ "2017-03-10T07:34:00+00:00"
+(1 row)
+
+select json '"10-03-2017 12:34 -05"' @*    '$.datetime("dd-mm-yyyy HH24:MI TZH")';
+          ?column?           
+-----------------------------
+ "2017-03-10T17:34:00+00:00"
+(1 row)
+
+select json '"10-03-2017 12:34 +05:20"' @* '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")';
+          ?column?           
+-----------------------------
+ "2017-03-10T07:14:00+00:00"
+(1 row)
+
+select json '"10-03-2017 12:34 -05:20"' @* '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")';
+          ?column?           
+-----------------------------
+ "2017-03-10T17:54:00+00:00"
+(1 row)
+
+select json '"12:34"' @*       '$.datetime("HH24:MI")';
+  ?column?  
+------------
+ "12:34:00"
+(1 row)
+
+select json '"12:34"' @*       '$.datetime("HH24:MI TZH")';
+     ?column?     
+------------------
+ "12:34:00+00:00"
+(1 row)
+
+select json '"12:34 +05"' @*    '$.datetime("HH24:MI TZH")';
+     ?column?     
+------------------
+ "12:34:00+05:00"
+(1 row)
+
+select json '"12:34 -05"' @*    '$.datetime("HH24:MI TZH")';
+     ?column?     
+------------------
+ "12:34:00-05:00"
+(1 row)
+
+select json '"12:34 +05:20"' @* '$.datetime("HH24:MI TZH:TZM")';
+     ?column?     
+------------------
+ "12:34:00+05:20"
+(1 row)
+
+select json '"12:34 -05:20"' @* '$.datetime("HH24:MI TZH:TZM")';
+     ?column?     
+------------------
+ "12:34:00-05:20"
+(1 row)
+
+set time zone '+10';
+select json '"10-03-2017 12:34"' @*        '$.datetime("dd-mm-yyyy HH24:MI")';
+       ?column?        
+-----------------------
+ "2017-03-10T12:34:00"
+(1 row)
+
+select json '"10-03-2017 12:34"' @*        '$.datetime("dd-mm-yyyy HH24:MI TZH")';
+          ?column?           
+-----------------------------
+ "2017-03-10T12:34:00+10:00"
+(1 row)
+
+select json '"10-03-2017 12:34 +05"' @*    '$.datetime("dd-mm-yyyy HH24:MI TZH")';
+          ?column?           
+-----------------------------
+ "2017-03-10T17:34:00+10:00"
+(1 row)
+
+select json '"10-03-2017 12:34 -05"' @*    '$.datetime("dd-mm-yyyy HH24:MI TZH")';
+          ?column?           
+-----------------------------
+ "2017-03-11T03:34:00+10:00"
+(1 row)
+
+select json '"10-03-2017 12:34 +05:20"' @* '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")';
+          ?column?           
+-----------------------------
+ "2017-03-10T17:14:00+10:00"
+(1 row)
+
+select json '"10-03-2017 12:34 -05:20"' @* '$.datetime("dd-mm-yyyy HH24:MI TZH:TZM")';
+          ?column?           
+-----------------------------
+ "2017-03-11T03:54:00+10:00"
+(1 row)
+
+select json '"12:34"' @*        '$.datetime("HH24:MI")';
+  ?column?  
+------------
+ "12:34:00"
+(1 row)
+
+select json '"12:34"' @*        '$.datetime("HH24:MI TZH")';
+     ?column?     
+------------------
+ "12:34:00+10:00"
+(1 row)
+
+select json '"12:34 +05"' @*    '$.datetime("HH24:MI TZH")';
+     ?column?     
+------------------
+ "12:34:00+05:00"
+(1 row)
+
+select json '"12:34 -05"' @*    '$.datetime("HH24:MI TZH")';
+     ?column?     
+------------------
+ "12:34:00-05:00"
+(1 row)
+
+select json '"12:34 +05:20"' @* '$.datetime("HH24:MI TZH:TZM")';
+     ?column?     
+------------------
+ "12:34:00+05:20"
+(1 row)
+
+select json '"12:34 -05:20"' @* '$.datetime("HH24:MI TZH:TZM")';
+     ?column?     
+------------------
+ "12:34:00-05:20"
+(1 row)
+
+set time zone default;
+select json '"2017-03-10"' @* '$.datetime().type()';
+ ?column? 
+----------
+ "date"
+(1 row)
+
+select json '"2017-03-10"' @* '$.datetime()';
+   ?column?   
+--------------
+ "2017-03-10"
+(1 row)
+
+select json '"2017-03-10 12:34:56"' @* '$.datetime().type()';
+           ?column?            
+-------------------------------
+ "timestamp without time zone"
+(1 row)
+
+select json '"2017-03-10 12:34:56"' @* '$.datetime()';
+       ?column?        
+-----------------------
+ "2017-03-10T12:34:56"
+(1 row)
+
+select json '"2017-03-10 12:34:56 +3"' @* '$.datetime().type()';
+          ?column?          
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select json '"2017-03-10 12:34:56 +3"' @* '$.datetime()';
+          ?column?           
+-----------------------------
+ "2017-03-10T01:34:56-08:00"
+(1 row)
+
+select json '"2017-03-10 12:34:56 +3:10"' @* '$.datetime().type()';
+          ?column?          
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select json '"2017-03-10 12:34:56 +3:10"' @* '$.datetime()';
+          ?column?           
+-----------------------------
+ "2017-03-10T01:24:56-08:00"
+(1 row)
+
+select json '"12:34:56"' @* '$.datetime().type()';
+         ?column?         
+--------------------------
+ "time without time zone"
+(1 row)
+
+select json '"12:34:56"' @* '$.datetime()';
+  ?column?  
+------------
+ "12:34:56"
+(1 row)
+
+select json '"12:34:56 +3"' @* '$.datetime().type()';
+       ?column?        
+-----------------------
+ "time with time zone"
+(1 row)
+
+select json '"12:34:56 +3"' @* '$.datetime()';
+     ?column?     
+------------------
+ "12:34:56+03:00"
+(1 row)
+
+select json '"12:34:56 +3:10"' @* '$.datetime().type()';
+       ?column?        
+-----------------------
+ "time with time zone"
+(1 row)
+
+select json '"12:34:56 +3:10"' @* '$.datetime()';
+     ?column?     
+------------------
+ "12:34:56+03:10"
+(1 row)
+
+set time zone '+00';
+-- date comparison
+select json '["2017-03-10", "2017-03-11", "2017-03-09", "12:34:56", "01:02:03 +04", "2017-03-10 00:00:00", "2017-03-10 12:34:56", "2017-03-10 01:02:03 +04", "2017-03-10 03:00:00 +03"]'
+	@* '$[*].datetime() ? (@ == "10.03.2017".datetime("dd.mm.yyyy"))';
+          ?column?           
+-----------------------------
+ "2017-03-10"
+ "2017-03-10T00:00:00"
+ "2017-03-10T00:00:00+00:00"
+(3 rows)
+
+select json '["2017-03-10", "2017-03-11", "2017-03-09", "12:34:56", "01:02:03 +04", "2017-03-10 00:00:00", "2017-03-10 12:34:56", "2017-03-10 01:02:03 +04", "2017-03-10 03:00:00 +03"]'
+	@* '$[*].datetime() ? (@ >= "10.03.2017".datetime("dd.mm.yyyy"))';
+          ?column?           
+-----------------------------
+ "2017-03-10"
+ "2017-03-11"
+ "2017-03-10T00:00:00"
+ "2017-03-10T12:34:56"
+ "2017-03-10T00:00:00+00:00"
+(5 rows)
+
+select json '["2017-03-10", "2017-03-11", "2017-03-09", "12:34:56", "01:02:03 +04", "2017-03-10 00:00:00", "2017-03-10 12:34:56", "2017-03-10 01:02:03 +04", "2017-03-10 03:00:00 +03"]'
+	@* '$[*].datetime() ? (@ <  "10.03.2017".datetime("dd.mm.yyyy"))';
+          ?column?           
+-----------------------------
+ "2017-03-09"
+ "2017-03-09T21:02:03+00:00"
+(2 rows)
+
+-- time comparison
+select json '["12:34:00", "12:35:00", "12:36:00", "12:35:00 +00", "12:35:00 +01", "13:35:00 +01", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +01"]'
+	@* '$[*].datetime() ? (@ == "12:35".datetime("HH24:MI"))';
+     ?column?     
+------------------
+ "12:35:00"
+ "12:35:00+00:00"
+(2 rows)
+
+select json '["12:34:00", "12:35:00", "12:36:00", "12:35:00 +00", "12:35:00 +01", "13:35:00 +01", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +01"]'
+	@* '$[*].datetime() ? (@ >= "12:35".datetime("HH24:MI"))';
+     ?column?     
+------------------
+ "12:35:00"
+ "12:36:00"
+ "12:35:00+00:00"
+(3 rows)
+
+select json '["12:34:00", "12:35:00", "12:36:00", "12:35:00 +00", "12:35:00 +01", "13:35:00 +01", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +01"]'
+	@* '$[*].datetime() ? (@ <  "12:35".datetime("HH24:MI"))';
+     ?column?     
+------------------
+ "12:34:00"
+ "12:35:00+01:00"
+ "13:35:00+01:00"
+(3 rows)
+
+-- timetz comparison
+select json '["12:34:00 +01", "12:35:00 +01", "12:36:00 +01", "12:35:00 +02", "12:35:00 -02", "10:35:00", "11:35:00", "12:35:00", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +1"]'
+	@* '$[*].datetime() ? (@ == "12:35 +1".datetime("HH24:MI TZH"))';
+     ?column?     
+------------------
+ "12:35:00+01:00"
+(1 row)
+
+select json '["12:34:00 +01", "12:35:00 +01", "12:36:00 +01", "12:35:00 +02", "12:35:00 -02", "10:35:00", "11:35:00", "12:35:00", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +1"]'
+	@* '$[*].datetime() ? (@ >= "12:35 +1".datetime("HH24:MI TZH"))';
+     ?column?     
+------------------
+ "12:35:00+01:00"
+ "12:36:00+01:00"
+ "12:35:00-02:00"
+ "11:35:00"
+ "12:35:00"
+(5 rows)
+
+select json '["12:34:00 +01", "12:35:00 +01", "12:36:00 +01", "12:35:00 +02", "12:35:00 -02", "10:35:00", "11:35:00", "12:35:00", "2017-03-10", "2017-03-10 12:35:00", "2017-03-10 12:35:00 +1"]'
+	@* '$[*].datetime() ? (@ <  "12:35 +1".datetime("HH24:MI TZH"))';
+     ?column?     
+------------------
+ "12:34:00+01:00"
+ "12:35:00+02:00"
+ "10:35:00"
+(3 rows)
+
+-- timestamp comparison
+select json '["2017-03-10 12:34:00", "2017-03-10 12:35:00", "2017-03-10 12:36:00", "2017-03-10 12:35:00 +01", "2017-03-10 13:35:00 +01", "2017-03-10 12:35:00 -01", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]'
+	@* '$[*].datetime() ? (@ == "10.03.2017 12:35".datetime("dd.mm.yyyy HH24:MI"))';
+          ?column?           
+-----------------------------
+ "2017-03-10T12:35:00"
+ "2017-03-10T12:35:00+00:00"
+(2 rows)
+
+select json '["2017-03-10 12:34:00", "2017-03-10 12:35:00", "2017-03-10 12:36:00", "2017-03-10 12:35:00 +01", "2017-03-10 13:35:00 +01", "2017-03-10 12:35:00 -01", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]'
+	@* '$[*].datetime() ? (@ >= "10.03.2017 12:35".datetime("dd.mm.yyyy HH24:MI"))';
+          ?column?           
+-----------------------------
+ "2017-03-10T12:35:00"
+ "2017-03-10T12:36:00"
+ "2017-03-10T12:35:00+00:00"
+ "2017-03-10T13:35:00+00:00"
+ "2017-03-11"
+(5 rows)
+
+select json '["2017-03-10 12:34:00", "2017-03-10 12:35:00", "2017-03-10 12:36:00", "2017-03-10 12:35:00 +01", "2017-03-10 13:35:00 +01", "2017-03-10 12:35:00 -01", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]'
+	@* '$[*].datetime() ? (@ < "10.03.2017 12:35".datetime("dd.mm.yyyy HH24:MI"))';
+          ?column?           
+-----------------------------
+ "2017-03-10T12:34:00"
+ "2017-03-10T11:35:00+00:00"
+ "2017-03-10"
+(3 rows)
+
+-- timestamptz comparison
+select json '["2017-03-10 12:34:00 +01", "2017-03-10 12:35:00 +01", "2017-03-10 12:36:00 +01", "2017-03-10 12:35:00 +02", "2017-03-10 12:35:00 -02", "2017-03-10 10:35:00", "2017-03-10 11:35:00", "2017-03-10 12:35:00", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]'
+	@* '$[*].datetime() ? (@ == "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))';
+          ?column?           
+-----------------------------
+ "2017-03-10T11:35:00+00:00"
+ "2017-03-10T11:35:00"
+(2 rows)
+
+select json '["2017-03-10 12:34:00 +01", "2017-03-10 12:35:00 +01", "2017-03-10 12:36:00 +01", "2017-03-10 12:35:00 +02", "2017-03-10 12:35:00 -02", "2017-03-10 10:35:00", "2017-03-10 11:35:00", "2017-03-10 12:35:00", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]'
+	@* '$[*].datetime() ? (@ >= "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))';
+          ?column?           
+-----------------------------
+ "2017-03-10T11:35:00+00:00"
+ "2017-03-10T11:36:00+00:00"
+ "2017-03-10T14:35:00+00:00"
+ "2017-03-10T11:35:00"
+ "2017-03-10T12:35:00"
+ "2017-03-11"
+(6 rows)
+
+select json '["2017-03-10 12:34:00 +01", "2017-03-10 12:35:00 +01", "2017-03-10 12:36:00 +01", "2017-03-10 12:35:00 +02", "2017-03-10 12:35:00 -02", "2017-03-10 10:35:00", "2017-03-10 11:35:00", "2017-03-10 12:35:00", "2017-03-10", "2017-03-11", "12:34:56", "12:34:56 +01"]'
+	@* '$[*].datetime() ? (@ < "10.03.2017 12:35 +1".datetime("dd.mm.yyyy HH24:MI TZH"))';
+          ?column?           
+-----------------------------
+ "2017-03-10T11:34:00+00:00"
+ "2017-03-10T10:35:00+00:00"
+ "2017-03-10T10:35:00"
+ "2017-03-10"
+(4 rows)
+
+set time zone default;
+-- jsonpath operators
+SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*]';
+ ?column? 
+----------
+ {"a": 1}
+ {"a": 2}
+(2 rows)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+ ?column? 
+----------
+(0 rows)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @# '$[*].a';
+ ?column? 
+----------
+ [1, 2]
+(1 row)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ == 1)';
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ > 10)';
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*] ? (@.a > 1)';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a ? (@ > 2)';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 1';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT json '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 2';
+ ?column? 
+----------
+ f
+(1 row)
+

@@ -15,6 +15,7 @@
 #define JSONAPI_H
 
 #include "jsonb.h"
+#include "access/htup.h"
 #include "lib/stringinfo.h"
 
 typedef enum
@@ -93,6 +94,48 @@ typedef struct JsonSemAction
 	json_scalar_action scalar;
 } JsonSemAction;
 
+typedef enum
+{
+	JTI_ARRAY_START,
+	JTI_ARRAY_ELEM,
+	JTI_ARRAY_ELEM_SCALAR,
+	JTI_ARRAY_ELEM_AFTER,
+	JTI_ARRAY_END,
+	JTI_OBJECT_START,
+	JTI_OBJECT_KEY,
+	JTI_OBJECT_VALUE,
+	JTI_OBJECT_VALUE_AFTER,
+} JsontIterState;
+
+typedef struct JsonContainerData
+{
+	uint32		header;
+	int			len;
+	char	   *data;
+} JsonContainerData;
+
+typedef const JsonContainerData JsonContainer;
+
+typedef struct Json
+{
+	JsonContainer root;
+} Json;
+
+typedef struct JsonIterator
+{
+	struct JsonIterator	*parent;
+	JsonContainer *container;
+	JsonLexContext *lex;
+	JsontIterState state;
+	bool		isScalar;
+} JsonIterator;
+
+#define DatumGetJsonP(datum) JsonCreate(DatumGetTextP(datum))
+#define DatumGetJsonPCopy(datum) JsonCreate(DatumGetTextPCopy(datum))
+
+#define JsonPGetDatum(json) \
+	PointerGetDatum(cstring_to_text_with_len((json)->root.data, (json)->root.len))
+
 /*
  * parse_json will parse the string in the lex calling the
  * action functions in sem at the appropriate points. It is
@@ -162,5 +205,23 @@ extern text *transform_json_string_values(text *json, void *action_state,
 							 JsonTransformStringValuesAction transform_action);
 
 extern char *JsonEncodeDateTime(char *buf, Datum value, Oid typid, int *tz);
+
+extern Json *JsonCreate(text *json);
+extern JsonbIteratorToken JsonIteratorNext(JsonIterator **pit, JsonbValue *val,
+				 bool skipNested);
+extern JsonIterator *JsonIteratorInit(JsonContainer *jc);
+extern void JsonIteratorFree(JsonIterator *it);
+extern uint32 JsonGetArraySize(JsonContainer *jc);
+extern Json *JsonbValueToJson(JsonbValue *jbv);
+extern JsonbValue *JsonExtractScalar(JsonContainer *jbc, JsonbValue *res);
+extern char *JsonUnquote(Json *jb);
+extern char *JsonToCString(StringInfo out, JsonContainer *jc,
+			  int estimated_len);
+extern JsonbValue *pushJsonValue(JsonbParseState **pstate,
+			  JsonbIteratorToken tok, JsonbValue *jbv);
+extern JsonbValue *findJsonValueFromContainer(JsonContainer *jc, uint32 flags,
+						   JsonbValue *key);
+extern JsonbValue *getIthJsonValueFromContainer(JsonContainer *array,
+							 uint32 index);
 
 #endif							/* JSONAPI_H */
