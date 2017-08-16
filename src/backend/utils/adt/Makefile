@@ -17,7 +17,7 @@ OBJS = acl.o amutils.o arrayfuncs.o array_expanded.o array_selfuncs.o \
 	float.o format_type.o formatting.o genfile.o \
 	geo_ops.o geo_selfuncs.o geo_spgist.o inet_cidr_ntop.o inet_net_pton.o \
 	int.o int8.o json.o jsonb.o jsonb_gin.o jsonb_op.o jsonb_util.o \
-	jsonfuncs.o jsonpath_gram.o jsonpath.o jsonpath_exec.o \
+	jsonfuncs.o jsonpath_gram.o jsonpath.o jsonpath_exec.o jsonpath_json.o \
 	like.o like_support.o lockfuncs.o mac.o mac8.o misc.o name.o \
 	network.o network_gist.o network_selfuncs.o network_spgist.o \
 	numeric.o numutils.o oid.o oracle_compat.o \
@@ -38,6 +38,8 @@ jsonpath_scan.c: FLEX_NO_BACKUP=yes
 
 # jsonpath_scan is compiled as part of jsonpath_gram
 jsonpath_gram.o: jsonpath_scan.c
+
+jsonpath_json.o: jsonpath_exec.c
 
 # jsonpath_gram.c and jsonpath_scan.c are in the distribution tarball,
 # so they are not cleaned here.

@@ -165,6 +165,7 @@ test: jsonb
 test: json_encoding
 test: jsonpath
 test: jsonpath_encoding
+test: json_jsonpath
 test: jsonb_jsonpath
 test: plancache
 test: limit

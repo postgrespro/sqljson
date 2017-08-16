@@ -3263,5 +3263,13 @@
   oprname => '@@', oprleft => 'jsonb', oprright => 'jsonpath',
   oprresult => 'bool', oprcode => 'jsonb_path_match_opr(jsonb,jsonpath)',
   oprrest => 'contsel', oprjoin => 'contjoinsel' },
+{ oid => '6071', descr => 'jsonpath exists',
+  oprname => '@?', oprleft => 'json', oprright => 'jsonpath',
+  oprresult => 'bool', oprcode => 'json_path_exists(json,jsonpath)',
+  oprrest => 'contsel', oprjoin => 'contjoinsel' },
+{ oid => '6108', descr => 'jsonpath predicate',
+  oprname => '@@', oprleft => 'json', oprright => 'jsonpath',
+  oprresult => 'bool', oprcode => 'json_path_match(json,jsonpath)',
+  oprrest => 'contsel', oprjoin => 'contjoinsel' },
 
 ]

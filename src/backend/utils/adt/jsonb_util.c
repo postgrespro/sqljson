@@ -37,9 +37,7 @@
 #define JSONB_MAX_PAIRS (Min(MaxAllocSize / sizeof(JsonbPair), JB_CMASK))
 
 static void fillJsonbValue(JsonbContainer *container, int index,
-						   char *base_addr, uint32 offset,
-						   JsonbValue *result);
-static bool equalsJsonbScalarValue(JsonbValue *a, JsonbValue *b);
+						   char *base_addr, uint32 offset, JsonbValue *result);
 static int	compareJsonbScalarValue(JsonbValue *a, JsonbValue *b);
 static Jsonb *convertToJsonb(JsonbValue *val);
 static void convertJsonbValue(StringInfo buffer, JEntry *header, JsonbValue *val, int level);
@@ -58,12 +56,8 @@ static JsonbParseState *pushState(JsonbParseState **pstate);
 static void appendKey(JsonbParseState *pstate, JsonbValue *scalarVal);
 static void appendValue(JsonbParseState *pstate, JsonbValue *scalarVal);
 static void appendElement(JsonbParseState *pstate, JsonbValue *scalarVal);
-static int	lengthCompareJsonbStringValue(const void *a, const void *b);
 static int	lengthCompareJsonbPair(const void *a, const void *b, void *arg);
 static void uniqueifyJsonbObject(JsonbValue *object);
-static JsonbValue *pushJsonbValueScalar(JsonbParseState **pstate,
-										JsonbIteratorToken seq,
-										JsonbValue *scalarVal);
 
 /*
  * Turn an in-memory JsonbValue into a Jsonb for on-disk storage.
@@ -545,7 +539,7 @@ pushJsonbValue(JsonbParseState **pstate, JsonbIteratorToken seq,
  * Do the actual pushing, with only scalar or pseudo-scalar-array values
  * accepted.
  */
-static JsonbValue *
+JsonbValue *
 pushJsonbValueScalar(JsonbParseState **pstate, JsonbIteratorToken seq,
 					 JsonbValue *scalarVal)
 {
@@ -583,6 +577,7 @@ pushJsonbValueScalar(JsonbParseState **pstate, JsonbIteratorToken seq,
 			(*pstate)->size = 4;
 			(*pstate)->contVal.val.object.pairs = palloc(sizeof(JsonbPair) *
 														 (*pstate)->size);
+			(*pstate)->contVal.val.object.uniquify = true;
 			break;
 		case WJB_KEY:
 			Assert(scalarVal->type == jbvString);
@@ -825,6 +820,7 @@ recurse:
 			/* Set v to object on first object call */
 			val->type = jbvObject;
 			val->val.object.nPairs = (*it)->nElems;
+			val->val.object.uniquify = true;
 
 			/*
 			 * v->val.object.pairs is not actually set, because we aren't
@@ -1298,7 +1294,7 @@ JsonbHashScalarValueExtended(const JsonbValue *scalarVal, uint64 *hash,
 /*
  * Are two scalar JsonbValues of the same type a and b equal?
  */
-static bool
+bool
 equalsJsonbScalarValue(JsonbValue *aScalar, JsonbValue *bScalar)
 {
 	if (aScalar->type == bScalar->type)
@@ -1769,7 +1765,7 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
  * a and b are first sorted based on their length.  If a tie-breaker is
  * required, only then do we consider string binary equality.
  */
-static int
+int
 lengthCompareJsonbStringValue(const void *a, const void *b)
 {
 	const JsonbValue *va = (const JsonbValue *) a;
@@ -1832,6 +1828,9 @@ uniqueifyJsonbObject(JsonbValue *object)
 	bool		hasNonUniq = false;
 
 	Assert(object->type == jbvObject);
+
+	if (!object->val.object.uniquify)
+		return;
 
 	if (object->val.object.nPairs > 1)
 		qsort_arg(object->val.object.pairs, object->val.object.nPairs, sizeof(JsonbPair),
