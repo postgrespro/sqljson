@@ -1859,5 +1859,11 @@ DATA(insert OID = 6076 (  "@?"	   PGNSP PGUID b f f 3802 6050 16 0 0 6054 contse
 DESCR("jsonpath exists");
 DATA(insert OID = 6107 (  "@~"	   PGNSP PGUID b f f 3802 6050 16 0 0 6073 contsel contjoinsel ));
 DESCR("jsonpath predicate");
+DATA(insert OID = 6070 (  "@*"	   PGNSP PGUID b f f 114 6050 114 0 0 6044 - - ));
+DESCR("jsonpath items");
+DATA(insert OID = 6071 (  "@?"	   PGNSP PGUID b f f 114 6050 16 0 0 6043 contsel contjoinsel ));
+DESCR("jsonpath exists");
+DATA(insert OID = 6108 (  "@~"	   PGNSP PGUID b f f 114 6050 16 0 0 6049 contsel contjoinsel ));
+DESCR("jsonpath predicate");
 
 #endif							/* PG_OPERATOR_H */
