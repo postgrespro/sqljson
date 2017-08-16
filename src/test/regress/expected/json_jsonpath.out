@@ -172,6 +172,32 @@ select json '[1]' @? 'strict $[1.2]';
  
 (1 row)
 
+select json_path_query('[1]', 'strict $[1.2]');
+ERROR:  jsonpath array subscript is out of bounds
+select json_path_query('{}', 'strict $[0.3]');
+ERROR:  object subscript must be a string or number
+select json '{}' @? 'lax $[0.3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json_path_query('{}', 'strict $[1.2]');
+ERROR:  object subscript must be a string or number
+select json '{}' @? 'lax $[1.2]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json_path_query('{}', 'strict $[-2 to 3]');
+ERROR:  jsonpath array accessor can only be applied to an array
+select json '{}' @? 'lax $[-2 to 3]';
+ ?column? 
+----------
+ t
+(1 row)
+
 select json '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
  ?column? 
 ----------
@@ -244,7 +270,7 @@ select json_path_query('{}', 'lax $.a');
 select json_path_query('{}', 'strict $.a');
 ERROR:  JSON object does not contain key "a"
 select json_path_query('1', 'strict $[1]');
-ERROR:  jsonpath array accessor can only be applied to an array
+ERROR:  jsonpath array accessor can only be applied to an array or object
 select json_path_query('1', 'strict $[*]');
 ERROR:  jsonpath wildcard array accessor can only be applied to an array
 select json_path_query('[]', 'strict $[1]');
@@ -339,6 +365,12 @@ select json_path_query('1', 'lax $[*]');
  1
 (1 row)
 
+select json_path_query('{}', 'lax $[0]');
+ json_path_query 
+-----------------
+ {}
+(1 row)
+
 select json_path_query('[1]', 'lax $[0]');
  json_path_query 
 -----------------
@@ -377,6 +409,12 @@ select json_path_query('[1]', '$[last]');
  json_path_query 
 -----------------
  1
+(1 row)
+
+select json_path_query('{}', '$[last]');
+ json_path_query 
+-----------------
+ {}
 (1 row)
 
 select json_path_query('[1,2,3]', '$[last]');
@@ -1438,20 +1476,18 @@ select json_path_query('[null, 1, "abc", "abd", "aBdC", "abdacb", "adc\nabc", "b
 (2 rows)
 
 select json_path_query('null', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select json_path_query('true', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
-select json_path_query('1', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select json_path_query('[]', '$.datetime()');
  json_path_query 
 -----------------
 (0 rows)
 
 select json_path_query('[]', 'strict $.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select json_path_query('{}', '$.datetime()');
-ERROR:  jsonpath item method .datetime() can only be applied to a string value
+ERROR:  jsonpath item method .datetime() can only be applied to a string or number
 select json_path_query('""', '$.datetime()');
 ERROR:  unrecognized datetime format
 HINT:  use datetime template argument for explicit format specification
@@ -1488,6 +1524,25 @@ ERROR:  timezone argument of jsonpath item method .datetime() is out of integer 
 select json_path_query('"aaaa"', '$.datetime("HH24")');
 ERROR:  invalid value "aa" for "HH24"
 DETAIL:  Value must be an integer.
+-- Standard extension: UNIX epoch to timestamptz
+select json_path_query('0', '$.datetime()');
+       json_path_query       
+-----------------------------
+ "1970-01-01T00:00:00+00:00"
+(1 row)
+
+select json_path_query('0', '$.datetime().type()');
+      json_path_query       
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select json_path_query('1490216035.5', '$.datetime()');
+        json_path_query        
+-------------------------------
+ "2017-03-22T20:53:55.5+00:00"
+(1 row)
+
 select json '"10-03-2017"' @? '$.datetime("dd-mm-yyyy")';
  ?column? 
 ----------
@@ -1975,6 +2030,12 @@ SELECT json_path_query('[{"a": 1}, {"a": 2}]', '$[*] ? (@.a > 10)');
 -----------------
 (0 rows)
 
+SELECT json_path_query('[{"a": 1}, {"a": 2}]', '[$[*].a]');
+ json_path_query 
+-----------------
+ [1, 2]
+(1 row)
+
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a');
 ERROR:  JSON object does not contain key "a"
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a');
@@ -2005,6 +2066,12 @@ SELECT json_path_query_array('[{"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}]', '$[*].a
  json_path_query_array 
 -----------------------
  []
+(1 row)
+
+SELECT json_path_query_array('[{"a": 1}, {"a": 2}]', '[$[*].a]');
+ json_path_query_array 
+-----------------------
+ [[1, 2]]
 (1 row)
 
 SELECT json_path_query_first('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a');
@@ -2074,4 +2141,195 @@ SELECT json '[{"a": 1}, {"a": 2}]' @@ '$[*].a > 2';
 ----------
  f
 (1 row)
+
+-- extension: path sequences
+select json_path_query('[1,2,3,4,5]', '10, 20, $[*], 30');
+ json_path_query 
+-----------------
+ 10
+ 20
+ 1
+ 2
+ 3
+ 4
+ 5
+ 30
+(8 rows)
+
+select json_path_query('[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');
+ json_path_query 
+-----------------
+ 10
+ 20
+ 30
+(3 rows)
+
+select json_path_query('[1,2,3,4,5]', 'strict 10, 20, $[*].a, 30');
+ERROR:  jsonpath member accessor can only be applied to an object
+select json_path_query('[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
+ json_path_query 
+-----------------
+ -10
+ -20
+ -2
+ -3
+ -4
+ -30
+(6 rows)
+
+select json_path_query('[1,2,3,4,5]', 'lax (10, 20.5, $[1 to 3], "30").double()');
+ json_path_query 
+-----------------
+ 10
+ 20.5
+ 2
+ 3
+ 4
+ 30
+(6 rows)
+
+select json_path_query('[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
+ json_path_query 
+-----------------
+ 4
+(1 row)
+
+select json_path_query('[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+ERROR:  jsonpath array subscript is not a single numeric value
+-- extension: array constructors
+select json_path_query('[1, 2, 3]', '[]');
+ json_path_query 
+-----------------
+ []
+(1 row)
+
+select json_path_query('[1, 2, 3]', '[1, 2, $[*], 4, 5]');
+    json_path_query    
+-----------------------
+ [1, 2, 1, 2, 3, 4, 5]
+(1 row)
+
+select json_path_query('[1, 2, 3]', '[1, 2, $[*], 4, 5][*]');
+ json_path_query 
+-----------------
+ 1
+ 2
+ 1
+ 2
+ 3
+ 4
+ 5
+(7 rows)
+
+select json_path_query('[1, 2, 3]', '[(1, (2, $[*])), (4, 5)]');
+    json_path_query    
+-----------------------
+ [1, 2, 1, 2, 3, 4, 5]
+(1 row)
+
+select json_path_query('[1, 2, 3]', '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]');
+        json_path_query        
+-------------------------------
+ [[1, 2], [1, 2, 3, 4], 5, []]
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'strict [1, 2, $[*].a, 4, 5]');
+ERROR:  jsonpath member accessor can only be applied to an object
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*][*] ? (@ > 3)]');
+ json_path_query 
+-----------------
+ [4, 5, 6, 7]
+(1 row)
+
+-- extension: object constructors
+select json_path_query('[1, 2, 3]', '{}');
+ json_path_query 
+-----------------
+ {}
+(1 row)
+
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+        json_path_query         
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+ json_path_query 
+-----------------
+ 5
+ [1, 2, 3, 4, 5]
+(2 rows)
+
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}[*]');
+        json_path_query         
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+ERROR:  value in jsonpath object constructor must be a singleton
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}');
+                     json_path_query                     
+---------------------------------------------------------
+ {"a": 5, "b": {"x": [1, 2, 3], "y": false, "z": "foo"}}
+(1 row)
+
+-- extension: object subscripting
+select json '{"a": 1}' @? '$["a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json '{"a": 1}' @? '$["b"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select json '{"a": 1}' @? 'strict $["b"]';
+ ?column? 
+----------
+ 
+(1 row)
+
+select json '{"a": 1}' @? '$["b", "a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select json_path_query('{"a": 1}', '$["a"]');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('{"a": 1}', 'strict $["b"]');
+ERROR:  JSON object does not contain the specified key
+select json_path_query('{"a": 1}', 'lax $["b"]');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]');
+ json_path_query  
+------------------
+ 2
+ 2
+ 1
+ {"a": 1, "b": 2}
+(4 rows)
+
+select json_path_query('null', '{"a": 1}["a"]');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('null', '{"a": 1}["b"]');
+ json_path_query 
+-----------------
+(0 rows)
 

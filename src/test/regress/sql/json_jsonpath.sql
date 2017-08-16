@@ -29,6 +29,14 @@ select json '[1]' @? '$[0.5]';
 select json '[1]' @? '$[0.9]';
 select json '[1]' @? '$[1.2]';
 select json '[1]' @? 'strict $[1.2]';
+select json_path_query('[1]', 'strict $[1.2]');
+select json_path_query('{}', 'strict $[0.3]');
+select json '{}' @? 'lax $[0.3]';
+select json_path_query('{}', 'strict $[1.2]');
+select json '{}' @? 'lax $[1.2]';
+select json_path_query('{}', 'strict $[-2 to 3]');
+select json '{}' @? 'lax $[-2 to 3]';
+
 select json '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
 select json '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >= @.b[*])';
 select json '{"a": [1,2,3], "b": [3,4,"5"]}' @? '$ ? (@.a[*] >= @.b[*])';
@@ -66,6 +74,7 @@ select json_path_query('[12, {"a": 13}, {"b": 14}]', 'lax $[0 to 10 / 0].a');
 select json_path_query('[12, {"a": 13}, {"b": 14}, "ccc", true]', '$[2.5 - 1 to $.size() - 2]');
 select json_path_query('1', 'lax $[0]');
 select json_path_query('1', 'lax $[*]');
+select json_path_query('{}', 'lax $[0]');
 select json_path_query('[1]', 'lax $[0]');
 select json_path_query('[1]', 'lax $[*]');
 select json_path_query('[1,2,3]', 'lax $[*]');
@@ -74,6 +83,7 @@ select json_path_query('[]', '$[last]');
 select json_path_query('[]', '$[last ? (exists(last))]');
 select json_path_query('[]', 'strict $[last]');
 select json_path_query('[1]', '$[last]');
+select json_path_query('{}', '$[last]');
 select json_path_query('[1,2,3]', '$[last]');
 select json_path_query('[1,2,3]', '$[last - 1]');
 select json_path_query('[1,2,3]', '$[last ? (@.type() == "number")]');
@@ -119,6 +129,7 @@ select json_path_query('{"a": {"c": {"b": 1}}}', 'lax $.**{0 to last}.b ? (@ > 0
 select json_path_query('{"a": {"c": {"b": 1}}}', 'lax $.**{1 to last}.b ? (@ > 0)');
 select json_path_query('{"a": {"c": {"b": 1}}}', 'lax $.**{1 to 2}.b ? (@ > 0)');
 select json_path_query('{"a": {"c": {"b": 1}}}', 'lax $.**{2 to 3}.b ? (@ > 0)');
+
 
 select json '{"a": {"b": 1}}' @? '$.**.b ? ( @ > 0)';
 select json '{"a": {"b": 1}}' @? '$.**{0}.b ? ( @ > 0)';
@@ -303,7 +314,6 @@ select json_path_query('[null, 1, "abc", "abd", "aBdC", "abdacb", "adc\nabc", "b
 
 select json_path_query('null', '$.datetime()');
 select json_path_query('true', '$.datetime()');
-select json_path_query('1', '$.datetime()');
 select json_path_query('[]', '$.datetime()');
 select json_path_query('[]', 'strict $.datetime()');
 select json_path_query('{}', '$.datetime()');
@@ -318,6 +328,11 @@ select json_path_query('"12:34"', '$.datetime("HH24:MI TZH", 2147483648)');
 select json_path_query('"12:34"', '$.datetime("HH24:MI TZH", -2147483647)');
 select json_path_query('"12:34"', '$.datetime("HH24:MI TZH", -2147483648)');
 select json_path_query('"aaaa"', '$.datetime("HH24")');
+
+-- Standard extension: UNIX epoch to timestamptz
+select json_path_query('0', '$.datetime()');
+select json_path_query('0', '$.datetime().type()');
+select json_path_query('1490216035.5', '$.datetime()');
 
 select json '"10-03-2017"' @? '$.datetime("dd-mm-yyyy")';
 select json_path_query('"10-03-2017"', '$.datetime("dd-mm-yyyy")');
@@ -453,6 +468,7 @@ set time zone default;
 
 SELECT json_path_query('[{"a": 1}, {"a": 2}]', '$[*]');
 SELECT json_path_query('[{"a": 1}, {"a": 2}]', '$[*] ? (@.a > 10)');
+SELECT json_path_query('[{"a": 1}, {"a": 2}]', '[$[*].a]');
 
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a');
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a');
@@ -460,6 +476,7 @@ SELECT json_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a ? (@ == 1)');
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}]', '$[*].a ? (@ > 10)');
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}]', '$[*].a ? (@ > $min && @ < $max)', '{"min": 1, "max": 4}');
 SELECT json_path_query_array('[{"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}]', '$[*].a ? (@ > $min && @ < $max)', '{"min": 3, "max": 4}');
+SELECT json_path_query_array('[{"a": 1}, {"a": 2}]', '[$[*].a]');
 
 SELECT json_path_query_first('[{"a": 1}, {"a": 2}, {}]', 'strict $[*].a');
 SELECT json_path_query_first('[{"a": 1}, {"a": 2}]', '$[*].a');
@@ -475,3 +492,43 @@ SELECT json_path_exists('[{"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}]', '$[*] ? (@.a
 
 SELECT json '[{"a": 1}, {"a": 2}]' @@ '$[*].a > 1';
 SELECT json '[{"a": 1}, {"a": 2}]' @@ '$[*].a > 2';
+
+-- extension: path sequences
+select json_path_query('[1,2,3,4,5]', '10, 20, $[*], 30');
+select json_path_query('[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');
+select json_path_query('[1,2,3,4,5]', 'strict 10, 20, $[*].a, 30');
+select json_path_query('[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
+select json_path_query('[1,2,3,4,5]', 'lax (10, 20.5, $[1 to 3], "30").double()');
+select json_path_query('[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
+select json_path_query('[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+
+-- extension: array constructors
+select json_path_query('[1, 2, 3]', '[]');
+select json_path_query('[1, 2, 3]', '[1, 2, $[*], 4, 5]');
+select json_path_query('[1, 2, 3]', '[1, 2, $[*], 4, 5][*]');
+select json_path_query('[1, 2, 3]', '[(1, (2, $[*])), (4, 5)]');
+select json_path_query('[1, 2, 3]', '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]');
+select json_path_query('[1, 2, 3]', 'strict [1, 2, $[*].a, 4, 5]');
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*][*] ? (@ > 3)]');
+
+-- extension: object constructors
+select json_path_query('[1, 2, 3]', '{}');
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}[*]');
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+select json_path_query('[1, 2, 3]', '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}');
+
+-- extension: object subscripting
+select json '{"a": 1}' @? '$["a"]';
+select json '{"a": 1}' @? '$["b"]';
+select json '{"a": 1}' @? 'strict $["b"]';
+select json '{"a": 1}' @? '$["b", "a"]';
+
+select json_path_query('{"a": 1}', '$["a"]');
+select json_path_query('{"a": 1}', 'strict $["b"]');
+select json_path_query('{"a": 1}', 'lax $["b"]');
+select json_path_query('{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]');
+
+select json_path_query('null', '{"a": 1}["a"]');
+select json_path_query('null', '{"a": 1}["b"]');
