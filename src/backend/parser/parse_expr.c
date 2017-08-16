@@ -4685,13 +4685,10 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 	JsonExpr   *jsexpr = transformJsonExprCommon(pstate, func);
 	Node	   *contextItemExpr =
 		jsexpr->formatted_expr ? jsexpr->formatted_expr : jsexpr->raw_expr;
-	const char *func_name = NULL;
 
 	switch (func->op)
 	{
 		case IS_JSON_VALUE:
-			func_name = "JSON_VALUE";
-
 			transformJsonFuncExprOutput(pstate, func, jsexpr);
 
 			jsexpr->returning.format.type = JS_FORMAT_DEFAULT;
@@ -4712,8 +4709,6 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 			break;
 
 		case IS_JSON_QUERY:
-			func_name = "JSON_QUERY";
-
 			transformJsonFuncExprOutput(pstate, func, jsexpr);
 
 			jsexpr->wrapper = func->wrapper;
@@ -4722,8 +4717,6 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 			break;
 
 		case IS_JSON_EXISTS:
-			func_name = "JSON_EXISTS";
-
 			jsexpr->returning.format.type = JS_FORMAT_DEFAULT;
 			jsexpr->returning.format.encoding = JS_ENC_DEFAULT;
 			jsexpr->returning.format.location = -1;
@@ -4732,12 +4725,6 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 
 			break;
 	}
-
-	if (exprType(contextItemExpr) != JSONBOID)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s() is not yet implemented for json type", func_name),
-				 parser_errposition(pstate, func->location)));
 
 	return (Node *) jsexpr;
 }

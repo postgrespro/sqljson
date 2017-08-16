@@ -304,6 +304,12 @@ extern Datum JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 extern JsonbValue *JsonbPathValue(Datum jb, JsonPath *jp, bool *empty,
 			   List *vars);
 
+extern bool JsonPathExists(Datum json, JsonPath *path, List *vars);
+extern JsonbValue *JsonPathValue(Datum json, JsonPath *jp, bool *empty,
+			  List *vars);
+extern Datum JsonPathQuery(Datum json, JsonPath *jp, JsonWrapper wrapper,
+			  bool *empty, List *vars);
+
 extern Datum EvalJsonPathVar(void *cxt, bool *isnull);
 
 #endif
