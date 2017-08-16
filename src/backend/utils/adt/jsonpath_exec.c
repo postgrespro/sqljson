@@ -362,8 +362,6 @@ static JsonbIteratorToken JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv,
 				  bool skipNested);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
 static Jsonx *JsonbValueToJsonx(JsonbValue *jbv, bool isJsonb);
-static Datum JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb);
-static Datum JsonItemToJsonxDatum(JsonItem *jsi, bool isJsonb);
 
 static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 				   bool strict, Datum *value, Oid *typid,
@@ -2992,7 +2990,7 @@ JsonbValueToJsonx(JsonbValue *jbv, bool isJsonb)
 		(Jsonx *) JsonbValueToJson(jbv);
 }
 
-static Datum
+Datum
 JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb)
 {
 	return isJsonb ?
@@ -3000,7 +2998,7 @@ JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb)
 		JsonPGetDatum(JsonbValueToJson(jbv));
 }
 
-static Datum
+Datum
 JsonItemToJsonxDatum(JsonItem *jsi, bool isJsonb)
 {
 	JsonbValue	jbv;
@@ -3335,11 +3333,11 @@ JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid, int32 typmod, int tz)
 /********************Interface to pgsql's executor***************************/
 
 bool
-JsonbPathExists(Datum jb, JsonPath *jp, List *vars)
+JsonPathExists(Datum jb, JsonPath *jp, List *vars, bool isJsonb)
 {
+	Jsonx	   *js = DatumGetJsonxP(jb, isJsonb);
 	JsonPathExecResult res = executeJsonPath(jp, vars, EvalJsonPathVar,
-											 (Jsonx *) DatumGetJsonbP(jb),
-											 true, true, NULL);
+											 js, isJsonb, true, NULL);
 
 	Assert(!jperIsError(res));
 
@@ -3347,17 +3345,17 @@ JsonbPathExists(Datum jb, JsonPath *jp, List *vars)
 }
 
 Datum
-JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
-			   bool *empty, List *vars)
+JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper, bool *empty,
+			  List *vars, bool isJsonb)
 {
+	Jsonx	   *js = DatumGetJsonxP(jb, isJsonb);
 	JsonItem   *first;
 	bool		wrap;
 	JsonValueList found = {0};
 	JsonPathExecResult jper PG_USED_FOR_ASSERTS_ONLY;
 	int			count;
 
-	jper = executeJsonPath(jp, vars, EvalJsonPathVar,
-						   (Jsonx *) DatumGetJsonbP(jb), true, true, &found);
+	jper = executeJsonPath(jp, vars, EvalJsonPathVar, js, isJsonb, true, &found);
 	Assert(!jperIsError(jper));
 
 	count = JsonValueListLength(&found);
@@ -3382,7 +3380,11 @@ JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 	}
 
 	if (wrap)
-		return JsonbPGetDatum(JsonbValueToJsonb(wrapItemsInArray(&found, true)));
+	{
+		JsonbValue *arr = wrapItemsInArray(&found, isJsonb);
+
+		return JsonbValueToJsonxDatum(arr, isJsonb);
+	}
 
 	if (count > 1)
 		ereport(ERROR,
@@ -3393,22 +3395,22 @@ JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 						 "sequence into array")));
 
 	if (first)
-		return JsonbPGetDatum(JsonItemToJsonb(first));
+		return JsonItemToJsonxDatum(first, isJsonb);
 
 	*empty = true;
 	return PointerGetDatum(NULL);
 }
 
 JsonItem *
-JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
+JsonPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars, bool isJsonb)
 {
+	Jsonx	   *js = DatumGetJsonxP(jb, isJsonb);
 	JsonItem   *res;
 	JsonValueList found = { 0 };
 	JsonPathExecResult jper PG_USED_FOR_ASSERTS_ONLY;
 	int			count;
 
-	jper = executeJsonPath(jp, vars, EvalJsonPathVar,
-						   (Jsonx *) DatumGetJsonbP(jb), true, true, &found);
+	jper = executeJsonPath(jp, vars, EvalJsonPathVar, js, isJsonb, true, &found);
 	Assert(!jperIsError(jper));
 
 	count = JsonValueListLength(&found);
@@ -3428,7 +3430,12 @@ JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 
 	if (JsonItemIsBinary(res) &&
 		JsonContainerIsScalar(JsonItemBinary(res).data))
-		JsonbExtractScalar(JsonItemBinary(res).data, JsonItemJbv(res));
+	{
+		if (isJsonb)
+			JsonbExtractScalar(JsonItemBinary(res).data, JsonItemJbv(res));
+		else
+			JsonExtractScalar((JsonContainer *) JsonItemBinary(res).data, JsonItemJbv(res));
+	}
 
 	if (!JsonItemIsScalar(res))
 		ereport(ERROR,
