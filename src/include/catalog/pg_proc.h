@@ -5560,6 +5560,23 @@ DESCR("implementation of @? operator");
 DATA(insert OID =  6074 (  _jsonpath_predicate	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 16 "3802 6050 3802" _null_ _null_ _null_ _null_ _null_ jsonb_jsonpath_predicate3 _null_ _null_ _null_ ));
 DESCR("jsonpath predicate test");
 
+DATA(insert OID =  6043 (  _jsonpath_exists		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "114 6050" _null_ _null_ _null_ _null_ _null_ json_jsonpath_exists2 _null_ _null_ _null_ ));
+DESCR("jsonpath exists test");
+DATA(insert OID =  6044 (  _jsonpath_query		PGNSP PGUID 12 1 1000 0 0 f f f f t t i s 2 0 114 "114 6050" _null_ _null_ _null_ _null_ _null_ json_jsonpath_query2 _null_ _null_ _null_ ));
+DESCR("implementation of @* operator");
+DATA(insert OID =  6045 (  _jsonpath_exists		PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 16 "114 6050 114" _null_ _null_ _null_ _null_ _null_ json_jsonpath_exists3 _null_ _null_ _null_ ));
+DESCR("jsonpath exists test");
+DATA(insert OID =  6046 (  _jsonpath_query		PGNSP PGUID 12 1 1000 0 0 f f f f t t i s 3 0 114 "114 6050 114" _null_ _null_ _null_ _null_ _null_ json_jsonpath_query3 _null_ _null_ _null_ ));
+DESCR("jsonpath query");
+DATA(insert OID =  6047 (  _jsonpath_query_safe PGNSP PGUID 12 1 1000 0 0 f f f f t t i s 2 0 114 "114 6050" _null_ _null_ _null_ _null_ _null_ json_jsonpath_query_safe2 _null_ _null_ _null_ ));
+DESCR("jsonpath query, empty on error");
+DATA(insert OID =  6048 (  _jsonpath_query_safe PGNSP PGUID 12 1 1000 0 0 f f f f t t i s 3 0 114 "114 6050 114" _null_ _null_ _null_ _null_ _null_ json_jsonpath_query_safe3 _null_ _null_ _null_ ));
+DESCR("jsonpath query, empty on error");
+DATA(insert OID =  6049 (  _jsonpath_predicate	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 2 0 16 "114 6050" _null_ _null_ _null_ _null_ _null_ json_jsonpath_predicate2 _null_ _null_ _null_ ));
+DESCR("implementation of @? operator");
+DATA(insert OID =  6069 (  _jsonpath_predicate	PGNSP PGUID 12 1 0 0 0 f f f f t f i s 3 0 16 "114 6050 114" _null_ _null_ _null_ _null_ _null_ json_jsonpath_predicate3 _null_ _null_ _null_ ));
+DESCR("jsonpath predicate test");
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,
