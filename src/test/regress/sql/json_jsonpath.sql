@@ -246,6 +246,11 @@ select json '[]' @* 'strict $.datetime()';
 select json '{}' @* '$.datetime()';
 select json '""' @* '$.datetime()';
 
+-- Standard extension: UNIX epoch to timestamptz
+select json '0' @* '$.datetime()';
+select json '0' @* '$.datetime().type()';
+select json '1490216035.5' @* '$.datetime()';
+
 select json '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy")';
 select json '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy").type()';
 select json '"10-03-2017 12:34"' @* '$.datetime("dd-mm-yyyy")';
@@ -351,9 +356,84 @@ set time zone default;
 
 SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*]';
 SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+SELECT json '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
 
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*] ? (@.a > 1)';
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a ? (@ > 2)';
 
 SELECT json '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 1';
 SELECT json '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 2';
+
+-- extension: map item method
+select json '1' @* 'strict $.map(@ + 10)';
+select json '1' @* 'lax $.map(@ + 10)';
+select json '[1, 2, 3]' @* '$.map(@ + 10)';
+select json '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.map(@.map(@ + 10))';
+
+-- extension: reduce/fold item methods
+select json '1' @* 'strict $.reduce($1 + $2)';
+select json '1' @* 'lax $.reduce($1 + $2)';
+select json '1' @* 'strict $.fold($1 + $2, 10)';
+select json '1' @* 'lax $.fold($1 + $2, 10)';
+select json '[1, 2, 3]' @* '$.reduce($1 + $2)';
+select json '[1, 2, 3]' @* '$.fold($1 + $2, 100)';
+select json '[]' @* '$.reduce($1 + $2)';
+select json '[]' @* '$.fold($1 + $2, 100)';
+select json '[1]' @* '$.reduce($1 + $2)';
+select json '[1, 2, 3]' @* '$.foldl([$1, $2], [])';
+select json '[1, 2, 3]' @* '$.foldr([$2, $1], [])';
+select json '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '$.fold($1 + $2.fold($1 + $2, 100), 1000)';
+
+-- extension: min/max item methods
+select json '1' @* 'strict $.min()';
+select json '1' @* 'lax $.min()';
+select json '[]' @* '$.min()';
+select json '[]' @* '$.max()';
+select json '[null]' @* '$.min()';
+select json '[null]' @* '$.max()';
+select json '[1, 2, 3]' @* '$.min()';
+select json '[1, 2, 3]' @* '$.max()';
+select json '[2, 3, 5, null, 1, 4, null]' @* '$.min()';
+select json '[2, 3, 5, null, 1, 4, null]' @* '$.max()';
+select json '["aa", null, "a", "bbb"]' @* '$.min()';
+select json '["aa", null, "a", "bbb"]' @* '$.max()';
+select json '[1, null, "2"]' @* '$.max()';
+
+-- extension: path sequences
+select json '[1,2,3,4,5]' @* '10, 20, $[*], 30';
+select json '[1,2,3,4,5]' @* 'lax    10, 20, $[*].a, 30';
+select json '[1,2,3,4,5]' @* 'strict 10, 20, $[*].a, 30';
+select json '[1,2,3,4,5]' @* '-(10, 20, $[1 to 3], 30)';
+select json '[1,2,3,4,5]' @* 'lax (10, 20, $[1 to 3], 30).map(@ + 100)';
+select json '[1,2,3,4,5]' @* '$[(0, $[*], 5) ? (@ == 3)]';
+select json '[1,2,3,4,5]' @* '$[(0, $[*], 3) ? (@ == 3)]';
+
+-- extension: array constructors
+select json '[1, 2, 3]' @* '[]';
+select json '[1, 2, 3]' @* '[1, 2, $.map(@ + 100)[*], 4, 5]';
+select json '[1, 2, 3]' @* '[1, 2, $.map(@ + 100)[*], 4, 5][*]';
+select json '[1, 2, 3]' @* '[(1, (2, $.map(@ + 100)[*])), (4, 5)]';
+select json '[1, 2, 3]' @* '[[1, 2], [$.map(@ + 100)[*], 4], 5, [(1,2)?(@ > 5)]]';
+select json '[1, 2, 3]' @* 'strict [1, 2, $.map(@.a)[*], 4, 5]';
+select json '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '[$[*].map(@ + 10)[*] ? (@ > 13)]';
+
+-- extension: object constructors
+select json '[1, 2, 3]' @* '{}';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}.*';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": ($[*], 4, 5)}';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": [$.map({x: @, y: @ < 3})[*], {z: "foo"}]}';
+
+-- extension: object subscripting
+select json '{"a": 1}' @? '$["a"]';
+select json '{"a": 1}' @? '$["b"]';
+select json '{"a": 1}' @? 'strict $["b"]';
+select json '{"a": 1}' @? '$["b", "a"]';
+
+select json '{"a": 1}' @* '$["a"]';
+select json '{"a": 1}' @* 'strict $["b"]';
+select json '{"a": 1}' @* 'lax $["b"]';
+select json '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
+
+select json 'null' @* '{"a": 1}["a"]';
+select json 'null' @* '{"a": 1}["b"]';
