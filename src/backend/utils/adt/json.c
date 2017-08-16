@@ -106,6 +106,9 @@ static void add_json(Datum val, bool is_null, StringInfo result,
 		 Oid val_type, bool key_scalar);
 static text *catenate_stringinfo_string(StringInfo buffer, const char *addon);
 
+static JsonIterator *JsonIteratorInitFromLex(JsonContainer *jc,
+						JsonLexContext *lex, JsonIterator *parent);
+
 /* the null action object used for pure validation */
 static JsonSemAction nullSemAction =
 {
@@ -126,6 +129,22 @@ lex_peek(JsonLexContext *lex)
 	return lex->token_type;
 }
 
+static inline char *
+lex_peek_value(JsonLexContext *lex)
+{
+	if (lex->token_type == JSON_TOKEN_STRING)
+		return lex->strval ? pstrdup(lex->strval->data) : NULL;
+	else
+	{
+		int			len = (lex->token_terminator - lex->token_start);
+		char	   *tokstr = palloc(len + 1);
+
+		memcpy(tokstr, lex->token_start, len);
+		tokstr[len] = '\0';
+		return tokstr;
+	}
+}
+
 /*
  * lex_accept
  *
@@ -141,22 +160,8 @@ lex_accept(JsonLexContext *lex, JsonTokenType token, char **lexeme)
 	if (lex->token_type == token)
 	{
 		if (lexeme != NULL)
-		{
-			if (lex->token_type == JSON_TOKEN_STRING)
-			{
-				if (lex->strval != NULL)
-					*lexeme = pstrdup(lex->strval->data);
-			}
-			else
-			{
-				int			len = (lex->token_terminator - lex->token_start);
-				char	   *tokstr = palloc(len + 1);
+			*lexeme = lex_peek_value(lex);
 
-				memcpy(tokstr, lex->token_start, len);
-				tokstr[len] = '\0';
-				*lexeme = tokstr;
-			}
-		}
 		json_lex(lex);
 		return true;
 	}
@@ -2571,4 +2576,804 @@ json_typeof(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(type));
+}
+
+static void
+jsonInitContainer(JsonContainerData *jc, char *json, int len, int type,
+				  int size)
+{
+	if (size < 0 || size > JB_CMASK)
+		size = JB_CMASK;	/* unknown size */
+
+	jc->data = json;
+	jc->len = len;
+	jc->header = type | size;
+}
+
+/*
+ * Initialize a JsonContainer from a text datum.
+ */
+static void
+jsonInit(JsonContainerData *jc, Datum value)
+{
+	text	   *json = DatumGetTextP(value);
+	JsonLexContext *lex = makeJsonLexContext(json, false);
+	JsonTokenType tok;
+	int			type;
+	int			size = -1;
+
+	/* Lex exactly one token from the input and check its type. */
+	json_lex(lex);
+	tok = lex_peek(lex);
+
+	switch (tok)
+	{
+		case JSON_TOKEN_OBJECT_START:
+			type = JB_FOBJECT;
+			lex_accept(lex, tok, NULL);
+			if (lex_peek(lex) == JSON_TOKEN_OBJECT_END)
+				size = 0;
+			break;
+		case JSON_TOKEN_ARRAY_START:
+			type = JB_FARRAY;
+			lex_accept(lex, tok, NULL);
+			if (lex_peek(lex) == JSON_TOKEN_ARRAY_END)
+				size = 0;
+			break;
+		case JSON_TOKEN_STRING:
+		case JSON_TOKEN_NUMBER:
+		case JSON_TOKEN_TRUE:
+		case JSON_TOKEN_FALSE:
+		case JSON_TOKEN_NULL:
+			type = JB_FARRAY | JB_FSCALAR;
+			size = 1;
+			break;
+		default:
+			elog(ERROR, "unexpected json token: %d", tok);
+			type = jbvNull;
+			break;
+	}
+
+	pfree(lex);
+
+	jsonInitContainer(jc, VARDATA(json), VARSIZE(json) - VARHDRSZ, type, size);
+}
+
+/*
+ * Wrap JSON text into a palloc()'d Json structure.
+ */
+Json *
+JsonCreate(text *json)
+{
+	Json	   *res = palloc0(sizeof(*res));
+
+	jsonInit((JsonContainerData *) &res->root, PointerGetDatum(json));
+
+	return res;
+}
+
+static bool
+jsonFillValue(JsonIterator **pit, JsonbValue *res, bool skipNested,
+			  JsontIterState nextState)
+{
+	JsonIterator *it = *pit;
+	JsonLexContext *lex = it->lex;
+	JsonTokenType tok = lex_peek(lex);
+
+	switch (tok)
+	{
+		case JSON_TOKEN_NULL:
+			res->type = jbvNull;
+			break;
+
+		case JSON_TOKEN_TRUE:
+			res->type = jbvBool;
+			res->val.boolean = true;
+			break;
+
+		case JSON_TOKEN_FALSE:
+			res->type = jbvBool;
+			res->val.boolean = false;
+			break;
+
+		case JSON_TOKEN_STRING:
+		{
+			char	   *token = lex_peek_value(lex);
+			res->type = jbvString;
+			res->val.string.val = token;
+			res->val.string.len = strlen(token);
+			break;
+		}
+
+		case JSON_TOKEN_NUMBER:
+		{
+			char	   *token = lex_peek_value(lex);
+			res->type = jbvNumeric;
+			res->val.numeric = DatumGetNumeric(DirectFunctionCall3(
+					numeric_in, CStringGetDatum(token), 0, -1));
+			break;
+		}
+
+		case JSON_TOKEN_OBJECT_START:
+		case JSON_TOKEN_ARRAY_START:
+		{
+			JsonContainerData *cont = palloc(sizeof(*cont));
+			char	   *token_start = lex->token_start;
+			int			len;
+
+			if (skipNested)
+			{
+				/* find the end of a container for its length calculation */
+				if (tok == JSON_TOKEN_OBJECT_START)
+					parse_object(lex, &nullSemAction);
+				else
+					parse_array(lex, &nullSemAction);
+
+				len = lex->token_start - token_start;
+			}
+			else
+				len = lex->input_length - (lex->token_start - lex->input);
+
+			jsonInitContainer(cont,
+							  token_start, len,
+							  tok == JSON_TOKEN_OBJECT_START ?
+									JB_FOBJECT : JB_FARRAY,
+							  -1);
+
+			res->type = jbvBinary;
+			res->val.binary.data = (JsonbContainer *) cont;
+			res->val.binary.len = len;
+
+			if (skipNested)
+				return false;
+
+			/* recurse into container */
+			it->state = nextState;
+			*pit = JsonIteratorInitFromLex(cont, lex, *pit);
+			return true;
+		}
+
+		default:
+			report_parse_error(JSON_PARSE_VALUE, lex);
+	}
+
+	lex_accept(lex, tok, NULL);
+
+	return false;
+}
+
+static inline JsonIterator *
+JsonIteratorFreeAndGetParent(JsonIterator *it)
+{
+	JsonIterator *parent = it->parent;
+
+	pfree(it);
+
+	return parent;
+}
+
+/*
+ * Free a whole stack of JsonIterator iterators.
+ */
+void
+JsonIteratorFree(JsonIterator *it)
+{
+	while (it)
+		it = JsonIteratorFreeAndGetParent(it);
+}
+
+/*
+ * Get next JsonbValue while iterating through JsonContainer.
+ *
+ * For more details, see JsonbIteratorNext().
+ */
+JsonbIteratorToken
+JsonIteratorNext(JsonIterator **pit, JsonbValue *val, bool skipNested)
+{
+	JsonIterator *it;
+
+	if (*pit == NULL)
+		return WJB_DONE;
+
+recurse:
+	it = *pit;
+
+	/* parse by recursive descent */
+	switch (it->state)
+	{
+		case JTI_ARRAY_START:
+			val->type = jbvArray;
+			val->val.array.nElems = it->isScalar ? 1 : -1;
+			val->val.array.rawScalar = it->isScalar;
+			val->val.array.elems = NULL;
+			it->state = it->isScalar ? JTI_ARRAY_ELEM_SCALAR : JTI_ARRAY_ELEM;
+			return WJB_BEGIN_ARRAY;
+
+		case JTI_ARRAY_ELEM_SCALAR:
+		{
+			(void) jsonFillValue(pit, val, skipNested, JTI_ARRAY_END);
+			it->state = JTI_ARRAY_END;
+			return WJB_ELEM;
+		}
+
+		case JTI_ARRAY_END:
+			if (!it->parent && lex_peek(it->lex) != JSON_TOKEN_END)
+				report_parse_error(JSON_PARSE_END, it->lex);
+			*pit = JsonIteratorFreeAndGetParent(*pit);
+			return WJB_END_ARRAY;
+
+		case JTI_ARRAY_ELEM:
+			if (lex_accept(it->lex, JSON_TOKEN_ARRAY_END, NULL))
+			{
+				it->state = JTI_ARRAY_END;
+				goto recurse;
+			}
+
+			if (jsonFillValue(pit, val, skipNested, JTI_ARRAY_ELEM_AFTER))
+				goto recurse;
+
+			/* fall through */
+
+		case JTI_ARRAY_ELEM_AFTER:
+			if (!lex_accept(it->lex, JSON_TOKEN_COMMA, NULL))
+			{
+				if (lex_peek(it->lex) != JSON_TOKEN_ARRAY_END)
+					report_parse_error(JSON_PARSE_ARRAY_NEXT, it->lex);
+			}
+
+			if (it->state == JTI_ARRAY_ELEM_AFTER)
+			{
+				it->state = JTI_ARRAY_ELEM;
+				goto recurse;
+			}
+
+			return WJB_ELEM;
+
+		case JTI_OBJECT_START:
+			val->type = jbvObject;
+			val->val.object.nPairs = -1;
+			val->val.object.pairs = NULL;
+			val->val.object.uniquified = false;
+			it->state = JTI_OBJECT_KEY;
+			return WJB_BEGIN_OBJECT;
+
+		case JTI_OBJECT_KEY:
+			if (lex_accept(it->lex, JSON_TOKEN_OBJECT_END, NULL))
+			{
+				if (!it->parent && lex_peek(it->lex) != JSON_TOKEN_END)
+					report_parse_error(JSON_PARSE_END, it->lex);
+				*pit = JsonIteratorFreeAndGetParent(*pit);
+				return WJB_END_OBJECT;
+			}
+
+			if (lex_peek(it->lex) != JSON_TOKEN_STRING)
+				report_parse_error(JSON_PARSE_OBJECT_START, it->lex);
+
+			(void) jsonFillValue(pit, val, true, JTI_OBJECT_VALUE);
+
+			if (!lex_accept(it->lex, JSON_TOKEN_COLON, NULL))
+				report_parse_error(JSON_PARSE_OBJECT_LABEL, it->lex);
+
+			it->state = JTI_OBJECT_VALUE;
+			return WJB_KEY;
+
+		case JTI_OBJECT_VALUE:
+			if (jsonFillValue(pit, val, skipNested, JTI_OBJECT_VALUE_AFTER))
+				goto recurse;
+
+			/* fall through */
+
+		case JTI_OBJECT_VALUE_AFTER:
+			if (!lex_accept(it->lex, JSON_TOKEN_COMMA, NULL))
+			{
+				if (lex_peek(it->lex) != JSON_TOKEN_OBJECT_END)
+					report_parse_error(JSON_PARSE_OBJECT_NEXT, it->lex);
+			}
+
+			if (it->state == JTI_OBJECT_VALUE_AFTER)
+			{
+				it->state = JTI_OBJECT_KEY;
+				goto recurse;
+			}
+
+			it->state = JTI_OBJECT_KEY;
+			return WJB_VALUE;
+
+		default:
+			break;
+	}
+
+	return WJB_DONE;
+}
+
+static JsonIterator *
+JsonIteratorInitFromLex(JsonContainer *jc, JsonLexContext *lex,
+						JsonIterator *parent)
+{
+	JsonIterator *it = palloc(sizeof(JsonIterator));
+	JsonTokenType tok;
+
+	it->container = jc;
+	it->parent = parent;
+	it->lex = lex;
+
+	tok = lex_peek(it->lex);
+
+	switch (tok)
+	{
+		case JSON_TOKEN_OBJECT_START:
+			it->isScalar = false;
+			it->state = JTI_OBJECT_START;
+			lex_accept(it->lex, tok, NULL);
+			break;
+		case JSON_TOKEN_ARRAY_START:
+			it->isScalar = false;
+			it->state = JTI_ARRAY_START;
+			lex_accept(it->lex, tok, NULL);
+			break;
+		case JSON_TOKEN_STRING:
+		case JSON_TOKEN_NUMBER:
+		case JSON_TOKEN_TRUE:
+		case JSON_TOKEN_FALSE:
+		case JSON_TOKEN_NULL:
+			it->isScalar = true;
+			it->state = JTI_ARRAY_START;
+			break;
+		default:
+			report_parse_error(JSON_PARSE_VALUE, it->lex);
+	}
+
+	return it;
+}
+
+/*
+ * Given a JsonContainer, expand to JsonIterator to iterate over items
+ * fully expanded to in-memory representation for manipulation.
+ *
+ * See JsonbIteratorNext() for notes on memory management.
+ */
+JsonIterator *
+JsonIteratorInit(JsonContainer *jc)
+{
+	JsonLexContext *lex = makeJsonLexContextCstringLen(jc->data, jc->len, true);
+	json_lex(lex);
+	return JsonIteratorInitFromLex(jc, lex, NULL);
+}
+
+/*
+ * Serialize a single JsonbValue into text buffer.
+ */
+static void
+JsonEncodeJsonbValue(StringInfo buf, JsonbValue *jbv)
+{
+	check_stack_depth();
+
+	switch (jbv->type)
+	{
+		case jbvNull:
+			appendBinaryStringInfo(buf, "null", 4);
+			break;
+
+		case jbvBool:
+			if (jbv->val.boolean)
+				appendBinaryStringInfo(buf, "true", 4);
+			else
+				appendBinaryStringInfo(buf, "false", 5);
+			break;
+
+		case jbvNumeric:
+			appendStringInfoString(buf, DatumGetCString(DirectFunctionCall1(
+				numeric_out, NumericGetDatum(jbv->val.numeric))));
+			break;
+
+		case jbvString:
+		{
+			char	   *str = jbv->val.string.len < 0 ? jbv->val.string.val :
+				pnstrdup(jbv->val.string.val, jbv->val.string.len);
+
+			escape_json(buf, str);
+
+			if (jbv->val.string.len >= 0)
+				pfree(str);
+
+			break;
+		}
+
+		case jbvDatetime:
+			{
+				char		dtbuf[MAXDATELEN + 1];
+
+				JsonEncodeDateTime(dtbuf,
+								   jbv->val.datetime.value,
+								   jbv->val.datetime.typid);
+
+				escape_json(buf, dtbuf);
+
+				break;
+			}
+
+		case jbvArray:
+			{
+				int			i;
+
+				if (!jbv->val.array.rawScalar)
+					appendStringInfoChar(buf, '[');
+
+				for (i = 0; i < jbv->val.array.nElems; i++)
+				{
+					if (i > 0)
+						appendBinaryStringInfo(buf, ", ", 2);
+
+					JsonEncodeJsonbValue(buf, &jbv->val.array.elems[i]);
+				}
+
+				if (!jbv->val.array.rawScalar)
+					appendStringInfoChar(buf, ']');
+
+				break;
+			}
+
+		case jbvObject:
+			{
+				int			i;
+
+				appendStringInfoChar(buf, '{');
+
+				for (i = 0; i < jbv->val.object.nPairs; i++)
+				{
+					if (i > 0)
+						appendBinaryStringInfo(buf, ", ", 2);
+
+					JsonEncodeJsonbValue(buf, &jbv->val.object.pairs[i].key);
+					appendBinaryStringInfo(buf, ": ", 2);
+					JsonEncodeJsonbValue(buf, &jbv->val.object.pairs[i].value);
+				}
+
+				appendStringInfoChar(buf, '}');
+				break;
+			}
+
+		case jbvBinary:
+			{
+				JsonContainer *json = (JsonContainer *) jbv->val.binary.data;
+
+				appendBinaryStringInfo(buf, json->data, json->len);
+				break;
+			}
+
+		default:
+			elog(ERROR, "unknown jsonb value type: %d", jbv->type);
+			break;
+	}
+}
+
+/*
+ * Turn an in-memory JsonbValue into a json for on-disk storage.
+ */
+Json *
+JsonbValueToJson(JsonbValue *jbv)
+{
+	StringInfoData buf;
+	Json	   *json = palloc0(sizeof(*json));
+	int			type;
+	int			size;
+
+	if (jbv->type == jbvBinary)
+	{
+		/* simply copy the whole container and its data */
+		JsonContainer *src = (JsonContainer *) jbv->val.binary.data;
+		JsonContainerData *dst = (JsonContainerData *) &json->root;
+
+		*dst = *src;
+		dst->data = memcpy(palloc(src->len), src->data, src->len);
+
+		return json;
+	}
+
+	initStringInfo(&buf);
+
+	JsonEncodeJsonbValue(&buf, jbv);
+
+	switch (jbv->type)
+	{
+		case jbvArray:
+			type = JB_FARRAY;
+			size = jbv->val.array.nElems;
+			break;
+
+		case jbvObject:
+			type = JB_FOBJECT;
+			size = jbv->val.object.nPairs;
+			break;
+
+		default:	/* scalar */
+			type = JB_FARRAY | JB_FSCALAR;
+			size = 1;
+			break;
+	}
+
+	jsonInitContainer((JsonContainerData *) &json->root,
+					  buf.data, buf.len, type, size);
+
+	return json;
+}
+
+/* Context and semantic actions for JsonGetArraySize() */
+typedef struct JsonGetArraySizeState
+{
+	int		level;
+	uint32	size;
+} JsonGetArraySizeState;
+
+static void
+JsonGetArraySize_array_start(void *state)
+{
+	((JsonGetArraySizeState *) state)->level++;
+}
+
+static void
+JsonGetArraySize_array_end(void *state)
+{
+	((JsonGetArraySizeState *) state)->level--;
+}
+
+static void
+JsonGetArraySize_array_element_start(void *state, bool isnull)
+{
+	JsonGetArraySizeState *s = state;
+	if (s->level == 1)
+		s->size++;
+}
+
+/*
+ * Calculate the size of a json array by iterating through its elements.
+ */
+uint32
+JsonGetArraySize(JsonContainer *jc)
+{
+	JsonLexContext *lex = makeJsonLexContextCstringLen(jc->data, jc->len, false);
+	JsonSemAction	sem;
+	JsonGetArraySizeState state;
+
+	state.level = 0;
+	state.size = 0;
+
+	memset(&sem, 0, sizeof(sem));
+	sem.semstate = &state;
+	sem.array_start			= JsonGetArraySize_array_start;
+	sem.array_end 			= JsonGetArraySize_array_end;
+	sem.array_element_end	= JsonGetArraySize_array_element_start;
+
+	json_lex(lex);
+	parse_array(lex, &sem);
+
+	return state.size;
+}
+
+/*
+ * Find last key in a json object by name. Returns palloc()'d copy of the
+ * corresponding value, or NULL if is not found.
+ */
+static inline JsonbValue *
+jsonFindLastKeyInObject(JsonContainer *obj, const JsonbValue *key)
+{
+	JsonbValue *res = NULL;
+	JsonbValue	jbv;
+	JsonIterator *it;
+	JsonbIteratorToken tok;
+
+	Assert(JsonContainerIsObject(obj));
+	Assert(key->type == jbvString);
+
+	it = JsonIteratorInit(obj);
+
+	while ((tok = JsonIteratorNext(&it, &jbv, true)) != WJB_DONE)
+	{
+		if (tok == WJB_KEY && !lengthCompareJsonbStringValue(key, &jbv))
+		{
+			if (!res)
+				res = palloc(sizeof(*res));
+
+			tok = JsonIteratorNext(&it, res, true);
+			Assert(tok == WJB_VALUE);
+		}
+	}
+
+	return res;
+}
+
+/*
+ * Find scalar element in a array.  Returns palloc()'d copy of value or NULL.
+ */
+static JsonbValue *
+jsonFindValueInArray(JsonContainer *array, const JsonbValue *elem)
+{
+	JsonbValue *val = palloc(sizeof(*val));
+	JsonIterator *it;
+	JsonbIteratorToken tok;
+
+	Assert(JsonContainerIsArray(array));
+	Assert(IsAJsonbScalar(elem));
+
+	it = JsonIteratorInit(array);
+
+	while ((tok = JsonIteratorNext(&it, val, true)) != WJB_DONE)
+	{
+		if (tok == WJB_ELEM && val->type == elem->type &&
+			equalsJsonbScalarValue(val, (JsonbValue *) elem))
+		{
+			JsonIteratorFree(it);
+			return val;
+		}
+	}
+
+	pfree(val);
+	return NULL;
+}
+
+/*
+ * Find value in object (i.e. the "value" part of some key/value pair in an
+ * object), or find a matching element if we're looking through an array.
+ * The "flags" argument allows the caller to specify which container types are
+ * of interest.  If we cannot find the value, return NULL.  Otherwise, return
+ * palloc()'d copy of value.
+ *
+ * For more details, see findJsonbValueFromContainer().
+ */
+JsonbValue *
+findJsonValueFromContainer(JsonContainer *jc, uint32 flags, JsonbValue *key)
+{
+	Assert((flags & ~(JB_FARRAY | JB_FOBJECT)) == 0);
+
+	if (!JsonContainerSize(jc))
+		return NULL;
+
+	if ((flags & JB_FARRAY) && JsonContainerIsArray(jc))
+		return jsonFindValueInArray(jc, key);
+
+	if ((flags & JB_FOBJECT) && JsonContainerIsObject(jc))
+		return jsonFindLastKeyInObject(jc, key);
+
+	/* Not found */
+	return NULL;
+}
+
+/*
+ * Get i-th element of a json array.
+ *
+ * Returns palloc()'d copy of the value, or NULL if it does not exist.
+ */
+JsonbValue *
+getIthJsonValueFromContainer(JsonContainer *array, uint32 index)
+{
+	JsonbValue *val = palloc(sizeof(JsonbValue));
+	JsonIterator *it;
+	JsonbIteratorToken tok;
+
+	Assert(JsonContainerIsArray(array));
+
+	it = JsonIteratorInit(array);
+
+	while ((tok = JsonIteratorNext(&it, val, true)) != WJB_DONE)
+	{
+		if (tok == WJB_ELEM)
+		{
+			if (index-- == 0)
+			{
+				JsonIteratorFree(it);
+				return val;
+			}
+		}
+	}
+
+	pfree(val);
+
+	return NULL;
+}
+
+/*
+ * Push json JsonbValue into JsonbParseState.
+ *
+ * Used for converting an in-memory JsonbValue to a json. For more details,
+ * see pushJsonbValue(). This function differs from pushJsonbValue() only by
+ * resetting "uniquified" flag in objects.
+ */
+JsonbValue *
+pushJsonValue(JsonbParseState **pstate, JsonbIteratorToken seq,
+			  JsonbValue *jbval)
+{
+	JsonIterator *it;
+	JsonbValue *res = NULL;
+	JsonbValue	v;
+	JsonbIteratorToken tok;
+
+	if (!jbval || (seq != WJB_ELEM && seq != WJB_VALUE) ||
+		jbval->type != jbvBinary)
+	{
+		/* drop through */
+		res = pushJsonbValueScalar(pstate, seq, jbval);
+
+		/* reset "uniquified" flag of objects */
+		if (seq == WJB_BEGIN_OBJECT)
+			(*pstate)->contVal.val.object.uniquified = false;
+
+		return res;
+	}
+
+	/* unpack the binary and add each piece to the pstate */
+	it = JsonIteratorInit((JsonContainer *) jbval->val.binary.data);
+	while ((tok = JsonIteratorNext(&it, &v, false)) != WJB_DONE)
+	{
+		res = pushJsonbValueScalar(pstate, tok,
+								   tok < WJB_BEGIN_ARRAY ? &v : NULL);
+
+		/* reset "uniquified" flag of objects */
+		if (tok == WJB_BEGIN_OBJECT)
+			(*pstate)->contVal.val.object.uniquified = false;
+	}
+
+	return res;
+}
+
+JsonbValue *
+JsonExtractScalar(JsonContainer *jbc, JsonbValue *res)
+{
+	JsonIterator *it = JsonIteratorInit(jbc);
+	JsonbIteratorToken tok PG_USED_FOR_ASSERTS_ONLY;
+	JsonbValue	tmp;
+
+	tok = JsonIteratorNext(&it, &tmp, true);
+	Assert(tok == WJB_BEGIN_ARRAY);
+	Assert(tmp.val.array.nElems == 1 && tmp.val.array.rawScalar);
+
+	tok = JsonIteratorNext(&it, res, true);
+	Assert(tok == WJB_ELEM);
+	Assert(IsAJsonbScalar(res));
+
+	tok = JsonIteratorNext(&it, &tmp, true);
+	Assert(tok == WJB_END_ARRAY);
+
+	return res;
+}
+
+/*
+ * Turn a Json into its C-string representation with stripping quotes from
+ * scalar strings.
+ */
+char *
+JsonUnquote(Json *jb)
+{
+	if (JsonContainerIsScalar(&jb->root))
+	{
+		JsonbValue	v;
+
+		JsonExtractScalar(&jb->root, &v);
+
+		if (v.type == jbvString)
+			return pnstrdup(v.val.string.val, v.val.string.len);
+	}
+
+	return pnstrdup(jb->root.data, jb->root.len);
+}
+
+/*
+ * Turn a JsonContainer into its C-string representation.
+ */
+char *
+JsonToCString(StringInfo out, JsonContainer *jc, int estimated_len)
+{
+	if (out)
+	{
+		appendBinaryStringInfo(out, jc->data, jc->len);
+		return out->data;
+	}
+	else
+	{
+		char *str = palloc(jc->len + 1);
+
+		memcpy(str, jc->data, jc->len);
+		str[jc->len] = 0;
+
+		return str;
+	}
 }

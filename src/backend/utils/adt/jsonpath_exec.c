@@ -24,8 +24,14 @@
 #include "utils/jsonpath.h"
 #include "utils/varlena.h"
 
+#ifdef JSONPATH_JSON_C
+#define JSONXOID JSONOID
+#else
+#define JSONXOID JSONBOID
+
 /* Special pseudo-ErrorData with zero sqlerrcode for existence queries. */
 ErrorData jperNotFound[1];
+#endif
 
 typedef struct JsonBaseObjectInfo
 {
@@ -152,6 +158,7 @@ JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 	return lfirst(it->lcell);
 }
 
+#ifndef JSONPATH_JSON_C
 /*
  * Initialize a binary JsonbValue with the given jsonb container.
  */
@@ -164,6 +171,7 @@ JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
 
 	return jbv;
 }
+#endif
 
 /*
  * Transform a JsonbValue into a binary JsonbValue by encoding it to a
@@ -292,7 +300,7 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 			value->val.datetime.tz = 0;
 			value->val.datetime.value = computedValue;
 			break;
-		case JSONBOID:
+		case JSONXOID:
 			{
 				Jsonb	   *jb = DatumGetJsonbP(computedValue);
 
@@ -361,7 +369,7 @@ JsonbType(JsonbValue *jb)
 
 	if (jb->type == jbvBinary)
 	{
-		JsonbContainer	*jbc = jb->val.binary.data;
+		JsonbContainer	*jbc = (void *) jb->val.binary.data;
 
 		if (JsonContainerIsScalar(jbc))
 			type = jbvScalar;
@@ -386,7 +394,7 @@ JsonbTypeName(JsonbValue *jb)
 
 	if (jb->type == jbvBinary)
 	{
-		JsonbContainer *jbc = jb->val.binary.data;
+		JsonbContainer *jbc = (void *) jb->val.binary.data;
 
 		if (JsonContainerIsScalar(jbc))
 			jb = JsonbExtractScalar(jbc, &jbvbuf);
@@ -447,7 +455,7 @@ JsonbArraySize(JsonbValue *jb)
 
 	if (jb->type == jbvBinary)
 	{
-		JsonbContainer *jbc = jb->val.binary.data;
+		JsonbContainer *jbc =  (void *) jb->val.binary.data;
 
 		if (JsonContainerIsArray(jbc) && !JsonContainerIsScalar(jbc))
 			return JsonContainerSize(jbc);
@@ -2234,8 +2242,13 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					jb = JsonbWrapInBinary(jb, &bin);
 
 				id = jb->type != jbvBinary ? 0 :
+#ifdef JSONPATH_JSON_C
+					(int64)((char *)((JsonContainer *) jb->val.binary.data)->data -
+							(char *) cxt->baseObject.jbc->data);
+#else
 					(int64)((char *) jb->val.binary.data -
-							  (char *) cxt->baseObject.jbc);
+							(char *) cxt->baseObject.jbc);
+#endif
 				id += (int64) cxt->baseObject.id * INT64CONST(10000000000);
 
 				idval.type = jbvNumeric;
@@ -2545,7 +2558,7 @@ makePassingVars(Jsonb *jb)
 						datumCopy(NumericGetDatum(v.val.numeric), false, -1));
 					break;
 				case jbvBinary:
-					jpv->typid = JSONBOID;
+					jpv->typid = JSONXOID;
 					jpv->cb_arg = DatumGetPointer(JsonbPGetDatum(JsonbValueToJsonb(&v)));
 					break;
 				default:

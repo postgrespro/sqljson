@@ -221,10 +221,10 @@ typedef struct
 } Jsonb;
 
 /* convenience macros for accessing the root container in a Jsonb datum */
-#define JB_ROOT_COUNT(jbp_)		(*(uint32 *) VARDATA(jbp_) & JB_CMASK)
-#define JB_ROOT_IS_SCALAR(jbp_) ((*(uint32 *) VARDATA(jbp_) & JB_FSCALAR) != 0)
-#define JB_ROOT_IS_OBJECT(jbp_) ((*(uint32 *) VARDATA(jbp_) & JB_FOBJECT) != 0)
-#define JB_ROOT_IS_ARRAY(jbp_)	((*(uint32 *) VARDATA(jbp_) & JB_FARRAY) != 0)
+#define JB_ROOT_COUNT(jbp_)		JsonContainerSize(&(jbp_)->root)
+#define JB_ROOT_IS_SCALAR(jbp_) JsonContainerIsScalar(&(jbp_)->root)
+#define JB_ROOT_IS_OBJECT(jbp_) JsonContainerIsObject(&(jbp_)->root)
+#define JB_ROOT_IS_ARRAY(jbp_)	JsonContainerIsArray(&(jbp_)->root)
 
 
 enum jbvType
@@ -278,6 +278,8 @@ struct JsonbValue
 		struct
 		{
 			int			nPairs; /* 1 pair, 2 elements */
+			bool		uniquified;	/* Should we sort pairs by key name and
+									 * remove duplicate keys? */
 			JsonbPair  *pairs;
 		}			object;		/* Associative container type */
 
@@ -373,6 +375,8 @@ typedef struct JsonbIterator
 /* Support functions */
 extern uint32 getJsonbOffset(const JsonbContainer *jc, int index);
 extern uint32 getJsonbLength(const JsonbContainer *jc, int index);
+extern int lengthCompareJsonbStringValue(const void *a, const void *b);
+extern bool equalsJsonbScalarValue(JsonbValue *a, JsonbValue *b);
 extern int	compareJsonbContainers(JsonbContainer *a, JsonbContainer *b);
 extern JsonbValue *findJsonbValueFromContainer(JsonbContainer *sheader,
 							uint32 flags,
@@ -381,6 +385,8 @@ extern JsonbValue *getIthJsonbValueFromContainer(JsonbContainer *sheader,
 							  uint32 i);
 extern JsonbValue *pushJsonbValue(JsonbParseState **pstate,
 			   JsonbIteratorToken seq, JsonbValue *jbVal);
+extern JsonbValue *pushJsonbValueScalar(JsonbParseState **pstate,
+					 JsonbIteratorToken seq,JsonbValue *scalarVal);
 extern JsonbIterator *JsonbIteratorInit(JsonbContainer *container);
 extern JsonbIteratorToken JsonbIteratorNext(JsonbIterator **it, JsonbValue *val,
 				  bool skipNested);
