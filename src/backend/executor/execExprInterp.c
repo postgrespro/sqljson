@@ -3673,17 +3673,20 @@ ExecEvalJsonBehavior(ExprContext *econtext, JsonBehavior *behavior,
  */
 static Datum
 ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
-						 Datum res, bool *isNull)
+						 Datum res, bool *isNull, bool isJsonb)
 {
 	JsonExpr   *jexpr = op->d.jsonexpr.jsexpr;
 	JsonCoercion *coercion = jexpr->result_coercion;
-	Jsonb	   *jb = *isNull ? NULL : DatumGetJsonbP(res);
+	Jsonb	   *jb = *isNull || !isJsonb ? NULL : DatumGetJsonbP(res);
+	Json	   *js = *isNull || isJsonb ? NULL : DatumGetJsonP(res);
 
 	if ((coercion && coercion->via_io) ||
-		(jexpr->omit_quotes && !*isNull && JB_ROOT_IS_SCALAR(jb)))
+		(jexpr->omit_quotes && !*isNull &&
+		 (isJsonb ? JB_ROOT_IS_SCALAR(jb) : JsonContainerIsScalar(&js->root))))
 	{
 		/* strip quotes and call typinput function */
-		char *str = *isNull ? NULL : JsonbUnquote(jb);
+		char *str = *isNull ? NULL :
+			(isJsonb ? JsonbUnquote(jb) : JsonUnquote(js));
 
 		res = InputFunctionCall(&op->d.jsonexpr.input.func, str,
 								op->d.jsonexpr.input.typioparam,
@@ -3693,7 +3696,7 @@ ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
 		res = ExecEvalExprPassingCaseValue(op->d.jsonexpr.result_expr, econtext,
 										   isNull, res, *isNull);
 	else if (coercion && coercion->via_populate)
-		res = json_populate_type(res, JSONBOID,
+		res = json_populate_type(res, isJsonb ? JSONBOID : JSONOID,
 								 jexpr->returning.typid,
 								 jexpr->returning.typmod,
 								 &op->d.jsonexpr.cache,
@@ -3727,7 +3730,7 @@ EvalJsonPathVar(void *cxt, bool *isnull)
  * corresponding SQL type and a pointer to the coercion state.
  */
 Datum
-ExecPrepareJsonItemCoercion(JsonbValue *item,
+ExecPrepareJsonItemCoercion(JsonbValue *item, bool is_jsonb,
 							JsonReturning *returning,
 							struct JsonCoercionsState *coercions,
 							struct JsonCoercionState **pcoercion)
@@ -3736,8 +3739,14 @@ ExecPrepareJsonItemCoercion(JsonbValue *item,
 	Datum		res;
 	JsonbValue	jbvbuf;
 
-	if (item->type == jbvBinary && JsonContainerIsScalar(item->val.binary.data))
-		item = JsonbExtractScalar(item->val.binary.data, &jbvbuf);
+	if (item->type == jbvBinary)
+	{
+		if (JsonContainerIsScalar(item->val.binary.data))
+			item = is_jsonb
+				? JsonbExtractScalar(item->val.binary.data, &jbvbuf)
+				: JsonExtractScalar((JsonContainer *) item->val.binary.data,
+									&jbvbuf);
+	}
 
 	/* get coercion state reference and datum of the corresponding SQL type */
 	switch (item->type)
@@ -3794,7 +3803,18 @@ ExecPrepareJsonItemCoercion(JsonbValue *item,
 		case jbvObject:
 		case jbvBinary:
 			coercion = &coercions->composite;
-			res = JsonbPGetDatum(JsonbValueToJsonb(item));
+			if (is_jsonb)
+			{
+				Jsonb	   *jb = JsonbValueToJsonb(item);
+
+				res = JsonbPGetDatum(jb);
+			}
+			else
+			{
+				Json	   *js = JsonbValueToJson(item);
+
+				res = JsonPGetDatum(js);
+			}
 			break;
 
 		default:
@@ -3809,7 +3829,8 @@ ExecPrepareJsonItemCoercion(JsonbValue *item,
 
 static Datum
 ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
-				 JsonExpr *jexpr, JsonPath *path, Datum item, bool *resnull)
+				 JsonExpr *jexpr, JsonPath *path, Datum item, bool isjsonb,
+				 bool *resnull)
 {
 	bool		empty = false;
 	Datum		res = (Datum) 0;
@@ -3823,7 +3844,8 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 		if (isnull)
 		{
 			/* execute domain checks for NULLs */
-			(void) ExecEvalJsonExprCoercion(op, econtext, res, resnull);
+			(void) ExecEvalJsonExprCoercion(op, econtext, res, resnull,
+											isjsonb);
 			*resnull = true;
 			return (Datum) 0;
 		}
@@ -3832,15 +3854,15 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 	switch (jexpr->op)
 	{
 		case IS_JSON_QUERY:
-			res = JsonbPathQuery(item, path, jexpr->wrapper, &empty,
-								 op->d.jsonexpr.args);
+			res = (isjsonb ? JsonbPathQuery : JsonPathQuery)
+				(item, path, jexpr->wrapper, &empty, op->d.jsonexpr.args);
 			*resnull = !DatumGetPointer(res);
 			break;
 
 		case IS_JSON_VALUE:
 			{
-				JsonbValue *jbv = JsonbPathValue(item, path, &empty,
-												 op->d.jsonexpr.args);
+				JsonbValue *jbv = (isjsonb ? JsonbPathValue : JsonPathValue)
+					(item, path, &empty, op->d.jsonexpr.args);
 				struct JsonCoercionState *jcstate;
 
 				if (!jbv)
@@ -3848,7 +3870,7 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 
 				*resnull = false;
 
-				res = ExecPrepareJsonItemCoercion(jbv,
+				res = ExecPrepareJsonItemCoercion(jbv, isjsonb,
 										&op->d.jsonexpr.jsexpr->returning,
 										&op->d.jsonexpr.coercions,
 										&jcstate);
@@ -3861,8 +3883,11 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 					jexpr->returning.typid == JSONBOID)
 				{
 					/* use coercion via I/O from json[b] to the output type */
-					res = JsonbPGetDatum(JsonbValueToJsonb(jbv));
-					res = ExecEvalJsonExprCoercion(op, econtext, res, resnull);
+					res = isjsonb
+						? JsonbPGetDatum(JsonbValueToJsonb(jbv))
+						: JsonPGetDatum(JsonbValueToJson(jbv));
+					res = ExecEvalJsonExprCoercion(op, econtext, res,
+												   resnull, isjsonb);
 				}
 				else if (jcstate->estate)
 				{
@@ -3876,7 +3901,8 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 			break;
 
 		case IS_JSON_EXISTS:
-			res = BoolGetDatum(JsonbPathExists(item, path, op->d.jsonexpr.args));
+			res = BoolGetDatum((isjsonb ? JsonbPathExists : JsonPathExists)
+				(item, path, op->d.jsonexpr.args));
 			*resnull = false;
 			break;
 
@@ -3895,15 +3921,15 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 
 		/* execute ON EMPTY behavior */
 		res = ExecEvalJsonBehavior(econtext, &jexpr->on_empty,
-								   op->d.jsonexpr.default_on_empty, true,
-								   resnull);
+								   op->d.jsonexpr.default_on_empty,
+								   isjsonb, resnull);
 	}
 
 	if (jexpr->op != IS_JSON_EXISTS &&
 		(!empty ? jexpr->op != IS_JSON_VALUE :
 		 /* result is already coerced in DEFAULT behavior case */
 		 jexpr->on_empty.btype != JSON_BEHAVIOR_DEFAULT))
-		res = ExecEvalJsonExprCoercion(op, econtext, res, resnull);
+		res = ExecEvalJsonExprCoercion(op, econtext, res, resnull, isjsonb);
 
 	return res;
 }
@@ -3931,7 +3957,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	if (op->d.jsonexpr.raw_expr->isnull || op->d.jsonexpr.pathspec->isnull)
 	{
 		/* execute domain checks for NULLs */
-		(void) ExecEvalJsonExprCoercion(op, econtext, res, op->resnull);
+		(void) ExecEvalJsonExprCoercion(op, econtext, res, op->resnull, isjsonb);
 
 		Assert(*op->resnull);
 		*op->resnull = true;
@@ -3954,7 +3980,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	if (jexpr->on_error.btype == JSON_BEHAVIOR_ERROR)
 	{
 		/* No need to use PG_TRY/PG_CATCH. */
-		res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item,
+		res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item, isjsonb,
 							   op->resnull);
 	}
 	else
@@ -3964,7 +3990,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 		PG_TRY();
 		{
 			res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item,
-								   op->resnull);
+								   isjsonb, op->resnull);
 		}
 		PG_CATCH();
 		{
@@ -3986,7 +4012,8 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 			if (jexpr->op != IS_JSON_EXISTS &&
 				/* Result is already coerced in DEFAULT behavior case. */
 				jexpr->on_error.btype != JSON_BEHAVIOR_DEFAULT)
-				res = ExecEvalJsonExprCoercion(op, econtext, res, op->resnull);
+				res = ExecEvalJsonExprCoercion(op, econtext, res, op->resnull,
+											   isjsonb);
 		}
 		PG_END_TRY();
 	}
