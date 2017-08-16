@@ -698,7 +698,7 @@ extern void ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op,
 					ExprContext *econtext);
 extern void ExecEvalJson(ExprState *state, ExprEvalStep *op,
 						 ExprContext *econtext);
-extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *jbv,
+extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *jbv, bool is_jsonb,
 							JsonReturning *returning,
 							struct JsonScalarCoercions *coercions,
 							MemoryContext mcxt,
