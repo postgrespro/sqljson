@@ -4588,18 +4588,11 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 				Node	   *expr = jsexpr->formatted_expr ?
 					jsexpr->formatted_expr : jsexpr->raw_expr;
 
-
 				jsexpr->returning.format.type = JS_FORMAT_DEFAULT;
 				jsexpr->returning.format.encoding = JS_ENC_DEFAULT;
 				jsexpr->returning.format.location = -1;
 				jsexpr->returning.typid = exprType(expr);
 				jsexpr->returning.typmod = -1;
-
-				if (jsexpr->returning.typid != JSONBOID)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("JSON_TABLE() is not yet implemented for json type"),
-							 parser_errposition(pstate, func->location)));
 
 				break;
 			}
