@@ -438,3 +438,68 @@ select json '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
 
 select json 'null' @* '{"a": 1}["a"]';
 select json 'null' @* '{"a": 1}["b"]';
+
+-- extension: outer item reference (@N)
+select json '[2,4,1,5,3]' @* '$[*] ? (!exists($[*] ? (@ < @1)))';
+select json '[2,4,1,5,3]' @* '$.map(@ + @1[0])';
+-- the first @1 and @2 reference array, the second @1 -- current mapped array element
+select json '[2,4,1,5,3]' @* '$.map(@ + @1[@1 - @2[2]])';
+select json '[[2,4,1,5,3]]' @* '$.map(@.reduce($1 + $2 + @2[0][2] + @1[3]))';
+
+-- extension: including subpaths into result
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a[*].b)';
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a[*]).b';
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.a.([*].b)';
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a)[*].b';
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.a[*].(b)';
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a)[*].(b)';
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a.[0 to 1].b)';
+
+-- extension: custom operators and type casts
+select json '"aaa"' @* '$::text || "bbb"::text || $::text';
+select json '"aaa"' @* '$::text || "bbb" || $';
+select json '[null, true, 1, "aaa",  {"a": 1}, [1, 2]]' @* '$.map(@::text || "xyz"::text)';
+
+select json '123.45' @* '$::int4';
+select json '123.45' @* '$::float4';
+select json '123.45' @* '$::text';
+select json '123.45' @* '$::text::int4';
+select json '123.45' @* '$::text::float4';
+select json '123.45' @* '$::text::float4::int4';
+select json '4000000000' @* '$::int8';
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::text';
+select json '[123.45, null, 0.67, "8.9"]' @* '$[*]::text::float4::int4';
+
+
+select json '[123.45, 0.67]' @* '$[*]::int4 > $[0]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[0]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[1]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[2]::int4';
+select json '[123.45, null, 0.67]' @* '$[0]::int4 > $[*]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[2]::text::float4';
+select json '[123.45, null, 0.67]' @* '$[*]::text::float4 > $[2]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::text::float4 > $[2]::text::float4';
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[0 to 1]::int4';
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[1 to 2]::int4';
+select json '[123.45, 100000.2, 10000.67, "1"]' @* '$[0]::int8 > $[*]::int4::int8';
+
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[*] -> "a"::text';
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[0] -> "a"::text';
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[1] -> $[0].a::text';
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[0] \? "a"::text';
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[*] \? "b"::text';
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[*] \? "c"::text';
+select json '[{"a": "b"}, {"b": [1, "2"]}, null, 1]' @* '$[*] ? (@ \? "a"::text)';
+
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::int4)';
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::bool)';
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (!(@::bool))';
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::bool == false::bool)';
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::bool || !(@::bool))';
+
+select json '[1, 2, 3]' @* '$[*] ? (@::int4 > 1::int4)';
+
+select json '"str"' @* '$::json';
+select json '"str"' @* '$::jsonb';
