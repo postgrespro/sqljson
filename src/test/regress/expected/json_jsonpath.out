@@ -2013,3 +2013,294 @@ select json 'null' @* '{"a": 1}["b"]';
 ----------
 (0 rows)
 
+-- extension: outer item reference (@N)
+select json '[2,4,1,5,3]' @* '$[*] ? (!exists($[*] ? (@ < @1)))';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select json '[2,4,1,5,3]' @* '$.map(@ + @1[0])';
+    ?column?     
+-----------------
+ [4, 6, 3, 7, 5]
+(1 row)
+
+-- the first @1 and @2 reference array, the second @1 -- current mapped array element
+select json '[2,4,1,5,3]' @* '$.map(@ + @1[@1 - @2[2]])';
+    ?column?     
+-----------------
+ [6, 9, 3, 8, 4]
+(1 row)
+
+select json '[[2,4,1,5,3]]' @* '$.map(@.reduce($1 + $2 + @2[0][2] + @1[3]))';
+ ?column? 
+----------
+ [39]
+(1 row)
+
+-- extension: including subpaths into result
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a[*].b)';
+          ?column?           
+-----------------------------
+ {"a": [{"b": 1}, {"b": 2}]}
+(1 row)
+
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a[*]).b';
+   ?column?    
+---------------
+ {"a": [1, 2]}
+(1 row)
+
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.a.([*].b)';
+       ?column?       
+----------------------
+ [{"b": 1}, {"b": 2}]
+(1 row)
+
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a)[*].b';
+ ?column? 
+----------
+ {"a": 1}
+ {"a": 2}
+(2 rows)
+
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.a[*].(b)';
+ ?column? 
+----------
+ {"b": 1}
+ {"b": 2}
+(2 rows)
+
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a)[*].(b)';
+    ?column?     
+-----------------
+ {"a": {"b": 1}}
+ {"a": {"b": 2}}
+(2 rows)
+
+select json '{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}' @* '$.(a.[0 to 1].b)';
+          ?column?           
+-----------------------------
+ {"a": [{"b": 1}, {"b": 2}]}
+(1 row)
+
+-- extension: custom operators and type casts
+select json '"aaa"' @* '$::text || "bbb"::text || $::text';
+  ?column?   
+-------------
+ "aaabbbaaa"
+(1 row)
+
+select json '"aaa"' @* '$::text || "bbb" || $';
+      ?column?       
+---------------------
+ "aaa\"bbb\"\"aaa\""
+(1 row)
+
+select json '[null, true, 1, "aaa",  {"a": 1}, [1, 2]]' @* '$.map(@::text || "xyz"::text)';
+                             ?column?                              
+-------------------------------------------------------------------
+ [null, "truexyz", "1xyz", "aaaxyz", "{\"a\": 1}xyz", "[1, 2]xyz"]
+(1 row)
+
+select json '123.45' @* '$::int4';
+ ?column? 
+----------
+ 123
+(1 row)
+
+select json '123.45' @* '$::float4';
+ ?column? 
+----------
+ 123.45
+(1 row)
+
+select json '123.45' @* '$::text';
+ ?column? 
+----------
+ "123.45"
+(1 row)
+
+select json '123.45' @* '$::text::int4';
+ERROR:  invalid input syntax for integer: "123.45"
+select json '123.45' @* '$::text::float4';
+ ?column? 
+----------
+ 123.45
+(1 row)
+
+select json '123.45' @* '$::text::float4::int4';
+ ?column? 
+----------
+ 123
+(1 row)
+
+select json '4000000000' @* '$::int8';
+  ?column?  
+------------
+ 4000000000
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4';
+ ?column? 
+----------
+ 123
+ null
+ 1
+(3 rows)
+
+select json '[123.45, null, 0.67]' @* '$[*]::text';
+ ?column? 
+----------
+ "123.45"
+ null
+ "0.67"
+(3 rows)
+
+select json '[123.45, null, 0.67, "8.9"]' @* '$[*]::text::float4::int4';
+ ?column? 
+----------
+ 123
+ null
+ 1
+ 9
+(4 rows)
+
+select json '[123.45, 0.67]' @* '$[*]::int4 > $[0]::int4';
+ ?column? 
+----------
+ false
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[0]::int4';
+ ?column? 
+----------
+ null
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[1]::int4';
+ ?column? 
+----------
+ null
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[2]::int4';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[0]::int4 > $[*]::int4';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[2]::text::float4';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::text::float4 > $[2]::int4';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::text::float4 > $[2]::text::float4';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[0 to 1]::int4';
+ ?column? 
+----------
+ null
+(1 row)
+
+select json '[123.45, null, 0.67]' @* '$[*]::int4 > $[1 to 2]::int4';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[123.45, 100000.2, 10000.67, "1"]' @* '$[0]::int8 > $[*]::int4::int8';
+ ?column? 
+----------
+ true
+(1 row)
+
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[*] -> "a"::text';
+ERROR:  Singleton SQL/JSON item required
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[0] -> "a"::text';
+ ?column? 
+----------
+ "b"
+(1 row)
+
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[1] -> $[0].a::text';
+ ?column? 
+----------
+ [1, "2"]
+(1 row)
+
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[0] \? "a"::text';
+ERROR:  operator does not exist: json ? text
+HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[*] \? "b"::text';
+ERROR:  operator does not exist: json ? text
+HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+select json '[{"a": "b"}, {"b": [1, "2"]}]' @* '$[*] \? "c"::text';
+ERROR:  operator does not exist: json ? text
+HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+select json '[{"a": "b"}, {"b": [1, "2"]}, null, 1]' @* '$[*] ? (@ \? "a"::text)';
+ERROR:  operator does not exist: json ? text
+HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::int4)';
+ERROR:  expected cast to boolean type
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::bool)';
+ ?column? 
+----------
+ 1
+ "t"
+(2 rows)
+
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (!(@::bool))';
+ ?column? 
+----------
+ 0
+ "f"
+(2 rows)
+
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::bool == false::bool)';
+ ?column? 
+----------
+ 0
+ "f"
+(2 rows)
+
+select json '[1, "t", 0, "f", null]' @* '$[*] ? (@::bool || !(@::bool))';
+ERROR:  operator does not exist: boolean || json
+HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+select json '[1, 2, 3]' @* '$[*] ? (@::int4 > 1::int4)';
+ ?column? 
+----------
+ 2
+ 3
+(2 rows)
+
+select json '"str"' @* '$::json';
+ ?column? 
+----------
+ "str"
+(1 row)
+
+select json '"str"' @* '$::jsonb';
+ ?column? 
+----------
+ "str"
+(1 row)
+
