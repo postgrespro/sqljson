@@ -1857,5 +1857,9 @@ DATA(insert OID = 6075 (  "@*"	   PGNSP PGUID b f f 3802 6050 3802 0 0 6055 - - 
 DESCR("jsonpath items");
 DATA(insert OID = 6076 (  "@?"	   PGNSP PGUID b f f 3802 6050 16 0 0 6073 contsel contjoinsel ));
 DESCR("jsonpath predicate");
+DATA(insert OID = 6070 (  "@*"	   PGNSP PGUID b f f 114 6050 114 0 0 6044 - - ));
+DESCR("jsonpath items");
+DATA(insert OID = 6071 (  "@?"	   PGNSP PGUID b f f 114 6050 16 0 0 6049 contsel contjoinsel ));
+DESCR("jsonpath predicate");
 
 #endif							/* PG_OPERATOR_H */
