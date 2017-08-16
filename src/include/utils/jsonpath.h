@@ -352,6 +352,7 @@ extern JsonItem *JsonPathValue(Datum jb, JsonPath *jp, bool *empty,
 extern int EvalJsonPathVar(void *vars, bool isJsonb, char *varName,
 				int varNameLen, JsonItem *val, JsonbValue *baseObject);
 
+extern const TableFuncRoutine JsonTableRoutine;
 extern const TableFuncRoutine JsonbTableRoutine;
 
 #endif

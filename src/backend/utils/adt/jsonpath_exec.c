@@ -261,6 +261,7 @@ typedef struct JsonTableContext
 	}		   *colexprs;
 	JsonTableScanState root;
 	bool		empty;
+	bool		isJsonb;
 } JsonTableContext;
 
 /* strict/lax flags is decomposed into four [un]wrap/error flags */
@@ -434,7 +435,7 @@ static void popJsonItem(JsonItemStack *stack);
 
 static JsonTableJoinState *JsonTableInitPlanState(JsonTableContext *cxt,
 									Node *plan, JsonTableScanState *parent);
-static bool JsonTableNextRow(JsonTableScanState *scan);
+static bool JsonTableNextRow(JsonTableScanState *scan, bool isJsonb);
 
 
 /****************** User interface to JsonPath executor ********************/
@@ -3748,11 +3749,11 @@ JsonTableInitPlanState(JsonTableContext *cxt, Node *plan,
 }
 
 /*
- * JsonTableInitOpaque
+ * JsonxTableInitOpaque
  *		Fill in TableFuncScanState->opaque for JsonTable processor
  */
 static void
-JsonTableInitOpaque(TableFuncScanState *state, int natts)
+JsonxTableInitOpaque(TableFuncScanState *state, int natts, bool isJsonb)
 {
 	JsonTableContext *cxt;
 	PlanState  *ps = &state->ss.ps;
@@ -3766,6 +3767,7 @@ JsonTableInitOpaque(TableFuncScanState *state, int natts)
 
 	cxt = palloc0(sizeof(JsonTableContext));
 	cxt->magic = JSON_TABLE_CONTEXT_MAGIC;
+	cxt->isJsonb = isJsonb;
 
 	if (list_length(ci->passing.values) > 0)
 	{
@@ -3816,6 +3818,18 @@ JsonTableInitOpaque(TableFuncScanState *state, int natts)
 	state->opaque = cxt;
 }
 
+static void
+JsonbTableInitOpaque(TableFuncScanState *state, int natts)
+{
+	JsonxTableInitOpaque(state, natts, true);
+}
+
+static void
+JsonTableInitOpaque(TableFuncScanState *state, int natts)
+{
+	JsonxTableInitOpaque(state, natts, false);
+}
+
 /* Reset scan iterator to the beginning of the item list */
 static void
 JsonTableRescan(JsonTableScanState *scan)
@@ -3829,11 +3843,11 @@ JsonTableRescan(JsonTableScanState *scan)
 
 /* Reset context item of a scan, execute JSON path and reset a scan */
 static void
-JsonTableResetContextItem(JsonTableScanState *scan, Datum item)
+JsonTableResetContextItem(JsonTableScanState *scan, Datum item, bool isJsonb)
 {
 	MemoryContext oldcxt;
 	JsonPathExecResult res;
-	Jsonx		*js = (Jsonx *) DatumGetJsonbP(item);
+	Jsonx	   *js = DatumGetJsonxP(item, isJsonb);
 
 	JsonValueListClear(&scan->found);
 
@@ -3841,7 +3855,7 @@ JsonTableResetContextItem(JsonTableScanState *scan, Datum item)
 
 	oldcxt = MemoryContextSwitchTo(scan->mcxt);
 
-	res = executeJsonPath(scan->path, scan->args, EvalJsonPathVar, js, true,
+	res = executeJsonPath(scan->path, scan->args, EvalJsonPathVar, js, isJsonb,
 						  scan->errorOnError, &scan->found);
 
 	MemoryContextSwitchTo(oldcxt);
@@ -3864,7 +3878,7 @@ JsonTableSetDocument(TableFuncScanState *state, Datum value)
 {
 	JsonTableContext *cxt = GetJsonTableContext(state, "JsonTableSetDocument");
 
-	JsonTableResetContextItem(&cxt->root, value);
+	JsonTableResetContextItem(&cxt->root, value, cxt->isJsonb);
 }
 
 /* Recursively reset scan and its child nodes */
@@ -3891,15 +3905,15 @@ JsonTableRescanRecursive(JsonTableJoinState *state)
  * Returned false at the end of a scan, true otherwise.
  */
 static bool
-JsonTableNextJoinRow(JsonTableJoinState *state)
+JsonTableNextJoinRow(JsonTableJoinState *state, bool isJsonb)
 {
 	if (!state->is_join)
-		return JsonTableNextRow(&state->u.scan);
+		return JsonTableNextRow(&state->u.scan, isJsonb);
 
 	if (state->u.join.advanceRight)
 	{
 		/* fetch next inner row */
-		if (JsonTableNextJoinRow(state->u.join.right))
+		if (JsonTableNextJoinRow(state->u.join.right, isJsonb))
 			return true;
 
 		/* inner rows are exhausted */
@@ -3912,7 +3926,7 @@ JsonTableNextJoinRow(JsonTableJoinState *state)
 	while (!state->u.join.advanceRight)
 	{
 		/* fetch next outer row */
-		bool		left = JsonTableNextJoinRow(state->u.join.left);
+		bool		left = JsonTableNextJoinRow(state->u.join.left, isJsonb);
 
 		if (state->u.join.cross)
 		{
@@ -3921,14 +3935,14 @@ JsonTableNextJoinRow(JsonTableJoinState *state)
 
 			JsonTableRescanRecursive(state->u.join.right);
 
-			if (!JsonTableNextJoinRow(state->u.join.right))
+			if (!JsonTableNextJoinRow(state->u.join.right, isJsonb))
 				continue;	/* next outer row */
 
 			state->u.join.advanceRight = true;	/* next inner row */
 		}
 		else if (!left)
 		{
-			if (!JsonTableNextJoinRow(state->u.join.right))
+			if (!JsonTableNextJoinRow(state->u.join.right, isJsonb))
 				return false;	/* end of scan */
 
 			state->u.join.advanceRight = true;	/* next inner row */
@@ -3966,20 +3980,20 @@ JsonTableJoinReset(JsonTableJoinState *state)
  * Returned false at the end of a scan, true otherwise.
  */
 static bool
-JsonTableNextRow(JsonTableScanState *scan)
+JsonTableNextRow(JsonTableScanState *scan, bool isJsonb)
 {
 	/* reset context item if requested */
 	if (scan->reset)
 	{
 		Assert(!scan->parent->currentIsNull);
-		JsonTableResetContextItem(scan, scan->parent->current);
+		JsonTableResetContextItem(scan, scan->parent->current, isJsonb);
 		scan->reset = false;
 	}
 
 	if (scan->advanceNested)
 	{
 		/* fetch next nested row */
-		scan->advanceNested = JsonTableNextJoinRow(scan->nested);
+		scan->advanceNested = JsonTableNextJoinRow(scan->nested, isJsonb);
 
 		if (scan->advanceNested)
 			return true;
@@ -4000,7 +4014,7 @@ JsonTableNextRow(JsonTableScanState *scan)
 
 		/* set current row item */
 		oldcxt = MemoryContextSwitchTo(scan->mcxt);
-		scan->current = JsonbPGetDatum(JsonItemToJsonb(jbv));
+		scan->current = JsonItemToJsonxDatum(jbv, isJsonb);
 		scan->currentIsNull = false;
 		MemoryContextSwitchTo(oldcxt);
 
@@ -4011,7 +4025,7 @@ JsonTableNextRow(JsonTableScanState *scan)
 
 		JsonTableJoinReset(scan->nested);
 
-		scan->advanceNested = JsonTableNextJoinRow(scan->nested);
+		scan->advanceNested = JsonTableNextJoinRow(scan->nested, isJsonb);
 
 		if (scan->advanceNested || scan->outerJoin)
 			break;
@@ -4035,7 +4049,7 @@ JsonTableFetchRow(TableFuncScanState *state)
 	if (cxt->empty)
 		return false;
 
-	return JsonTableNextRow(&cxt->root);
+	return JsonTableNextRow(&cxt->root, cxt->isJsonb);
 }
 
 /*
@@ -4088,6 +4102,18 @@ JsonTableDestroyOpaque(TableFuncScanState *state)
 }
 
 const TableFuncRoutine JsonbTableRoutine =
+{
+	JsonbTableInitOpaque,
+	JsonTableSetDocument,
+	NULL,
+	NULL,
+	NULL,
+	JsonTableFetchRow,
+	JsonTableGetValue,
+	JsonTableDestroyOpaque
+};
+
+const TableFuncRoutine JsonTableRoutine =
 {
 	JsonTableInitOpaque,
 	JsonTableSetDocument,

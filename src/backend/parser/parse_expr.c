@@ -4824,12 +4824,6 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 			jsexpr->returning.typid = exprType(contextItemExpr);
 			jsexpr->returning.typmod = -1;
 
-			if (jsexpr->returning.typid != JSONBOID)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("JSON_TABLE() is not yet implemented for json type"),
-						 parser_errposition(pstate, func->location)));
-
 			break;
 	}
 
