@@ -111,7 +111,7 @@ select _jsonpath_exists(json '[1]', '$.[1.2]');
 select _jsonpath_exists(json '[1]', 'strict $.[1.2]');
 ERROR:  Invalid SQL/JSON subscript
 select _jsonpath_exists(json '{}', 'strict $.[0.3]');
-ERROR:  SQL/JSON array not found
+ERROR:  Invalid SQL/JSON subscript
 select _jsonpath_exists(json '{}', 'lax $.[0.3]');
  _jsonpath_exists 
 ------------------
@@ -119,7 +119,7 @@ select _jsonpath_exists(json '{}', 'lax $.[0.3]');
 (1 row)
 
 select _jsonpath_exists(json '{}', 'strict $.[1.2]');
-ERROR:  SQL/JSON array not found
+ERROR:  Invalid SQL/JSON subscript
 select _jsonpath_exists(json '{}', 'lax $.[1.2]');
  _jsonpath_exists 
 ------------------
@@ -127,7 +127,7 @@ select _jsonpath_exists(json '{}', 'lax $.[1.2]');
 (1 row)
 
 select _jsonpath_exists(json '{}', 'strict $.[-2 to 3]');
-ERROR:  SQL/JSON array not found
+ERROR:  Invalid SQL/JSON subscript
 select _jsonpath_exists(json '{}', 'lax $.[-2 to 3]');
  _jsonpath_exists 
 ------------------
@@ -1160,6 +1160,25 @@ select _jsonpath_query(json '{}', '$.datetime()');
 ERROR:  Invalid argument for SQL/JSON datetime function
 select _jsonpath_query(json '""', '$.datetime()');
 ERROR:  Invalid argument for SQL/JSON datetime function
+-- Standard extension: UNIX epoch to timestamptz
+select _jsonpath_query(json '0', '$.datetime()');
+        _jsonpath_query         
+--------------------------------
+ "Wed Dec 31 16:00:00 1969 PST"
+(1 row)
+
+select _jsonpath_query(json '0', '$.datetime().type()');
+      _jsonpath_query       
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select _jsonpath_query(json '1490216035.5', '$.datetime()');
+         _jsonpath_query          
+----------------------------------
+ "Wed Mar 22 13:53:55.5 2017 PDT"
+(1 row)
+
 select _jsonpath_query(json '"10-03-2017"',       '$.datetime("dd-mm-yyyy")');
  _jsonpath_query 
 -----------------
@@ -1601,6 +1620,12 @@ SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
 ----------
 (0 rows)
 
+SELECT json '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
+ ?column? 
+----------
+ [1, 2]
+(1 row)
+
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
  ?column? 
 ----------
@@ -1612,4 +1637,286 @@ SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';
 ----------
  f
 (1 row)
+
+-- extension: map item method
+select _jsonpath_query(json '1', 'strict $.map(@ + 10)');
+ERROR:  SQL/JSON array not found
+select _jsonpath_query(json '1', 'lax $.map(@ + 10)');
+ _jsonpath_query 
+-----------------
+ 11
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '$.map(@ + 10)');
+ _jsonpath_query 
+-----------------
+ [11, 12, 13]
+(1 row)
+
+select _jsonpath_query(json '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.map(@.map(@ + 10))');
+            _jsonpath_query             
+----------------------------------------
+ [[11, 12], [13, 14, 15], [], [16, 17]]
+(1 row)
+
+-- extension: reduce/fold item methods
+select _jsonpath_query(json '1', 'strict $.reduce($1 + $2)');
+ERROR:  SQL/JSON array not found
+select _jsonpath_query(json '1', 'lax $.reduce($1 + $2)');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select _jsonpath_query(json '1', 'strict $.fold($1 + $2, 10)');
+ERROR:  SQL/JSON array not found
+select _jsonpath_query(json '1', 'lax $.fold($1 + $2, 10)');
+ _jsonpath_query 
+-----------------
+ 11
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '$.reduce($1 + $2)');
+ _jsonpath_query 
+-----------------
+ 6
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '$.fold($1 + $2, 100)');
+ _jsonpath_query 
+-----------------
+ 106
+(1 row)
+
+select _jsonpath_query(json '[]', '$.reduce($1 + $2)');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(json '[]', '$.fold($1 + $2, 100)');
+ _jsonpath_query 
+-----------------
+ 100
+(1 row)
+
+select _jsonpath_query(json '[1]', '$.reduce($1 + $2)');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '$.foldl([$1, $2], [])');
+  _jsonpath_query  
+-------------------
+ [[[[], 1], 2], 3]
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '$.foldr([$2, $1], [])');
+  _jsonpath_query  
+-------------------
+ [[[[], 3], 2], 1]
+(1 row)
+
+select _jsonpath_query(json '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.fold($1 + $2.fold($1 + $2, 100), 1000)');
+ _jsonpath_query 
+-----------------
+ 1428
+(1 row)
+
+-- extension: min/max item methods
+select _jsonpath_query(json '1', 'strict $.min()');
+ERROR:  SQL/JSON array not found
+select _jsonpath_query(json '1', 'lax $.min()');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select _jsonpath_query(json '[]', '$.min()');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(json '[]', '$.max()');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select _jsonpath_query(json '[1, 2, 3]', '$.min()');
+ERROR:  json comparison is not implemented
+select _jsonpath_query(json '[1, 2, 3]', '$.max()');
+ERROR:  json comparison is not implemented
+select _jsonpath_query(json '[2, 3, 5, 1, 4]', '$.min()');
+ERROR:  json comparison is not implemented
+select _jsonpath_query(json '[2, 3, 5, 1, 4]', '$.max()');
+ERROR:  json comparison is not implemented
+-- extension: path sequences
+select _jsonpath_query(json '[1,2,3,4,5]', '10, 20, $[*], 30');
+ _jsonpath_query 
+-----------------
+ 10
+ 20
+ 1
+ 2
+ 3
+ 4
+ 5
+ 30
+(8 rows)
+
+select _jsonpath_query(json '[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');
+ _jsonpath_query 
+-----------------
+ 10
+ 20
+ 30
+(3 rows)
+
+select _jsonpath_query(json '[1,2,3,4,5]', 'strict 10, 20, $[*].a, 30');
+ERROR:  SQL/JSON member not found
+select _jsonpath_query(json '[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
+ _jsonpath_query 
+-----------------
+ -10
+ -20
+ -2
+ -3
+ -4
+ -30
+(6 rows)
+
+select _jsonpath_query(json '[1,2,3,4,5]', 'lax (10, 20, $[1 to 3], 30).map(@ + 100)');
+ _jsonpath_query 
+-----------------
+ 110
+ 120
+ 102
+ 103
+ 104
+ 130
+(6 rows)
+
+select _jsonpath_query(json '[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
+ _jsonpath_query 
+-----------------
+ 4
+(1 row)
+
+select _jsonpath_query(json '[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+ERROR:  Invalid SQL/JSON subscript
+-- extension: array constructors
+select _jsonpath_query(json '[1, 2, 3]', '[]');
+ _jsonpath_query 
+-----------------
+ []
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '[1, 2, $.map(@ + 100)[*], 4, 5]');
+       _jsonpath_query       
+-----------------------------
+ [1, 2, 101, 102, 103, 4, 5]
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '[1, 2, $.map(@ + 100)[*], 4, 5][*]');
+ _jsonpath_query 
+-----------------
+ 1
+ 2
+ 101
+ 102
+ 103
+ 4
+ 5
+(7 rows)
+
+select _jsonpath_query(json '[1, 2, 3]', '[(1, (2, $.map(@ + 100)[*])), (4, 5)]');
+       _jsonpath_query       
+-----------------------------
+ [1, 2, 101, 102, 103, 4, 5]
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '[[1, 2], [$.map(@ + 100)[*], 4], 5, [(1,2)?(@ > 5)]]');
+           _jsonpath_query           
+-------------------------------------
+ [[1, 2], [101, 102, 103, 4], 5, []]
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', 'strict [1, 2, $.map(@.a)[*], 4, 5]');
+ERROR:  SQL/JSON member not found
+select _jsonpath_query(json '[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*].map(@ + 10)[*] ? (@ > 13)]');
+ _jsonpath_query  
+------------------
+ [14, 15, 16, 17]
+(1 row)
+
+-- extension: object constructors
+select _jsonpath_query(json '[1, 2, 3]', '{}');
+ _jsonpath_query 
+-----------------
+ {}
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+        _jsonpath_query         
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+ _jsonpath_query 
+-----------------
+ 5
+ [1, 2, 3, 4, 5]
+(2 rows)
+
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+ERROR:  Singleton SQL/JSON item required
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": [$.map({x: @, y: @ < 3})[*], {z: "foo"}]}');
+                                        _jsonpath_query                                        
+-----------------------------------------------------------------------------------------------
+ {"a": 5, "b": [{"x": 1, "y": true}, {"x": 2, "y": true}, {"x": 3, "y": false}, {"z": "foo"}]}
+(1 row)
+
+-- extension: object subscripting
+select _jsonpath_exists(json '{"a": 1}', '$["a"]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select _jsonpath_exists(json '{"a": 1}', '$["b"]');
+ _jsonpath_exists 
+------------------
+ f
+(1 row)
+
+select _jsonpath_exists(json '{"a": 1}', 'strict $["b"]');
+ERROR:  SQL/JSON member not found
+select _jsonpath_exists(json '{"a": 1}', '$["b", "a"]');
+ _jsonpath_exists 
+------------------
+ t
+(1 row)
+
+select * from _jsonpath_query(json '{"a": 1}', '$["a"]');
+ _jsonpath_query 
+-----------------
+ 1
+(1 row)
+
+select * from _jsonpath_query(json '{"a": 1}', 'strict $["b"]');
+ERROR:  SQL/JSON member not found
+select * from _jsonpath_query(json '{"a": 1}', 'lax $["b"]');
+ _jsonpath_query 
+-----------------
+(0 rows)
+
+select * from _jsonpath_query(json '{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]');
+ _jsonpath_query  
+------------------
+ 2
+ 2
+ 1
+ {"a": 1, "b": 2}
+(4 rows)
 
