@@ -247,6 +247,11 @@ select _jsonpath_query(json '[]', 'strict $.datetime()');
 select _jsonpath_query(json '{}', '$.datetime()');
 select _jsonpath_query(json '""', '$.datetime()');
 
+-- Standard extension: UNIX epoch to timestamptz
+select _jsonpath_query(json '0', '$.datetime()');
+select _jsonpath_query(json '0', '$.datetime().type()');
+select _jsonpath_query(json '1490216035.5', '$.datetime()');
+
 select _jsonpath_query(json '"10-03-2017"',       '$.datetime("dd-mm-yyyy")');
 select _jsonpath_query(json '"10-03-2017"',       '$.datetime("dd-mm-yyyy").type()');
 select _jsonpath_query(json '"10-03-2017 12:34"', '$.datetime("dd-mm-yyyy")');
@@ -382,6 +387,78 @@ set time zone default;
 
 SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*]';
 SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+SELECT json '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
 
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a > 1';
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a > 2';
+
+-- extension: map item method
+select _jsonpath_query(json '1', 'strict $.map(@ + 10)');
+select _jsonpath_query(json '1', 'lax $.map(@ + 10)');
+select _jsonpath_query(json '[1, 2, 3]', '$.map(@ + 10)');
+select _jsonpath_query(json '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.map(@.map(@ + 10))');
+
+-- extension: reduce/fold item methods
+select _jsonpath_query(json '1', 'strict $.reduce($1 + $2)');
+select _jsonpath_query(json '1', 'lax $.reduce($1 + $2)');
+select _jsonpath_query(json '1', 'strict $.fold($1 + $2, 10)');
+select _jsonpath_query(json '1', 'lax $.fold($1 + $2, 10)');
+select _jsonpath_query(json '[1, 2, 3]', '$.reduce($1 + $2)');
+select _jsonpath_query(json '[1, 2, 3]', '$.fold($1 + $2, 100)');
+select _jsonpath_query(json '[]', '$.reduce($1 + $2)');
+select _jsonpath_query(json '[]', '$.fold($1 + $2, 100)');
+select _jsonpath_query(json '[1]', '$.reduce($1 + $2)');
+select _jsonpath_query(json '[1, 2, 3]', '$.foldl([$1, $2], [])');
+select _jsonpath_query(json '[1, 2, 3]', '$.foldr([$2, $1], [])');
+select _jsonpath_query(json '[[1, 2], [3, 4, 5], [], [6, 7]]', '$.fold($1 + $2.fold($1 + $2, 100), 1000)');
+
+-- extension: min/max item methods
+select _jsonpath_query(json '1', 'strict $.min()');
+select _jsonpath_query(json '1', 'lax $.min()');
+select _jsonpath_query(json '[]', '$.min()');
+select _jsonpath_query(json '[]', '$.max()');
+select _jsonpath_query(json '[null]', '$.min()');
+select _jsonpath_query(json '[null]', '$.max()');
+select _jsonpath_query(json '[1, 2, 3]', '$.min()');
+select _jsonpath_query(json '[1, 2, 3]', '$.max()');
+select _jsonpath_query(json '[2, 3, 5, null, 1, 4, null]', '$.min()');
+select _jsonpath_query(json '[2, 3, 5, null, 1, 4, null]', '$.max()');
+select _jsonpath_query(json '["aa", null, "a", "bbb"]', '$.min()');
+select _jsonpath_query(json '["aa", null, "a", "bbb"]', '$.max()');
+select _jsonpath_query(json '[1, null, "2"]', '$.max()');
+
+-- extension: path sequences
+select _jsonpath_query(json '[1,2,3,4,5]', '10, 20, $[*], 30');
+select _jsonpath_query(json '[1,2,3,4,5]', 'lax    10, 20, $[*].a, 30');
+select _jsonpath_query(json '[1,2,3,4,5]', 'strict 10, 20, $[*].a, 30');
+select _jsonpath_query(json '[1,2,3,4,5]', '-(10, 20, $[1 to 3], 30)');
+select _jsonpath_query(json '[1,2,3,4,5]', 'lax (10, 20, $[1 to 3], 30).map(@ + 100)');
+select _jsonpath_query(json '[1,2,3,4,5]', '$[(0, $[*], 5) ? (@ == 3)]');
+select _jsonpath_query(json '[1,2,3,4,5]', '$[(0, $[*], 3) ? (@ == 3)]');
+
+-- extension: array constructors
+select _jsonpath_query(json '[1, 2, 3]', '[]');
+select _jsonpath_query(json '[1, 2, 3]', '[1, 2, $.map(@ + 100)[*], 4, 5]');
+select _jsonpath_query(json '[1, 2, 3]', '[1, 2, $.map(@ + 100)[*], 4, 5][*]');
+select _jsonpath_query(json '[1, 2, 3]', '[(1, (2, $.map(@ + 100)[*])), (4, 5)]');
+select _jsonpath_query(json '[1, 2, 3]', '[[1, 2], [$.map(@ + 100)[*], 4], 5, [(1,2)?(@ > 5)]]');
+select _jsonpath_query(json '[1, 2, 3]', 'strict [1, 2, $.map(@.a)[*], 4, 5]');
+select _jsonpath_query(json '[[1, 2], [3, 4, 5], [], [6, 7]]', '[$[*].map(@ + 10)[*] ? (@ > 13)]');
+
+-- extension: object constructors
+select _jsonpath_query(json '[1, 2, 3]', '{}');
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}');
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": [$[*], 4, 5]}.*');
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": ($[*], 4, 5)}');
+select _jsonpath_query(json '[1, 2, 3]', '{a: 2 + 3, "b": [$.map({x: @, y: @ < 3})[*], {z: "foo"}]}');
+
+-- extension: object subscripting
+select _jsonpath_exists(json '{"a": 1}', '$["a"]');
+select _jsonpath_exists(json '{"a": 1}', '$["b"]');
+select _jsonpath_exists(json '{"a": 1}', 'strict $["b"]');
+select _jsonpath_exists(json '{"a": 1}', '$["b", "a"]');
+
+select * from _jsonpath_query(json '{"a": 1}', '$["a"]');
+select * from _jsonpath_query(json '{"a": 1}', 'strict $["b"]');
+select * from _jsonpath_query(json '{"a": 1}', 'lax $["b"]');
+select * from _jsonpath_query(json '{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]');
