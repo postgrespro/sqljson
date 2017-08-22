@@ -1,17 +1,85 @@
 -- JSON_EXISTS
+SELECT JSON_EXISTS(NULL FORMAT JSONB, '$');
+ json_exists 
+-------------
+ 
+(1 row)
+
+SELECT JSON_EXISTS(NULL::text FORMAT JSONB, '$');
+ json_exists 
+-------------
+ 
+(1 row)
+
+SELECT JSON_EXISTS(NULL::bytea FORMAT JSONB, '$');
+ json_exists 
+-------------
+ 
+(1 row)
+
+SELECT JSON_EXISTS(NULL::json FORMAT JSONB, '$');
+WARNING:  FORMAT JSON has no effect for json and jsonb types
+ json_exists 
+-------------
+ 
+(1 row)
+
+SELECT JSON_EXISTS(NULL::jsonb FORMAT JSONB, '$');
+WARNING:  FORMAT JSON has no effect for json and jsonb types
+ json_exists 
+-------------
+ 
+(1 row)
+
 SELECT JSON_EXISTS(NULL::jsonb, '$');
  json_exists 
 -------------
  
 (1 row)
 
+SELECT JSON_EXISTS('' FORMAT JSONB, '$');
+ json_exists 
+-------------
+ f
+(1 row)
+
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' TRUE ON ERROR);
+ json_exists 
+-------------
+ t
+(1 row)
+
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' FALSE ON ERROR);
+ json_exists 
+-------------
+ f
+(1 row)
+
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' UNKNOWN ON ERROR);
+ json_exists 
+-------------
+ 
+(1 row)
+
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' ERROR ON ERROR);
+ERROR:  invalid input syntax for type json
+DETAIL:  The input string ended unexpectedly.
+CONTEXT:  JSON data, line 1: 
+SELECT JSON_EXISTS(bytea '' FORMAT JSONB, '$' ERROR ON ERROR);
+ERROR:  incorrect jsonb binary data format
 SELECT JSON_EXISTS(jsonb '[]', '$');
  json_exists 
 -------------
  t
 (1 row)
 
-SELECT JSON_EXISTS(JSON_OBJECT(RETURNING jsonb), '$');
+SELECT JSON_EXISTS('[]' FORMAT JSONB, '$');
+ json_exists 
+-------------
+ t
+(1 row)
+
+SELECT JSON_EXISTS(JSON_OBJECT(RETURNING bytea FORMAT JSONB) FORMAT JSONB, '$');
  json_exists 
 -------------
  t
@@ -141,12 +209,66 @@ SELECT JSON_EXISTS(jsonb '1', '$.a > 2' ERROR ON ERROR);
 (1 row)
 
 -- JSON_VALUE
+SELECT JSON_VALUE(NULL FORMAT JSONB, '$');
+ json_value 
+------------
+ 
+(1 row)
+
+SELECT JSON_VALUE(NULL::text FORMAT JSONB, '$');
+ json_value 
+------------
+ 
+(1 row)
+
+SELECT JSON_VALUE(NULL::bytea FORMAT JSONB, '$');
+ json_value 
+------------
+ 
+(1 row)
+
+SELECT JSON_VALUE(NULL::json FORMAT JSONB, '$');
+WARNING:  FORMAT JSON has no effect for json and jsonb types
+ json_value 
+------------
+ 
+(1 row)
+
+SELECT JSON_VALUE(NULL::jsonb FORMAT JSONB, '$');
+WARNING:  FORMAT JSON has no effect for json and jsonb types
+ json_value 
+------------
+ 
+(1 row)
+
 SELECT JSON_VALUE(NULL::jsonb, '$');
  json_value 
 ------------
  
 (1 row)
 
+SELECT JSON_VALUE('' FORMAT JSONB, '$');
+ json_value 
+------------
+ 
+(1 row)
+
+SELECT JSON_VALUE('' FORMAT JSONB, '$' NULL ON ERROR);
+ json_value 
+------------
+ 
+(1 row)
+
+SELECT JSON_VALUE('' FORMAT JSONB, '$' DEFAULT '"default value"' ON ERROR);
+   json_value    
+-----------------
+ "default value"
+(1 row)
+
+SELECT JSON_VALUE('' FORMAT JSONB, '$' ERROR ON ERROR);
+ERROR:  invalid input syntax for type json
+DETAIL:  The input string ended unexpectedly.
+CONTEXT:  JSON data, line 1: 
 SELECT JSON_VALUE(jsonb 'null', '$');
  json_value 
 ------------
@@ -465,14 +587,14 @@ SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +
 
 -- JSON_QUERY
 SELECT
-	JSON_QUERY(js, '$'),
-	JSON_QUERY(js, '$' WITHOUT WRAPPER),
-	JSON_QUERY(js, '$' WITH CONDITIONAL WRAPPER),
-	JSON_QUERY(js, '$' WITH UNCONDITIONAL ARRAY WRAPPER),
-	JSON_QUERY(js, '$' WITH ARRAY WRAPPER)
+	JSON_QUERY(js FORMAT JSONB, '$'),
+	JSON_QUERY(js FORMAT JSONB, '$' WITHOUT WRAPPER),
+	JSON_QUERY(js FORMAT JSONB, '$' WITH CONDITIONAL WRAPPER),
+	JSON_QUERY(js FORMAT JSONB, '$' WITH UNCONDITIONAL ARRAY WRAPPER),
+	JSON_QUERY(js FORMAT JSONB, '$' WITH ARRAY WRAPPER)
 FROM
 	(VALUES
-		(jsonb 'null'),
+		('null'),
 		('12.3'),
 		('true'),
 		('"aaa"'),
@@ -490,14 +612,14 @@ FROM
 (6 rows)
 
 SELECT
-	JSON_QUERY(js, 'strict $[*]') AS "unspec",
-	JSON_QUERY(js, 'strict $[*]' WITHOUT WRAPPER) AS "without",
-	JSON_QUERY(js, 'strict $[*]' WITH CONDITIONAL WRAPPER) AS "with cond",
-	JSON_QUERY(js, 'strict $[*]' WITH UNCONDITIONAL ARRAY WRAPPER) AS "with uncond",
-	JSON_QUERY(js, 'strict $[*]' WITH ARRAY WRAPPER) AS "with"
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]') AS "unspec",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITHOUT WRAPPER) AS "without",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITH CONDITIONAL WRAPPER) AS "with cond",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITH UNCONDITIONAL ARRAY WRAPPER) AS "with uncond",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITH ARRAY WRAPPER) AS "with"
 FROM
 	(VALUES
-		(jsonb '1'),
+		('1'),
 		('[]'),
 		('[null]'),
 		('[12.3]'),
@@ -520,45 +642,51 @@ FROM
                     |                    | [1, "2", null, [3]] | [1, "2", null, [3]]  | [1, "2", null, [3]]
 (9 rows)
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text);
  json_query 
 ------------
  "aaa"
 (1 row)
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text KEEP QUOTES);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text KEEP QUOTES);
  json_query 
 ------------
  "aaa"
 (1 row)
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text KEEP QUOTES ON SCALAR STRING);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text KEEP QUOTES ON SCALAR STRING);
  json_query 
 ------------
  "aaa"
 (1 row)
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text OMIT QUOTES);
  json_query 
 ------------
  aaa
 (1 row)
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES ON SCALAR STRING);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text OMIT QUOTES ON SCALAR STRING);
  json_query 
 ------------
  aaa
 (1 row)
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' OMIT QUOTES ERROR ON ERROR);
 ERROR:  invalid input syntax for type json
 DETAIL:  Token "aaa" is invalid.
 CONTEXT:  JSON data, line 1: aaa
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING json OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING json OMIT QUOTES ERROR ON ERROR);
 ERROR:  invalid input syntax for type json
 DETAIL:  Token "aaa" is invalid.
 CONTEXT:  JSON data, line 1: aaa
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING bytea FORMAT JSON OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING bytea FORMAT JSON OMIT QUOTES ERROR ON ERROR);
+ json_query 
+------------
+ \x616161
+(1 row)
+
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING bytea FORMAT JSONB OMIT QUOTES ERROR ON ERROR);
  json_query 
 ------------
  \x616161
@@ -595,63 +723,63 @@ SELECT JSON_QUERY(jsonb '[1]', '$' WITHOUT WRAPPER KEEP QUOTES);
  [1]
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]');
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]');
  json_query 
 ------------
  
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' NULL ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' NULL ON EMPTY);
  json_query 
 ------------
  
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' EMPTY ARRAY ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' EMPTY ARRAY ON EMPTY);
  json_query 
 ------------
  []
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' EMPTY OBJECT ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' EMPTY OBJECT ON EMPTY);
  json_query 
 ------------
  {}
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY);
  json_query 
 ------------
  
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY NULL ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY NULL ON ERROR);
  json_query 
 ------------
  
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY EMPTY ARRAY ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY EMPTY ARRAY ON ERROR);
  json_query 
 ------------
  []
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY EMPTY OBJECT ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY EMPTY OBJECT ON ERROR);
  json_query 
 ------------
  {}
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY ERROR ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY ERROR ON ERROR);
 ERROR:  no SQL/JSON item
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON ERROR);
  json_query 
 ------------
  
 (1 row)
 
-SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' ERROR ON ERROR);
+SELECT JSON_QUERY('[1,2]' FORMAT JSONB, '$[*]' ERROR ON ERROR);
 ERROR:  JSON path expression in JSON_QUERY should return singleton item without wrapper
 HINT:  use WITH WRAPPER clause to wrap SQL/JSON item sequence into array
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING json);
@@ -702,6 +830,12 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING text FORMAT JSON);
  [1, 2]
 (1 row)
 
+SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING text FORMAT JSONB);
+ json_query 
+------------
+ [1, 2]
+(1 row)
+
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea);
    json_query   
 ----------------
@@ -714,6 +848,12 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea FORMAT JSON);
  \x5b312c20325d
 (1 row)
 
+SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea FORMAT JSONB);
+                         json_query                         
+------------------------------------------------------------
+ \x02000040080000900800001020000000008001002000000000800200
+(1 row)
+
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea EMPTY OBJECT ON ERROR);
  json_query 
 ------------
@@ -724,6 +864,12 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea FORMAT JSON EMPTY OBJECT
  json_query 
 ------------
  \x7b7d
+(1 row)
+
+SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea FORMAT JSONB EMPTY OBJECT ON ERROR);
+ json_query 
+------------
+ \x00000020
 (1 row)
 
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING json EMPTY OBJECT ON ERROR);
@@ -853,13 +999,13 @@ CREATE TABLE test_jsonb_constraints (
 	CONSTRAINT test_jsonb_constraint1
 		CHECK (js IS JSON)
 	CONSTRAINT test_jsonb_constraint2
-		CHECK (JSON_EXISTS(js::jsonb, '$.a' PASSING i + 5 AS int, i::text AS txt, array[1,2,3] as arr))
+		CHECK (JSON_EXISTS(js FORMAT JSONB, '$.a' PASSING i + 5 AS int, i::text AS txt, array[1,2,3] as arr))
 	CONSTRAINT test_jsonb_constraint3
 		CHECK (JSON_VALUE(js::jsonb, '$.a' RETURNING int DEFAULT ('12' || i)::int ON EMPTY ERROR ON ERROR) > i)
 	CONSTRAINT test_jsonb_constraint4
-		CHECK (JSON_QUERY(js::jsonb, '$.a' WITH CONDITIONAL WRAPPER EMPTY OBJECT ON ERROR) < jsonb '[10]')
+		CHECK (JSON_QUERY(js FORMAT JSONB, '$.a' WITH CONDITIONAL WRAPPER EMPTY OBJECT ON ERROR) < jsonb '[10]')
 	CONSTRAINT test_jsonb_constraint5
-		CHECK (JSON_QUERY(js::jsonb, '$.a' RETURNING char(5) OMIT QUOTES EMPTY ARRAY ON EMPTY) >  'a')
+		CHECK (JSON_QUERY(js FORMAT JSONB, '$.a' RETURNING char(5) OMIT QUOTES EMPTY ARRAY ON EMPTY) >  'a')
 );
 \d test_jsonb_constraints
                                                         Table "public.test_jsonb_constraints"
@@ -870,21 +1016,21 @@ CREATE TABLE test_jsonb_constraints (
  x      | jsonb   |           |          | JSON_QUERY('[1, 2]'::jsonb, '$[*]' RETURNING jsonb WITH UNCONDITIONAL WRAPPER NULL ON EMPTY NULL ON ERROR)
 Check constraints:
     "test_jsonb_constraint1" CHECK (js IS JSON)
-    "test_jsonb_constraint2" CHECK (JSON_EXISTS(js::jsonb, '$."a"' PASSING i + 5 AS int, i::text AS txt, ARRAY[1, 2, 3] AS arr FALSE ON ERROR))
+    "test_jsonb_constraint2" CHECK (JSON_EXISTS(js FORMAT JSONB, '$."a"' PASSING i + 5 AS int, i::text AS txt, ARRAY[1, 2, 3] AS arr FALSE ON ERROR))
     "test_jsonb_constraint3" CHECK (JSON_VALUE(js::jsonb, '$."a"' RETURNING integer DEFAULT ('12'::text || i)::integer ON EMPTY ERROR ON ERROR) > i)
-    "test_jsonb_constraint4" CHECK (JSON_QUERY(js::jsonb, '$."a"' RETURNING jsonb WITH CONDITIONAL WRAPPER NULL ON EMPTY EMPTY OBJECT ON ERROR) < '[10]'::jsonb)
-    "test_jsonb_constraint5" CHECK (JSON_QUERY(js::jsonb, '$."a"' RETURNING character(5) OMIT QUOTES EMPTY ARRAY ON EMPTY NULL ON ERROR) > 'a'::bpchar)
+    "test_jsonb_constraint4" CHECK (JSON_QUERY(js FORMAT JSONB, '$."a"' RETURNING jsonb WITH CONDITIONAL WRAPPER NULL ON EMPTY EMPTY OBJECT ON ERROR) < '[10]'::jsonb)
+    "test_jsonb_constraint5" CHECK (JSON_QUERY(js FORMAT JSONB, '$."a"' RETURNING character(5) OMIT QUOTES EMPTY ARRAY ON EMPTY NULL ON ERROR) > 'a'::bpchar)
 
 SELECT check_clause
 FROM information_schema.check_constraints
 WHERE constraint_name LIKE 'test_jsonb_constraint%';
-                                                           check_clause                                                            
------------------------------------------------------------------------------------------------------------------------------------
+                                                             check_clause                                                              
+---------------------------------------------------------------------------------------------------------------------------------------
  ((js IS JSON))
- (JSON_EXISTS((js)::jsonb, '$."a"' PASSING (i + 5) AS int, (i)::text AS txt, ARRAY[1, 2, 3] AS arr FALSE ON ERROR))
+ (JSON_EXISTS(js FORMAT JSONB, '$."a"' PASSING (i + 5) AS int, (i)::text AS txt, ARRAY[1, 2, 3] AS arr FALSE ON ERROR))
  ((JSON_VALUE((js)::jsonb, '$."a"' RETURNING integer DEFAULT (('12'::text || i))::integer ON EMPTY ERROR ON ERROR) > i))
- ((JSON_QUERY((js)::jsonb, '$."a"' RETURNING jsonb WITH CONDITIONAL WRAPPER NULL ON EMPTY EMPTY OBJECT ON ERROR) < '[10]'::jsonb))
- ((JSON_QUERY((js)::jsonb, '$."a"' RETURNING character(5) OMIT QUOTES EMPTY ARRAY ON EMPTY NULL ON ERROR) > 'a'::bpchar))
+ ((JSON_QUERY(js FORMAT JSONB, '$."a"' RETURNING jsonb WITH CONDITIONAL WRAPPER NULL ON EMPTY EMPTY OBJECT ON ERROR) < '[10]'::jsonb))
+ ((JSON_QUERY(js FORMAT JSONB, '$."a"' RETURNING character(5) OMIT QUOTES EMPTY ARRAY ON EMPTY NULL ON ERROR) > 'a'::bpchar))
 (5 rows)
 
 SELECT pg_get_expr(adbin, adrelid) FROM pg_attrdef WHERE adrelid = 'test_jsonb_constraints'::regclass;
@@ -927,12 +1073,30 @@ ERROR:  syntax error at or near ")"
 LINE 1: SELECT * FROM JSON_TABLE(NULL, '$' COLUMNS ());
                                                     ^
 -- NULL => empty table
-SELECT * FROM JSON_TABLE(NULL::jsonb, '$' COLUMNS (foo int)) bar;
+SELECT * FROM JSON_TABLE(NULL FORMAT JSONB, '$' COLUMNS (foo int)) bar;
  foo 
 -----
 (0 rows)
 
+-- invalid json => empty table
+SELECT * FROM JSON_TABLE('' FORMAT JSONB, '$' COLUMNS (foo int)) bar;
+ foo 
+-----
+(0 rows)
+
+-- invalid json => error
+SELECT * FROM JSON_TABLE('' FORMAT JSONB, '$' COLUMNS (foo int) ERROR ON ERROR) bar;
+ERROR:  invalid input syntax for type json
+DETAIL:  The input string ended unexpectedly.
+CONTEXT:  JSON data, line 1: 
 --
+SELECT * FROM JSON_TABLE('123' FORMAT JSONB, '$'
+	COLUMNS (item int PATH '$', foo int)) bar;
+ item | foo 
+------+-----
+  123 |    
+(1 row)
+
 SELECT * FROM JSON_TABLE(jsonb '123', '$'
 	COLUMNS (item int PATH '$', foo int)) bar;
  item | foo 
@@ -947,12 +1111,13 @@ FROM
 		('1'),
 		('[]'),
 		('{}'),
-		('[1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""]')
+		('[1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""]'),
+		('err')
 	) vals(js)
 	LEFT OUTER JOIN
 -- JSON_TABLE is implicitly lateral
 	JSON_TABLE(
-		vals.js::jsonb, 'lax $[*]'
+		vals.js FORMAT JSONB, 'lax $[*]'
 		COLUMNS (
 			id FOR ORDINALITY,
 			id2 FOR ORDINALITY, -- allowed additional ordinality columns
@@ -966,7 +1131,7 @@ FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa'
 		)
@@ -987,13 +1152,14 @@ FROM
  [1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  8 |   8 |     |         |         |      |         |           |           | {"aaa": 123} | {"aa | {"aa | {"aaa": 123} | 123 |  123
  [1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  9 |   9 |     | [1,2]   | [1,2    |      |         | "[1,2]"   | "[1,2]"   | "[1,2]"      | "[1, | "[1, | "[1,2]"      |     |     
  [1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 10 |  10 |     | "str"   | "str    |      |         | "\"str\"" | "\"str\"" | "\"str\""    | "\"s | "\"s | "\"str\""    |     |     
-(13 rows)
+ err                                                                            |    |     |     |         |         |      |         |           |           |              |      |      |              |     |     
+(14 rows)
 
 -- JSON_TABLE: Test backward parsing
 CREATE VIEW jsonb_table_view AS
 SELECT * FROM
 	JSON_TABLE(
-		jsonb 'null', 'lax $[*]' PASSING 1 + 2 AS a, json '"foo"' AS "b c"
+		'null' FORMAT JSONB, 'lax $[*]' PASSING 1 + 2 AS a, json '"foo"' AS "b c"
 		COLUMNS (
 			id FOR ORDINALITY,
 			id2 FOR ORDINALITY, -- allowed additional ordinality columns
@@ -1007,7 +1173,7 @@ SELECT * FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb   FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa',
 			NESTED PATH '$[1]' AS p1 COLUMNS (
@@ -1050,7 +1216,7 @@ CREATE OR REPLACE VIEW public.jsonb_table_view AS
     "json_table".a21,
     "json_table".a22
    FROM JSON_TABLE(
-            'null'::jsonb, '$[*]' AS json_table_path_1
+            'null'::text FORMAT JSONB, '$[*]' AS json_table_path_1
             PASSING
                 1 + 2 AS a,
                 '"foo"'::json AS "b c"
@@ -1094,18 +1260,18 @@ CREATE OR REPLACE VIEW public.jsonb_table_view AS
             PLAN (json_table_path_1 OUTER ((p1 OUTER "p1 1") UNION (p2 OUTER ("p2:1" UNION p22))))
         )
 EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM jsonb_table_view;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Table Function Scan on "json_table"
    Output: "json_table".id, "json_table".id2, "json_table"."int", "json_table".text, "json_table"."char(4)", "json_table".bool, "json_table"."numeric", "json_table".js, "json_table".jb, "json_table".jst, "json_table".jsc, "json_table".jsv, "json_table".jsb, "json_table".aaa, "json_table".aaa1, "json_table".a1, "json_table".b1, "json_table".a11, "json_table".a21, "json_table".a22
-   Table Function Call: JSON_TABLE('null'::jsonb, '$[*]' AS json_table_path_1 PASSING 3 AS a, '"foo"'::jsonb AS "b c" COLUMNS (id FOR ORDINALITY, id2 FOR ORDINALITY, "int" integer PATH '$', text text PATH '$', "char(4)" character(4) PATH '$', bool boolean PATH '$', "numeric" numeric PATH '$', js json PATH '$', jb jsonb PATH '$', jst text FORMAT JSON PATH '$', jsc character(4) FORMAT JSON PATH '$', jsv character varying(4) FORMAT JSON PATH '$', jsb jsonb FORMAT JSON PATH '$', aaa integer PATH '$."aaa"', aaa1 integer PATH '$."aaa"', NESTED PATH '$[1]' AS p1 COLUMNS (a1 integer PATH '$."a1"', b1 text PATH '$."b1"', NESTED PATH '$[*]' AS "p1 1" COLUMNS (a11 text PATH '$."a11"')), NESTED PATH '$[2]' AS p2 COLUMNS ( NESTED PATH '$[*]' AS "p2:1" COLUMNS (a21 text PATH '$."a21"'), NESTED PATH '$[*]' AS p22 COLUMNS (a22 text PATH '$."a22"'))) PLAN (json_table_path_1 OUTER ((p1 OUTER "p1 1") UNION (p2 OUTER ("p2:1" UNION p22)))))
+   Table Function Call: JSON_TABLE('null'::text FORMAT JSONB, '$[*]' AS json_table_path_1 PASSING 3 AS a, '"foo"'::jsonb AS "b c" COLUMNS (id FOR ORDINALITY, id2 FOR ORDINALITY, "int" integer PATH '$', text text PATH '$', "char(4)" character(4) PATH '$', bool boolean PATH '$', "numeric" numeric PATH '$', js json PATH '$', jb jsonb PATH '$', jst text FORMAT JSON PATH '$', jsc character(4) FORMAT JSON PATH '$', jsv character varying(4) FORMAT JSON PATH '$', jsb jsonb FORMAT JSON PATH '$', aaa integer PATH '$."aaa"', aaa1 integer PATH '$."aaa"', NESTED PATH '$[1]' AS p1 COLUMNS (a1 integer PATH '$."a1"', b1 text PATH '$."b1"', NESTED PATH '$[*]' AS "p1 1" COLUMNS (a11 text PATH '$."a11"')), NESTED PATH '$[2]' AS p2 COLUMNS ( NESTED PATH '$[*]' AS "p2:1" COLUMNS (a21 text PATH '$."a21"'), NESTED PATH '$[*]' AS p22 COLUMNS (a22 text PATH '$."a22"'))) PLAN (json_table_path_1 OUTER ((p1 OUTER "p1 1") UNION (p2 OUTER ("p2:1" UNION p22)))))
 (3 rows)
 
 -- JSON_TABLE: ON EMPTY/ON ERROR behavior
 SELECT *
 FROM
-	(VALUES ('1'), ('"err"')) vals(js),
-	JSON_TABLE(vals.js::jsonb, '$' COLUMNS (a int PATH '$')) jt;
+	(VALUES ('1'), ('err'), ('"err"')) vals(js),
+	JSON_TABLE(vals.js FORMAT JSONB, '$' COLUMNS (a int PATH '$')) jt;
   js   | a 
 -------+---
  1     | 1
@@ -1114,16 +1280,18 @@ FROM
 
 SELECT *
 FROM
-	(VALUES ('1'), ('"err"')) vals(js)
+	(VALUES ('1'), ('err'), ('"err"')) vals(js)
 		LEFT OUTER JOIN
-	JSON_TABLE(vals.js::jsonb, '$' COLUMNS (a int PATH '$') ERROR ON ERROR) jt
+	JSON_TABLE(vals.js FORMAT JSONB, '$' COLUMNS (a int PATH '$') ERROR ON ERROR) jt
 		ON true;
-ERROR:  invalid input syntax for type integer: "err"
+ERROR:  invalid input syntax for type json
+DETAIL:  Token "err" is invalid.
+CONTEXT:  JSON data, line 1: err
 SELECT *
 FROM
-	(VALUES ('1'), ('"err"')) vals(js)
+	(VALUES ('1'), ('err'), ('"err"')) vals(js)
 		LEFT OUTER JOIN
-	JSON_TABLE(vals.js::jsonb, '$' COLUMNS (a int PATH '$' ERROR ON ERROR)) jt
+	JSON_TABLE(vals.js FORMAT JSONB, '$' COLUMNS (a int PATH '$' ERROR ON ERROR)) jt
 		ON true;
 ERROR:  invalid input syntax for type integer: "err"
 SELECT * FROM JSON_TABLE(jsonb '1', '$' COLUMNS (a int PATH '$.a' ERROR ON EMPTY)) jt;
@@ -1421,7 +1589,7 @@ LINE 2:  jsonb 'null', 'strict $[*]'
          ^
 DETAIL:  JSON_TABLE columns shall contain explicit AS pathname specification if explicit PLAN clause is used
 -- JSON_TABLE: plan execution
-CREATE TEMP TABLE jsonb_table_test (js jsonb);
+CREATE TEMP TABLE jsonb_table_test (js text);
 INSERT INTO jsonb_table_test
 VALUES (
 	'[
@@ -1437,7 +1605,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1466,7 +1634,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1496,7 +1664,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1526,7 +1694,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1556,7 +1724,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1585,7 +1753,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1614,7 +1782,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1642,7 +1810,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1670,7 +1838,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -1701,7 +1869,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,

@@ -1,9 +1,23 @@
 -- JSON_EXISTS
 
+SELECT JSON_EXISTS(NULL FORMAT JSONB, '$');
+SELECT JSON_EXISTS(NULL::text FORMAT JSONB, '$');
+SELECT JSON_EXISTS(NULL::bytea FORMAT JSONB, '$');
+SELECT JSON_EXISTS(NULL::json FORMAT JSONB, '$');
+SELECT JSON_EXISTS(NULL::jsonb FORMAT JSONB, '$');
 SELECT JSON_EXISTS(NULL::jsonb, '$');
 
+SELECT JSON_EXISTS('' FORMAT JSONB, '$');
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' TRUE ON ERROR);
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' FALSE ON ERROR);
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' UNKNOWN ON ERROR);
+SELECT JSON_EXISTS('' FORMAT JSONB, '$' ERROR ON ERROR);
+
+SELECT JSON_EXISTS(bytea '' FORMAT JSONB, '$' ERROR ON ERROR);
+
 SELECT JSON_EXISTS(jsonb '[]', '$');
-SELECT JSON_EXISTS(JSON_OBJECT(RETURNING jsonb), '$');
+SELECT JSON_EXISTS('[]' FORMAT JSONB, '$');
+SELECT JSON_EXISTS(JSON_OBJECT(RETURNING bytea FORMAT JSONB) FORMAT JSONB, '$');
 
 SELECT JSON_EXISTS(jsonb '1', '$');
 SELECT JSON_EXISTS(jsonb 'null', '$');
@@ -34,7 +48,17 @@ SELECT JSON_EXISTS(jsonb '1', '$.a > 2' ERROR ON ERROR);
 
 -- JSON_VALUE
 
+SELECT JSON_VALUE(NULL FORMAT JSONB, '$');
+SELECT JSON_VALUE(NULL::text FORMAT JSONB, '$');
+SELECT JSON_VALUE(NULL::bytea FORMAT JSONB, '$');
+SELECT JSON_VALUE(NULL::json FORMAT JSONB, '$');
+SELECT JSON_VALUE(NULL::jsonb FORMAT JSONB, '$');
 SELECT JSON_VALUE(NULL::jsonb, '$');
+
+SELECT JSON_VALUE('' FORMAT JSONB, '$');
+SELECT JSON_VALUE('' FORMAT JSONB, '$' NULL ON ERROR);
+SELECT JSON_VALUE('' FORMAT JSONB, '$' DEFAULT '"default value"' ON ERROR);
+SELECT JSON_VALUE('' FORMAT JSONB, '$' ERROR ON ERROR);
 
 SELECT JSON_VALUE(jsonb 'null', '$');
 SELECT JSON_VALUE(jsonb 'null', '$' RETURNING int);
@@ -124,14 +148,14 @@ SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +
 -- JSON_QUERY
 
 SELECT
-	JSON_QUERY(js, '$'),
-	JSON_QUERY(js, '$' WITHOUT WRAPPER),
-	JSON_QUERY(js, '$' WITH CONDITIONAL WRAPPER),
-	JSON_QUERY(js, '$' WITH UNCONDITIONAL ARRAY WRAPPER),
-	JSON_QUERY(js, '$' WITH ARRAY WRAPPER)
+	JSON_QUERY(js FORMAT JSONB, '$'),
+	JSON_QUERY(js FORMAT JSONB, '$' WITHOUT WRAPPER),
+	JSON_QUERY(js FORMAT JSONB, '$' WITH CONDITIONAL WRAPPER),
+	JSON_QUERY(js FORMAT JSONB, '$' WITH UNCONDITIONAL ARRAY WRAPPER),
+	JSON_QUERY(js FORMAT JSONB, '$' WITH ARRAY WRAPPER)
 FROM
 	(VALUES
-		(jsonb 'null'),
+		('null'),
 		('12.3'),
 		('true'),
 		('"aaa"'),
@@ -140,14 +164,14 @@ FROM
 	) foo(js);
 
 SELECT
-	JSON_QUERY(js, 'strict $[*]') AS "unspec",
-	JSON_QUERY(js, 'strict $[*]' WITHOUT WRAPPER) AS "without",
-	JSON_QUERY(js, 'strict $[*]' WITH CONDITIONAL WRAPPER) AS "with cond",
-	JSON_QUERY(js, 'strict $[*]' WITH UNCONDITIONAL ARRAY WRAPPER) AS "with uncond",
-	JSON_QUERY(js, 'strict $[*]' WITH ARRAY WRAPPER) AS "with"
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]') AS "unspec",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITHOUT WRAPPER) AS "without",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITH CONDITIONAL WRAPPER) AS "with cond",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITH UNCONDITIONAL ARRAY WRAPPER) AS "with uncond",
+	JSON_QUERY(js FORMAT JSONB, 'strict $[*]' WITH ARRAY WRAPPER) AS "with"
 FROM
 	(VALUES
-		(jsonb '1'),
+		('1'),
 		('[]'),
 		('[null]'),
 		('[12.3]'),
@@ -158,14 +182,15 @@ FROM
 		('[1, "2", null, [3]]')
 	) foo(js);
 
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text KEEP QUOTES);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text KEEP QUOTES ON SCALAR STRING);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES ON SCALAR STRING);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' OMIT QUOTES ERROR ON ERROR);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING json OMIT QUOTES ERROR ON ERROR);
-SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING bytea FORMAT JSON OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text KEEP QUOTES);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text KEEP QUOTES ON SCALAR STRING);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text OMIT QUOTES);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING text OMIT QUOTES ON SCALAR STRING);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING json OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING bytea FORMAT JSON OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSONB, '$' RETURNING bytea FORMAT JSONB OMIT QUOTES ERROR ON ERROR);
 
 -- QUOTES behavior should not be specified when WITH WRAPPER used:
 -- Should fail
@@ -177,19 +202,19 @@ SELECT JSON_QUERY(jsonb '[1]', '$' WITH CONDITIONAL WRAPPER OMIT QUOTES);
 SELECT JSON_QUERY(jsonb '[1]', '$' WITHOUT WRAPPER OMIT QUOTES);
 SELECT JSON_QUERY(jsonb '[1]', '$' WITHOUT WRAPPER KEEP QUOTES);
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]');
-SELECT JSON_QUERY(jsonb '[]', '$[*]' NULL ON EMPTY);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' EMPTY ARRAY ON EMPTY);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' EMPTY OBJECT ON EMPTY);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]');
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' NULL ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' EMPTY ARRAY ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' EMPTY OBJECT ON EMPTY);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY);
 
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY NULL ON ERROR);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY EMPTY ARRAY ON ERROR);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY EMPTY OBJECT ON ERROR);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY ERROR ON ERROR);
-SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY NULL ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY EMPTY ARRAY ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY EMPTY OBJECT ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON EMPTY ERROR ON ERROR);
+SELECT JSON_QUERY('[]' FORMAT JSONB, '$[*]' ERROR ON ERROR);
 
-SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' ERROR ON ERROR);
+SELECT JSON_QUERY('[1,2]' FORMAT JSONB, '$[*]' ERROR ON ERROR);
 
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING json);
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING json FORMAT JSON);
@@ -199,11 +224,14 @@ SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING text);
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING char(10));
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING char(3));
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING text FORMAT JSON);
+SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING text FORMAT JSONB);
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea);
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea FORMAT JSON);
+SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING bytea FORMAT JSONB);
 
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea EMPTY OBJECT ON ERROR);
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea FORMAT JSON EMPTY OBJECT ON ERROR);
+SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING bytea FORMAT JSONB EMPTY OBJECT ON ERROR);
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING json EMPTY OBJECT ON ERROR);
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' RETURNING jsonb EMPTY OBJECT ON ERROR);
 
@@ -250,13 +278,13 @@ CREATE TABLE test_jsonb_constraints (
 	CONSTRAINT test_jsonb_constraint1
 		CHECK (js IS JSON)
 	CONSTRAINT test_jsonb_constraint2
-		CHECK (JSON_EXISTS(js::jsonb, '$.a' PASSING i + 5 AS int, i::text AS txt, array[1,2,3] as arr))
+		CHECK (JSON_EXISTS(js FORMAT JSONB, '$.a' PASSING i + 5 AS int, i::text AS txt, array[1,2,3] as arr))
 	CONSTRAINT test_jsonb_constraint3
 		CHECK (JSON_VALUE(js::jsonb, '$.a' RETURNING int DEFAULT ('12' || i)::int ON EMPTY ERROR ON ERROR) > i)
 	CONSTRAINT test_jsonb_constraint4
-		CHECK (JSON_QUERY(js::jsonb, '$.a' WITH CONDITIONAL WRAPPER EMPTY OBJECT ON ERROR) < jsonb '[10]')
+		CHECK (JSON_QUERY(js FORMAT JSONB, '$.a' WITH CONDITIONAL WRAPPER EMPTY OBJECT ON ERROR) < jsonb '[10]')
 	CONSTRAINT test_jsonb_constraint5
-		CHECK (JSON_QUERY(js::jsonb, '$.a' RETURNING char(5) OMIT QUOTES EMPTY ARRAY ON EMPTY) >  'a')
+		CHECK (JSON_QUERY(js FORMAT JSONB, '$.a' RETURNING char(5) OMIT QUOTES EMPTY ARRAY ON EMPTY) >  'a')
 );
 
 \d test_jsonb_constraints
@@ -286,9 +314,18 @@ SELECT JSON_TABLE('[]', '$');
 SELECT * FROM JSON_TABLE(NULL, '$' COLUMNS ());
 
 -- NULL => empty table
-SELECT * FROM JSON_TABLE(NULL::jsonb, '$' COLUMNS (foo int)) bar;
+SELECT * FROM JSON_TABLE(NULL FORMAT JSONB, '$' COLUMNS (foo int)) bar;
+
+-- invalid json => empty table
+SELECT * FROM JSON_TABLE('' FORMAT JSONB, '$' COLUMNS (foo int)) bar;
+
+-- invalid json => error
+SELECT * FROM JSON_TABLE('' FORMAT JSONB, '$' COLUMNS (foo int) ERROR ON ERROR) bar;
 
 --
+SELECT * FROM JSON_TABLE('123' FORMAT JSONB, '$'
+	COLUMNS (item int PATH '$', foo int)) bar;
+
 SELECT * FROM JSON_TABLE(jsonb '123', '$'
 	COLUMNS (item int PATH '$', foo int)) bar;
 
@@ -299,12 +336,13 @@ FROM
 		('1'),
 		('[]'),
 		('{}'),
-		('[1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""]')
+		('[1, 1.23, "2", "aaaaaaa", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""]'),
+		('err')
 	) vals(js)
 	LEFT OUTER JOIN
 -- JSON_TABLE is implicitly lateral
 	JSON_TABLE(
-		vals.js::jsonb, 'lax $[*]'
+		vals.js FORMAT JSONB, 'lax $[*]'
 		COLUMNS (
 			id FOR ORDINALITY,
 			id2 FOR ORDINALITY, -- allowed additional ordinality columns
@@ -318,7 +356,7 @@ FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa'
 		)
@@ -330,7 +368,7 @@ FROM
 CREATE VIEW jsonb_table_view AS
 SELECT * FROM
 	JSON_TABLE(
-		jsonb 'null', 'lax $[*]' PASSING 1 + 2 AS a, json '"foo"' AS "b c"
+		'null' FORMAT JSONB, 'lax $[*]' PASSING 1 + 2 AS a, json '"foo"' AS "b c"
 		COLUMNS (
 			id FOR ORDINALITY,
 			id2 FOR ORDINALITY, -- allowed additional ordinality columns
@@ -344,7 +382,7 @@ SELECT * FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb   FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa',
 			NESTED PATH '$[1]' AS p1 COLUMNS (
@@ -372,21 +410,21 @@ EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM jsonb_table_view;
 -- JSON_TABLE: ON EMPTY/ON ERROR behavior
 SELECT *
 FROM
-	(VALUES ('1'), ('"err"')) vals(js),
-	JSON_TABLE(vals.js::jsonb, '$' COLUMNS (a int PATH '$')) jt;
+	(VALUES ('1'), ('err'), ('"err"')) vals(js),
+	JSON_TABLE(vals.js FORMAT JSONB, '$' COLUMNS (a int PATH '$')) jt;
 
 SELECT *
 FROM
-	(VALUES ('1'), ('"err"')) vals(js)
+	(VALUES ('1'), ('err'), ('"err"')) vals(js)
 		LEFT OUTER JOIN
-	JSON_TABLE(vals.js::jsonb, '$' COLUMNS (a int PATH '$') ERROR ON ERROR) jt
+	JSON_TABLE(vals.js FORMAT JSONB, '$' COLUMNS (a int PATH '$') ERROR ON ERROR) jt
 		ON true;
 
 SELECT *
 FROM
-	(VALUES ('1'), ('"err"')) vals(js)
+	(VALUES ('1'), ('err'), ('"err"')) vals(js)
 		LEFT OUTER JOIN
-	JSON_TABLE(vals.js::jsonb, '$' COLUMNS (a int PATH '$' ERROR ON ERROR)) jt
+	JSON_TABLE(vals.js FORMAT JSONB, '$' COLUMNS (a int PATH '$' ERROR ON ERROR)) jt
 		ON true;
 
 SELECT * FROM JSON_TABLE(jsonb '1', '$' COLUMNS (a int PATH '$.a' ERROR ON EMPTY)) jt;
@@ -624,7 +662,7 @@ SELECT * FROM JSON_TABLE(
 
 -- JSON_TABLE: plan execution
 
-CREATE TEMP TABLE jsonb_table_test (js jsonb);
+CREATE TEMP TABLE jsonb_table_test (js text);
 
 INSERT INTO jsonb_table_test
 VALUES (
@@ -642,7 +680,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -657,7 +695,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -673,7 +711,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -689,7 +727,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -705,7 +743,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -721,7 +759,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -737,7 +775,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -753,7 +791,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -769,7 +807,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,
@@ -785,7 +823,7 @@ select
 from
 	jsonb_table_test jtt,
 	json_table (
-		jtt.js,'strict $[*]' as p
+		jtt.js FORMAT JSONB,'strict $[*]' as p
 		columns (
 			n for ordinality,
 			a int path 'lax $.a' default -1 on empty,

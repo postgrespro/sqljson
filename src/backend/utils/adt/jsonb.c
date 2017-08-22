@@ -2138,16 +2138,21 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 
 
 /*
- * jsonb_is_valid -- check jsonb value type
+ * jsonb_is_valid -- check bytea jsonb validity and its value type
  */
 Datum
 jsonb_is_valid(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
+	bytea	   *ba = PG_GETARG_BYTEA_P(0);
 	text	   *type = PG_GETARG_TEXT_P(1);
+	Jsonb	   *jb = (Jsonb *) ba;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
+
+	if (get_fn_expr_argtype(fcinfo->flinfo, 0) != JSONBOID &&
+		!JsonbValidate(VARDATA(jb), VARSIZE(jb) - VARHDRSZ))
+		PG_RETURN_BOOL(false);
 
 	if (!PG_ARGISNULL(1) &&
 		strncmp("any", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
