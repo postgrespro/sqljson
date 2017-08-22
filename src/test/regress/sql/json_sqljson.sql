@@ -184,6 +184,7 @@ SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' RETURNING text OMIT QUOTES ON SCALAR 
 SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' OMIT QUOTES ERROR ON ERROR);
 SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' RETURNING json OMIT QUOTES ERROR ON ERROR);
 SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' RETURNING bytea FORMAT JSON OMIT QUOTES ERROR ON ERROR);
+SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' RETURNING bytea FORMAT JSONB OMIT QUOTES ERROR ON ERROR);
 
 -- QUOTES behavior should not be specified when WITH WRAPPER used:
 -- Should fail
@@ -217,11 +218,14 @@ SELECT JSON_QUERY(json '[1,2]', '$' RETURNING text);
 SELECT JSON_QUERY(json '[1,2]', '$' RETURNING char(10));
 SELECT JSON_QUERY(json '[1,2]', '$' RETURNING char(3));
 SELECT JSON_QUERY(json '[1,2]', '$' RETURNING text FORMAT JSON);
+SELECT JSON_QUERY(json '[1,2]', '$' RETURNING text FORMAT JSONB);
 SELECT JSON_QUERY(json '[1,2]', '$' RETURNING bytea);
 SELECT JSON_QUERY(json '[1,2]', '$' RETURNING bytea FORMAT JSON);
+SELECT JSON_QUERY(json '[1,2]', '$' RETURNING bytea FORMAT JSONB);
 
 SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING bytea EMPTY OBJECT ON ERROR);
 SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING bytea FORMAT JSON EMPTY OBJECT ON ERROR);
+SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING bytea FORMAT JSONB EMPTY OBJECT ON ERROR);
 SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING json EMPTY OBJECT ON ERROR);
 SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING jsonb EMPTY OBJECT ON ERROR);
 
@@ -342,7 +346,7 @@ FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb   FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa'
 		)
@@ -368,7 +372,7 @@ SELECT * FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb   FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa',
 			NESTED PATH '$[1]' AS p1 COLUMNS (

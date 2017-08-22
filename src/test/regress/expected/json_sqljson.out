@@ -660,6 +660,12 @@ SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' RETURNING bytea FORMAT JSON OMIT QUOT
  \x616161
 (1 row)
 
+SELECT JSON_QUERY('"aaa"' FORMAT JSON, '$' RETURNING bytea FORMAT JSONB OMIT QUOTES ERROR ON ERROR);
+ ?column? 
+----------
+ \x616161
+(1 row)
+
 -- QUOTES behavior should not be specified when WITH WRAPPER used:
 -- Should fail
 SELECT JSON_QUERY(json '[1]', '$' WITH WRAPPER OMIT QUOTES);
@@ -797,6 +803,12 @@ SELECT JSON_QUERY(json '[1,2]', '$' RETURNING text FORMAT JSON);
  [1,2]
 (1 row)
 
+SELECT JSON_QUERY(json '[1,2]', '$' RETURNING text FORMAT JSONB);
+ ?column? 
+----------
+ [1,2]
+(1 row)
+
 SELECT JSON_QUERY(json '[1,2]', '$' RETURNING bytea);
    ?column?   
 --------------
@@ -809,6 +821,12 @@ SELECT JSON_QUERY(json '[1,2]', '$' RETURNING bytea FORMAT JSON);
  \x5b312c325d
 (1 row)
 
+SELECT JSON_QUERY(json '[1,2]', '$' RETURNING bytea FORMAT JSONB);
+                          ?column?                          
+------------------------------------------------------------
+ \x02000040080000900800001020000000008001002000000000800200
+(1 row)
+
 SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING bytea EMPTY OBJECT ON ERROR);
  ?column? 
 ----------
@@ -819,6 +837,12 @@ SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING bytea FORMAT JSON EMPTY OBJECT 
  ?column? 
 ----------
  \x7b7d
+(1 row)
+
+SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING bytea FORMAT JSONB EMPTY OBJECT ON ERROR);
+  ?column?  
+------------
+ \x00000020
 (1 row)
 
 SELECT JSON_QUERY(json '[1,2]', '$[*]' RETURNING json EMPTY OBJECT ON ERROR);
@@ -1066,7 +1090,7 @@ FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb   FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa'
 		)
@@ -1108,7 +1132,7 @@ SELECT * FROM
 			jst text    FORMAT JSON  PATH '$',
 			jsc char(4) FORMAT JSON  PATH '$',
 			jsv varchar(4) FORMAT JSON  PATH '$',
-			jsb jsonb   FORMAT JSON PATH '$',
+			jsb jsonb   FORMAT JSONB PATH '$',
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa',
 			NESTED PATH '$[1]' AS p1 COLUMNS (

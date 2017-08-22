@@ -742,7 +742,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_EXISTS JSON_OBJECT JSON_OBJECTAGG
-	JSON_QUERY JSON_TABLE JSON_VALUE
+	JSON_QUERY JSON_TABLE JSON_VALUE JSONB
 
 	KEY KEYS KEEP
 
@@ -13136,9 +13136,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					JsonFormat format = { JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1 };
 					$$ = makeJsonIsPredicate($1, format, $4, $5);
 				}
-			/*
-			 * Required by standard, but it would conflict with expressions
-			 * like: 'str' || format(...)
 			| a_expr
 				FORMAT json_representation
 				IS JSON
@@ -13148,7 +13145,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					$3.location = @2;
 					$$ = makeJsonIsPredicate($1, $3, $6, $7);
 				}
-			*/
 			| a_expr
 				IS NOT JSON
 					json_predicate_type_constraint_opt
@@ -13157,9 +13153,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					JsonFormat format = { JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1 };
 					$$ = makeNotExpr(makeJsonIsPredicate($1, format, $5, $6), @1);
 				}
-			/*
-			 * Required by standard, but it would conflict with expressions
-			 * like: 'str' || format(...)
 			| a_expr
 				FORMAT json_representation
 				IS NOT JSON
@@ -13169,7 +13162,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					$3.location = @2;
 					$$ = makeNotExpr(makeJsonIsPredicate($1, $3, $7, $8), @1);
 				}
-			*/
 			| DEFAULT
 				{
 					/*
@@ -14586,6 +14578,11 @@ json_representation:
 					$$.type = JS_FORMAT_JSON;
 					$$.encoding = $2;
 				}
+			| JSONB
+				{
+					$$.type = JS_FORMAT_JSONB;
+					$$.encoding = JS_ENC_DEFAULT;
+				}
 		/*	| implementation_defined_JSON_representation_option (BSON, AVRO etc) */
 		;
 
@@ -15706,6 +15703,7 @@ unreserved_keyword:
 			| INVOKER
 			| ISOLATION
 			| JSON
+			| JSONB
 			| KEEP
 			| KEY
 			| KEYS
