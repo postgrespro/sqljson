@@ -203,3 +203,6 @@ select _jsonpath_query(jsonb '["abc", "abcabc", null, 1]', 'strict $ ? ((@[*] st
 select _jsonpath_query(jsonb '[[null, 1, "abc", "abcabc"]]', 'lax $ ? (@[*] starts with "abc")');
 select _jsonpath_query(jsonb '[[null, 1, "abd", "abdabc"]]', 'lax $ ? ((@[*] starts with "abc") is unknown)');
 select _jsonpath_query(jsonb '[null, 1, "abd", "abdabc"]', 'lax $[*] ? ((@ starts with "abc") is unknown)');
+
+select _jsonpath_query(jsonb '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]', 'lax $[*] ? (@ like_regex "^ab.*c")');
+select _jsonpath_query(jsonb '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]', 'lax $[*] ? (@ like_regex "^ab.*c" flag "i")');

@@ -16,6 +16,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
+#include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/json.h"
@@ -840,6 +841,72 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return jperNotFound;
 }
 
+static JsonPathExecResult
+executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
+						  JsonbValue *jb)
+{
+	JsonPathExecResult res;
+	JsonPathItem elem;
+	List	   *lseq = NIL;
+	ListCell   *lc;
+	text	   *regex;
+	uint32		flags = jsp->content.like_regex.flags;
+	int			cflags = REG_ADVANCED;
+	bool		error = false;
+	bool		found = false;
+
+	if (flags & JSP_REGEX_ICASE)
+		cflags |= REG_ICASE;
+	if (flags & JSP_REGEX_MLINE)
+		cflags |= REG_NEWLINE;
+	if (flags & JSP_REGEX_SLINE)
+		cflags &= ~REG_NEWLINE;
+	if (flags & JSP_REGEX_WSPACE)
+		cflags |= REG_EXPANDED;
+
+	regex = cstring_to_text_with_len(jsp->content.like_regex.pattern,
+									 jsp->content.like_regex.patternlen);
+
+	jspInitByBuffer(&elem, jsp->base, jsp->content.like_regex.expr);
+	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &lseq);
+	if (jperIsError(res))
+		return jperError;
+
+	foreach(lc, lseq)
+	{
+		JsonbValue *str = lfirst(lc);
+		JsonbValue	strbuf;
+
+		if (JsonbType(str) == jbvScalar)
+			str = JsonbExtractScalar(str->val.binary.data, &strbuf);
+
+		if (str->type != jbvString)
+		{
+			if (!cxt->lax)
+				return jperError;
+
+			error = true;
+		}
+		else if (RE_compile_and_execute(regex, str->val.string.val,
+										str->val.string.len, cflags,
+										DEFAULT_COLLATION_OID, 0, NULL))
+		{
+			if (cxt->lax)
+				return jperOk;
+
+			found = true;
+		}
+	}
+
+	if (found) /* possible only in strict mode */
+		return jperOk;
+
+	if (error) /* possible only in lax mode */
+		return jperError;
+
+	return jperNotFound;
+}
+
 /*
  * Main executor function: walks on jsonpath structure and tries to find
  * correspoding parts of jsonb. Note, jsonb and jsonpath values should be
@@ -1539,6 +1606,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			break;
 		case jpiStartsWith:
 			res = executeStartsWithPredicate(cxt, jsp, jb);
+			break;
+		case jpiLikeRegex:
+			res = executeLikeRegexPredicate(cxt, jsp, jb);
 			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);

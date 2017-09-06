@@ -71,6 +71,15 @@ select 'true.type()'::jsonpath;
 select '$ ? (@ starts with "abc")'::jsonpath;
 select '$ ? (@ starts with $var)'::jsonpath;
 
+select '$ ? (@ like_regex "(invalid pattern")'::jsonpath;
+select '$ ? (@ like_regex "pattern")'::jsonpath;
+select '$ ? (@ like_regex "pattern" flag "")'::jsonpath;
+select '$ ? (@ like_regex "pattern" flag "i")'::jsonpath;
+select '$ ? (@ like_regex "pattern" flag "is")'::jsonpath;
+select '$ ? (@ like_regex "pattern" flag "isim")'::jsonpath;
+select '$ ? (@ like_regex "pattern" flag "xsms")'::jsonpath;
+select '$ ? (@ like_regex "pattern" flag "a")'::jsonpath;
+
 select '$ ? (a < 1)'::jsonpath;
 select '$ ? (a < -1)'::jsonpath;
 select '$ ? (a < +1)'::jsonpath;

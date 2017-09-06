@@ -389,6 +389,51 @@ select '$ ? (@ starts with $var)'::jsonpath;
  $?(@ starts with $"var")
 (1 row)
 
+select '$ ? (@ like_regex "(invalid pattern")'::jsonpath;
+ERROR:  invalid regular expression: parentheses () not balanced
+LINE 1: select '$ ? (@ like_regex "(invalid pattern")'::jsonpath;
+               ^
+select '$ ? (@ like_regex "pattern")'::jsonpath;
+          jsonpath          
+----------------------------
+ $?(@ like_regex "pattern")
+(1 row)
+
+select '$ ? (@ like_regex "pattern" flag "")'::jsonpath;
+          jsonpath          
+----------------------------
+ $?(@ like_regex "pattern")
+(1 row)
+
+select '$ ? (@ like_regex "pattern" flag "i")'::jsonpath;
+              jsonpath               
+-------------------------------------
+ $?(@ like_regex "pattern" flag "i")
+(1 row)
+
+select '$ ? (@ like_regex "pattern" flag "is")'::jsonpath;
+               jsonpath               
+--------------------------------------
+ $?(@ like_regex "pattern" flag "is")
+(1 row)
+
+select '$ ? (@ like_regex "pattern" flag "isim")'::jsonpath;
+               jsonpath               
+--------------------------------------
+ $?(@ like_regex "pattern" flag "im")
+(1 row)
+
+select '$ ? (@ like_regex "pattern" flag "xsms")'::jsonpath;
+               jsonpath               
+--------------------------------------
+ $?(@ like_regex "pattern" flag "sx")
+(1 row)
+
+select '$ ? (@ like_regex "pattern" flag "a")'::jsonpath;
+ERROR:  bad jsonpath representation
+LINE 1: select '$ ? (@ like_regex "pattern" flag "a")'::jsonpath;
+               ^
+DETAIL:  unrecognized flag of LIKE_REGEX predicate at or near """
 select '$ ? (a < 1)'::jsonpath;
   jsonpath   
 -------------
