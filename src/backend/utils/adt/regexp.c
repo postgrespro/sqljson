@@ -335,7 +335,7 @@ RE_execute(regex_t *re, char *dat, int dat_len,
  * Both pattern and data are given in the database encoding.  We internally
  * convert to array of pg_wchar which is what Spencer's regex package wants.
  */
-static bool
+bool
 RE_compile_and_execute(text *text_re, char *dat, int dat_len,
 					   int cflags, Oid collation,
 					   int nmatch, regmatch_t *pmatch)
