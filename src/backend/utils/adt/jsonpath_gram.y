@@ -198,6 +198,44 @@ makeAny(int first, int last)
 	return v;
 }
 
+static JsonPathParseItem *
+makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
+{
+	JsonPathParseItem *v = makeItemType(jpiLikeRegex);
+	int			i;
+
+	v->value.like_regex.expr = expr;
+	v->value.like_regex.pattern = pattern->val;
+	v->value.like_regex.patternlen = pattern->len;
+	v->value.like_regex.flags = 0;
+
+	for (i = 0; flags && i < flags->len; i++)
+	{
+		switch (flags->val[i])
+		{
+			case 'i':
+				v->value.like_regex.flags |= JSP_REGEX_ICASE;
+				break;
+			case 's':
+				v->value.like_regex.flags &= ~JSP_REGEX_MLINE;
+				v->value.like_regex.flags |= JSP_REGEX_SLINE;
+				break;
+			case 'm':
+				v->value.like_regex.flags &= ~JSP_REGEX_SLINE;
+				v->value.like_regex.flags |= JSP_REGEX_MLINE;
+				break;
+			case 'x':
+				v->value.like_regex.flags |= JSP_REGEX_WSPACE;
+				break;
+			default:
+				yyerror(NULL, "unrecognized flag of LIKE_REGEX predicate");
+				break;
+		}
+	}
+
+	return v;
+}
+
 %}
 
 /* BISON Declarations */
@@ -221,7 +259,7 @@ makeAny(int first, int last)
 %token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
-%token	<str>		ANY_P STRICT_P LAX_P LAST_P STARTS_P WITH_P
+%token	<str>		ANY_P STRICT_P LAX_P LAST_P STARTS_P WITH_P LIKE_REGEX_P FLAG_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P DATETIME_P
 %token	<str>		KEYVALUE_P
 
@@ -301,9 +339,9 @@ predicate:
 	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
 	| pexpr STARTS_P WITH_P starts_with_initial
 		{ $$ = makeItemBinary(jpiStartsWith, $1, $4); }
-/* Left for the future (needs XQuery support)
-	| pexpr LIKE_REGEX pattern [FLAG_P flags]	{ $$ = ...; };
-*/
+	| pexpr LIKE_REGEX_P STRING_P 	{ $$ = makeItemLikeRegex($1, &$3, NULL); };
+	| pexpr LIKE_REGEX_P STRING_P FLAG_P STRING_P
+									{ $$ = makeItemLikeRegex($1, &$3, &$5); };
 	;
 
 starts_with_initial:
@@ -402,6 +440,8 @@ key_name:
 	| LAST_P
 	| STARTS_P
 	| WITH_P
+	| LIKE_REGEX_P
+	| FLAG_P
 	;
 
 method:
