@@ -99,6 +99,29 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				*(int32*)(buf->data + right) = chld;
 			}
 			break;
+		case jpiLikeRegex:
+			{
+				int32	offs;
+
+				appendBinaryStringInfo(buf,
+									   (char *) &item->value.like_regex.flags,
+									   sizeof(item->value.like_regex.flags));
+				offs = buf->len;
+				appendBinaryStringInfo(buf, (char *) &offs /* fake value */, sizeof(offs));
+
+				appendBinaryStringInfo(buf,
+									(char *) &item->value.like_regex.patternlen,
+									sizeof(item->value.like_regex.patternlen));
+				appendBinaryStringInfo(buf, item->value.like_regex.pattern,
+									   item->value.like_regex.patternlen);
+				appendStringInfoChar(buf, '\0');
+
+				chld = flattenJsonPathParseItem(buf, item->value.like_regex.expr,
+												forbiddenRoot,
+												insideArraySubscript);
+				*(int32 *)(buf->data + offs) = chld;
+			}
+			break;
 		case jpiFilter:
 		case jpiIsUnknown:
 		case jpiNot:
@@ -369,6 +392,38 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 			if (printBracketes)
 				appendStringInfoChar(buf, ')');
 			break;
+		case jpiLikeRegex:
+			if (printBracketes)
+				appendStringInfoChar(buf, '(');
+
+			jspInitByBuffer(&elem, v->base, v->content.like_regex.expr);
+			printJsonPathItem(buf, &elem, false,
+							  operationPriority(elem.type) <=
+							  operationPriority(v->type));
+
+			appendBinaryStringInfo(buf, " like_regex ", 12);
+
+			escape_json(buf, v->content.like_regex.pattern);
+
+			if (v->content.like_regex.flags)
+			{
+				appendBinaryStringInfo(buf, " flag \"", 7);
+
+				if (v->content.like_regex.flags & JSP_REGEX_ICASE)
+					appendStringInfoChar(buf, 'i');
+				if (v->content.like_regex.flags & JSP_REGEX_SLINE)
+					appendStringInfoChar(buf, 's');
+				if (v->content.like_regex.flags & JSP_REGEX_MLINE)
+					appendStringInfoChar(buf, 'm');
+				if (v->content.like_regex.flags & JSP_REGEX_WSPACE)
+					appendStringInfoChar(buf, 'x');
+
+				appendStringInfoChar(buf, '"');
+			}
+
+			if (printBracketes)
+				appendStringInfoChar(buf, ')');
+			break;
 		case jpiPlus:
 		case jpiMinus:
 			if (printBracketes)
@@ -606,6 +661,12 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiStartsWith:
 			read_int32(v->content.args.left, base, pos);
 			read_int32(v->content.args.right, base, pos);
+			break;
+		case jpiLikeRegex:
+			read_int32(v->content.like_regex.flags, base, pos);
+			read_int32(v->content.like_regex.expr, base, pos);
+			read_int32(v->content.like_regex.patternlen, base, pos);
+			v->content.like_regex.pattern = base + pos;
 			break;
 		case jpiNot:
 		case jpiExists:

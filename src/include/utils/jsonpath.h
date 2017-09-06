@@ -81,8 +81,14 @@ typedef enum JsonPathItemType {
 		jpiSubscript,
 		jpiLast,
 		jpiStartsWith,
+		jpiLikeRegex,
 } JsonPathItemType;
 
+/* XQuery regex mode flags for LIKE_REGEX predicate */
+#define JSP_REGEX_ICASE		0x01	/* i flag, case insensitive */
+#define JSP_REGEX_SLINE		0x02	/* s flag, single-line mode */
+#define JSP_REGEX_MLINE		0x04	/* m flag, multi-line mode */
+#define JSP_REGEX_WSPACE	0x08	/* x flag, expanded syntax */
 
 /*
  * Support functions to parse/construct binary value.
@@ -133,6 +139,13 @@ typedef struct JsonPathItem {
 			char		*data;  /* for bool, numeric and string/key */
 			int32		datalen; /* filled only for string/key */
 		} value;
+
+		struct {
+			int32		expr;
+			char		*pattern;
+			int32		patternlen;
+			uint32		flags;
+		} like_regex;
 	} content;
 } JsonPathItem;
 
@@ -184,6 +197,13 @@ struct JsonPathParseItem {
 			uint32	first;
 			uint32	last;
 		} anybounds;
+
+		struct {
+			JsonPathParseItem *expr;
+			char	*pattern; /* could not be not null-terminated */
+			uint32	patternlen;
+			uint32	flags;
+		} like_regex;
 
 		/* scalars */
 		Numeric		numeric;
