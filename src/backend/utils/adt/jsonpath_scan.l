@@ -273,6 +273,7 @@ static keyword keywords[] = {
 	{ 2, false,	TO_P,		"to"},
 	{ 3, false,	ABS_P,		"abs"},
 	{ 3, false,	LAX_P,		"lax"},
+	{ 4, false,	FLAG_P,		"flag"},
 	{ 4, false,	LAST_P,		"last"},
 	{ 4, true,	NULL_P,		"null"},
 	{ 4, false,	SIZE_P,		"size"},
@@ -289,6 +290,7 @@ static keyword keywords[] = {
 	{ 7, false,	UNKNOWN_P,	"unknown"},
 	{ 8, false,	DATETIME_P,	"datetime"},
 	{ 8, false,	KEYVALUE_P,	"keyvalue"},
+	{ 10,false, LIKE_REGEX_P, "like_regex"},
 };
 
 static int
