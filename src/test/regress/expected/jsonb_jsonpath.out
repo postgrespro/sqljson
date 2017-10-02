@@ -307,76 +307,76 @@ select jsonb '[1,2,3]' @* '$[last ? (@.type() == "number")]';
 
 select jsonb '[1,2,3]' @* '$[last ? (@.type() == "string")]';
 ERROR:  Invalid SQL/JSON subscript
-select * from _jsonpath_query(jsonb '{"a": 10}', '$');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '{"a": 10}', '$');
+ jsonpath_query 
+----------------
  {"a": 10}
 (1 row)
 
-select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)');
+select * from jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)');
 ERROR:  could not find 'value' passed variable
-select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 13}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
  {"a": 10}
 (1 row)
 
-select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 8}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 8}');
+ jsonpath_query 
+----------------
 (0 rows)
 
-select * from _jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value" : 13}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
  10
 (1 row)
 
-select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
  10
  11
  12
 (3 rows)
 
-select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
+ jsonpath_query 
+----------------
  10
  11
 (2 rows)
 
-select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
+ jsonpath_query 
+----------------
  10
  11
  12
 (3 rows)
 
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
+ jsonpath_query 
+----------------
  "1"
 (1 row)
 
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
+ jsonpath_query 
+----------------
  "1"
 (1 row)
 
-select * from _jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ != null)');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ != null)');
+ jsonpath_query 
+----------------
  1
  "2"
 (2 rows)
 
-select * from _jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ == null)');
- _jsonpath_query 
------------------
+select * from jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ == null)');
+ jsonpath_query 
+----------------
  null
 (1 row)
 
@@ -591,7 +591,7 @@ select jsonb '{"g": {"x": 2}}' @* '$.g ? (exists (@.x ? (@ >= 2) ))';
 --test ternary logic
 select
 	x, y,
-	_jsonpath_query(
+	jsonpath_query(
 		jsonb '[true, false, null]',
 		'$[*] ? (@ == true  &&  ($x == true && $y == true) ||
 				 @ == false && !($x == true && $y == true) ||
@@ -616,7 +616,7 @@ from
 
 select
 	x, y,
-	_jsonpath_query(
+	jsonpath_query(
 		jsonb '[true, false, null]',
 		'$[*] ? (@ == true  &&  ($x == true || $y == true) ||
 				 @ == false && !($x == true || $y == true) ||
@@ -860,15 +860,15 @@ select jsonb '[1,2,3]' @~ '$[*]';
 ERROR:  Singleton SQL/JSON item required
 select jsonb '[]' @~ '$[*]';
 ERROR:  Singleton SQL/JSON item required
-select _jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] > $x) [1]', '{"x": 1}');
- _jsonpath_predicate 
----------------------
+select jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] > $x) [1]', '{"x": 1}');
+ jsonpath_predicate 
+--------------------
  f
 (1 row)
 
-select _jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] < $x) [1]', '{"x": 2}');
- _jsonpath_predicate 
----------------------
+select jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] < $x) [1]', '{"x": 2}');
+ jsonpath_predicate 
+--------------------
  t
 (1 row)
 

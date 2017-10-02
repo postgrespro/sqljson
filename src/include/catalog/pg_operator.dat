@@ -3338,14 +3338,14 @@
   oprresult => 'jsonb', oprcode => 'jsonb_delete_path' },
 { oid => '6075', descr => 'jsonpath items',
   oprname => '@*', oprleft => 'jsonb', oprright => 'jsonpath',
-  oprresult => 'jsonb', oprcode => '_jsonpath_query(jsonb,jsonpath)' },
+  oprresult => 'jsonb', oprcode => 'jsonpath_query(jsonb,jsonpath)' },
 { oid => '6076', descr => 'jsonpath exists',
   oprname => '@?', oprleft => 'jsonb', oprright => 'jsonpath',
-  oprresult => 'bool', oprcode => '_jsonpath_exists(jsonb,jsonpath)',
+  oprresult => 'bool', oprcode => 'jsonpath_exists(jsonb,jsonpath)',
   oprrest => 'contsel', oprjoin => 'contjoinsel' },
 { oid => '6107', descr => 'jsonpath predicate',
   oprname => '@~', oprleft => 'jsonb', oprright => 'jsonpath',
-  oprresult => 'bool', oprcode => '_jsonpath_predicate(jsonb,jsonpath)',
+  oprresult => 'bool', oprcode => 'jsonpath_predicate(jsonb,jsonpath)',
   oprrest => 'contsel', oprjoin => 'contjoinsel' },
 
 ]
