@@ -52,18 +52,18 @@ select jsonb '[1,2,3]' @* '$[last - 1]';
 select jsonb '[1,2,3]' @* '$[last ? (@.type() == "number")]';
 select jsonb '[1,2,3]' @* '$[last ? (@.type() == "string")]';
 
-select * from _jsonpath_query(jsonb '{"a": 10}', '$');
-select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)');
-select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 13}');
-select * from _jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 8}');
-select * from _jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value" : 13}');
-select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
-select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
-select * from _jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
-select * from _jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
-select * from _jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ != null)');
-select * from _jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ == null)');
+select * from jsonpath_query(jsonb '{"a": 10}', '$');
+select * from jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)');
+select * from jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 13}');
+select * from jsonpath_query(jsonb '{"a": 10}', '$ ? (.a < $value)', '{"value" : 8}');
+select * from jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value" : 13}');
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
+select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
+select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
+select * from jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ != null)');
+select * from jsonpath_query(jsonb '[1, "2", null]', '$[*] ? (@ == null)');
 
 select jsonb '{"a": {"b": 1}}' @* 'lax $.**';
 select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1}';
@@ -106,7 +106,7 @@ select jsonb '{"g": {"x": 2}}' @* '$.g ? (exists (@.x ? (@ >= 2) ))';
 --test ternary logic
 select
 	x, y,
-	_jsonpath_query(
+	jsonpath_query(
 		jsonb '[true, false, null]',
 		'$[*] ? (@ == true  &&  ($x == true && $y == true) ||
 				 @ == false && !($x == true && $y == true) ||
@@ -119,7 +119,7 @@ from
 
 select
 	x, y,
-	_jsonpath_query(
+	jsonpath_query(
 		jsonb '[true, false, null]',
 		'$[*] ? (@ == true  &&  ($x == true || $y == true) ||
 				 @ == false && !($x == true || $y == true) ||
@@ -175,8 +175,8 @@ select jsonb '{}' @~ '$';
 select jsonb '[]' @~ '$';
 select jsonb '[1,2,3]' @~ '$[*]';
 select jsonb '[]' @~ '$[*]';
-select _jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] > $x) [1]', '{"x": 1}');
-select _jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] < $x) [1]', '{"x": 2}');
+select jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] > $x) [1]', '{"x": 1}');
+select jsonpath_predicate(jsonb '[[1, true], [2, false]]', 'strict $[*] ? (@[0] < $x) [1]', '{"x": 2}');
 
 select jsonb '[null,1,true,"a",[],{}]' @* '$.type()';
 select jsonb '[null,1,true,"a",[],{}]' @* 'lax $.type()';
