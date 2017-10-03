@@ -70,6 +70,14 @@ typedef enum
 #define PG_GETARG_JSONB(x)	DatumGetJsonb(PG_GETARG_DATUM(x))
 #define PG_RETURN_JSONB(x)	PG_RETURN_POINTER(x)
 
+/* v11 compatibility macros */
+#ifndef DatumGetJsonbP
+# define DatumGetJsonbP(d)	DatumGetJsonb(d)
+# define JsonbPGetDatum(p)	PointerGetDatum(p)
+# define PG_GETARG_JSONB_P(x)	DatumGetJsonbP(PG_GETARG_DATUM(x))
+# define PG_RETURN_JSONB_P(x)	PG_RETURN_POINTER(x)
+#endif
+
 typedef struct JsonbPair JsonbPair;
 typedef struct JsonbValue JsonbValue;
 
