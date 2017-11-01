@@ -310,20 +310,22 @@ jsonpath_in(PG_FUNCTION_ARGS)
 
 	appendStringInfoSpaces(&buf, JSONPATH_HDRSZ);
 
-	if (jsonpath != NULL)
+	if (jsonpath == NULL)
 	{
-		flattenJsonPathParseItem(&buf, jsonpath->expr, false, false);
-
-		res = (JsonPath*)buf.data;
-		SET_VARSIZE(res, buf.len);
-		res->header = JSONPATH_VERSION;
-		if (jsonpath->lax)
-			res->header |= JSONPATH_LAX;
-
-		PG_RETURN_JSONPATH(res);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				errmsg("invalid input syntax for jsonpath: \"%s\"", in)));
 	}
 
-	PG_RETURN_NULL();
+	flattenJsonPathParseItem(&buf, jsonpath->expr, false, false);
+
+	res = (JsonPath*)buf.data;
+	SET_VARSIZE(res, buf.len);
+	res->header = JSONPATH_VERSION;
+	if (jsonpath->lax)
+		res->header |= JSONPATH_LAX;
+
+	PG_RETURN_JSONPATH(res);
 }
 
 static void
