@@ -626,6 +626,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 					json_table_plan_cross
 					json_table_plan_primary
 					json_table_default_plan
+					json_path_specification
 
 %type <list>		json_arguments
 					json_passing_clause_opt
@@ -637,8 +638,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <typnam>		json_returning_clause_opt
 
-%type <str>			json_path_specification
-					json_table_column_path_specification_clause_opt
+%type <str>			json_table_column_path_specification_clause_opt
 					json_table_path_name
 					json_as_path_name_clause_opt
 
@@ -847,6 +847,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 %nonassoc	UNBOUNDED		/* ideally should have same precedence as IDENT */
 %nonassoc	ERROR_P EMPTY_P DEFAULT ABSENT /* JSON error/empty behavior */
+%nonassoc	COLUMNS FALSE_P KEEP OMIT PASSING TRUE_P UNKNOWN
 %nonassoc	IDENT GENERATED NULL_P PARTITION RANGE ROWS PRECEDING FOLLOWING CUBE ROLLUP
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
@@ -14455,7 +14456,7 @@ json_context_item:
 		;
 
 json_path_specification:
-			Sconst									{ $$ = $1; }
+			a_expr									{ $$ = $1; }
 		;
 
 json_as_path_name_clause_opt:
@@ -14753,7 +14754,7 @@ json_table_error_clause_opt:
 		;
 
 json_table_column_path_specification_clause_opt:
-			PATH json_path_specification			{ $$ = $2; }
+			PATH Sconst								{ $$ = $2; }
 			| /* EMPTY */ %prec json_table_column	{ $$ = NULL; }
 		;
 
@@ -14785,7 +14786,7 @@ json_table_formatted_column_definition:
 		;
 
 json_table_nested_columns:
-			NESTED path_opt json_path_specification
+			NESTED path_opt Sconst
 							json_as_path_name_clause_opt
 							json_table_columns_clause
 				{

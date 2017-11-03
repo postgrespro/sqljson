@@ -1288,7 +1288,7 @@ typedef struct JsonExpr
 	bool		coerce_via_io;	/* coerce result using type input function */
 	Oid			coerce_via_io_collation; /* collation for conversion through I/O */
 	JsonFormat	format;			/* context item format (JSON/JSONB) */
-	Const	   *path_spec;		/* JSON path specification */
+	Node	   *path_spec;		/* JSON path specification expression */
 	JsonPassing	passing;		/* PASSING clause arguments */
 	JsonReturning returning;	/* RETURNING clause type/format info */
 	JsonBehavior on_empty;		/* ON EMPTY behavior */

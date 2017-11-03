@@ -8837,7 +8837,10 @@ get_rule_expr(Node *node, deparse_context *context,
 
 				appendStringInfoString(buf, ", ");
 
-				get_const_expr(jexpr->path_spec, context, -1);
+				if (IsA(jexpr->path_spec, Const))
+					get_const_expr((Const *) jexpr->path_spec, context, -1);
+				else
+					get_rule_expr(jexpr->path_spec, context, false);
 
 				if (jexpr->passing.values)
 				{
@@ -9836,7 +9839,11 @@ get_json_table_columns(TableFunc *tf, JsonTableParentNode *node,
 								   " FORMAT JSONB" : " FORMAT JSON");
 
 		appendStringInfoString(buf, " PATH ");
-		get_const_expr(colexpr->path_spec, context, -1);
+
+		if (IsA(colexpr->path_spec, Const))
+			get_const_expr((Const *) colexpr->path_spec, context, -1);
+		else
+			get_rule_expr(colexpr->path_spec, context, false);
 
 		if (colexpr->wrapper == JSW_CONDITIONAL)
 			appendStringInfo(buf, " WITH CONDITIONAL WRAPPER");
