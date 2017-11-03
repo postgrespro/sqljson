@@ -1394,7 +1394,7 @@ typedef struct JsonExpr
 	Node	   *formatted_expr;	/* formatted context item expression */
 	JsonCoercion *result_coercion;	/* resulting coercion to RETURNING type */
 	JsonFormat *format;			/* context item format (JSON/JSONB) */
-	Const	   *path_spec;		/* JSON path specification */
+	Node	   *path_spec;		/* JSON path specification expression */
 	List	   *passing_names;	/* PASSING argument names */
 	List	   *passing_values;	/* PASSING argument values */
 	JsonReturning *returning;	/* RETURNING clause type/format info */

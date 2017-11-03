@@ -3140,7 +3140,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 
 				APP_JUMB(jexpr->op);
 				JumbleExpr(jstate, jexpr->raw_expr);
-				JumbleExpr(jstate, (Node *) jexpr->path_spec);
+				JumbleExpr(jstate, jexpr->path_spec);
 				foreach(temp, jexpr->passing_names)
 				{
 					APP_JUMB_STRING(castNode(Value, temp)->val.str);
