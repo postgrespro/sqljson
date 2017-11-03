@@ -4502,7 +4502,7 @@ static JsonExpr *
 transformJsonExprCommon(ParseState *pstate, JsonFuncExpr *func)
 {
 	JsonExpr   *jsexpr = makeNode(JsonExpr);
-	Datum		jsonpath;
+	Node	   *pathspec;
 	JsonFormatType format;
 
 	if (func->common->pathname)
@@ -4533,12 +4533,19 @@ transformJsonExprCommon(ParseState *pstate, JsonFuncExpr *func)
 
 	jsexpr->format = func->common->expr->format;
 
-	/* parse JSON path string */
-	jsonpath = DirectFunctionCall1(jsonpath_in,
-									CStringGetDatum(func->common->pathspec));
+	pathspec = transformExprRecurse(pstate, func->common->pathspec);
 
-	jsexpr->path_spec = makeConst(JSONPATHOID, -1, InvalidOid, -1,
-								  jsonpath, false, false);
+	jsexpr->path_spec =
+		coerce_to_target_type(pstate, pathspec, exprType(pathspec),
+							  JSONPATHOID, -1,
+							  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST,
+							  exprLocation(pathspec));
+	if (!jsexpr->path_spec)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("JSON path expression must be type %s, not type %s",
+						"jsonpath", format_type_be(exprType(pathspec))),
+				 parser_errposition(pstate, exprLocation(pathspec))));
 
 	/* transform and coerce to json[b] passing arguments */
 	transformJsonPassingArgs(pstate, format, func->common->passing,

@@ -4517,7 +4517,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	*op->resnull = true;		/* until we get a result */
 	*op->resvalue = (Datum) 0;
 
-	if (op->d.jsonexpr.raw_expr->isnull)
+	if (op->d.jsonexpr.raw_expr->isnull || op->d.jsonexpr.pathspec->isnull)
 	{
 		/* execute domain checks for NULLs */
 		(void) ExecEvalJsonExprCoercion(op, econtext, res, op->resnull);
@@ -4529,8 +4529,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	}
 
 	item = op->d.jsonexpr.raw_expr->value;
-
-	path = DatumGetJsonPathP(jexpr->path_spec->constvalue);
+	path = DatumGetJsonPathP(op->d.jsonexpr.pathspec->value);
 
 	/* reset JSON path variable contexts */
 	foreach(lc, op->d.jsonexpr.args)

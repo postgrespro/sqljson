@@ -869,3 +869,37 @@ INSERT INTO test_jsonb_constraints VALUES ('{"a": 10}', 1);
 ERROR:  new row for relation "test_jsonb_constraints" violates check constraint "test_jsonb_constraint4"
 DETAIL:  Failing row contains ({"a": 10}, 1, [1, 2]).
 DROP TABLE test_jsonb_constraints;
+-- Extension: non-constant JSON path
+SELECT JSON_EXISTS(jsonb '{"a": 123}', '$' || '.' || 'a');
+ json_exists 
+-------------
+ t
+(1 row)
+
+SELECT JSON_VALUE(jsonb '{"a": 123}', '$' || '.' || 'a');
+ json_value 
+------------
+ 123
+(1 row)
+
+SELECT JSON_VALUE(jsonb '{"a": 123}', '$' || '.' || 'b' DEFAULT 'foo' ON EMPTY);
+ json_value 
+------------
+ foo
+(1 row)
+
+SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a');
+ json_query 
+------------
+ 123
+(1 row)
+
+SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
+ json_query 
+------------
+ [123]
+(1 row)
+
+-- Should fail (invalid path)
+SELECT JSON_QUERY(jsonb '{"a": 123}', 'error' || ' ' || 'error');
+ERROR:  syntax error, unexpected IDENT_P at or near "error" of jsonpath input

@@ -2498,7 +2498,7 @@ _copyJsonCommon(const JsonCommon *from)
 	JsonCommon	   *newnode = makeNode(JsonCommon);
 
 	COPY_NODE_FIELD(expr);
-	COPY_STRING_FIELD(pathspec);
+	COPY_NODE_FIELD(pathspec);
 	COPY_STRING_FIELD(pathname);
 	COPY_NODE_FIELD(passing);
 	COPY_LOCATION_FIELD(location);

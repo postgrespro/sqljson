@@ -2925,7 +2925,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 
 				APP_JUMB(jexpr->op);
 				JumbleExpr(jstate, jexpr->raw_expr);
-				JumbleExpr(jstate, (Node *) jexpr->path_spec);
+				JumbleExpr(jstate, jexpr->path_spec);
 				JumbleExpr(jstate, (Node *) jexpr->passing.values);
 				JumbleExpr(jstate, jexpr->on_empty.default_expr);
 				JumbleExpr(jstate, jexpr->on_error.default_expr);

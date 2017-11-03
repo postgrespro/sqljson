@@ -672,7 +672,8 @@ typedef struct ExprEvalStep
 			{
 				Datum		value;
 				bool		isnull;
-			}		   *raw_expr;			/* raw context item value */
+			}		   *raw_expr,			/* raw context item value */
+					   *pathspec;			/* path specification value */
 
 			ExprState  *formatted_expr;		/* formatted context item */
 			ExprState  *result_expr;		/* coerced to output type */

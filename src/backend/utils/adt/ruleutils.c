@@ -469,6 +469,8 @@ static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
+static void get_json_path_spec(Node *path_spec, deparse_context *context,
+				   bool showimplicit);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -7819,6 +7821,19 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 		appendStringInfoChar(context->buf, ')');
 }
 
+
+/*
+ * get_json_path_spec		- Parse back a JSON path specification
+ */
+static void
+get_json_path_spec(Node *path_spec, deparse_context *context, bool showimplicit)
+{
+	if (IsA(path_spec, Const))
+		get_const_expr((Const *) path_spec, context, -1);
+	else
+		get_rule_expr(path_spec, context, showimplicit);
+}
+
 /*
  * get_json_format			- Parse back a JsonFormat structure
  */
@@ -9078,7 +9093,7 @@ get_rule_expr(Node *node, deparse_context *context,
 
 				appendStringInfoString(buf, ", ");
 
-				get_const_expr(jexpr->path_spec, context, -1);
+				get_json_path_spec(jexpr->path_spec, context, showimplicit);
 
 				if (jexpr->passing.values)
 				{

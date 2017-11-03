@@ -2128,6 +2128,13 @@ ExecInitExprRec(Expr *node, ExprState *state,
 								&scratch.d.jsonexpr.raw_expr->value,
 								&scratch.d.jsonexpr.raw_expr->isnull);
 
+				scratch.d.jsonexpr.pathspec =
+					palloc(sizeof(*scratch.d.jsonexpr.pathspec));
+
+				ExecInitExprRec((Expr *) jexpr->path_spec, state,
+								&scratch.d.jsonexpr.pathspec->value,
+								&scratch.d.jsonexpr.pathspec->isnull);
+
 				scratch.d.jsonexpr.formatted_expr =
 					ExecInitExpr((Expr *) jexpr->formatted_expr, state->parent);
 
