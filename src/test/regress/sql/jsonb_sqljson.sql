@@ -264,3 +264,12 @@ INSERT INTO test_jsonb_constraints VALUES ('{"a": 7}', 1);
 INSERT INTO test_jsonb_constraints VALUES ('{"a": 10}', 1);
 
 DROP TABLE test_jsonb_constraints;
+
+-- Extension: non-constant JSON path
+SELECT JSON_EXISTS(jsonb '{"a": 123}', '$' || '.' || 'a');
+SELECT JSON_VALUE(jsonb '{"a": 123}', '$' || '.' || 'a');
+SELECT JSON_VALUE(jsonb '{"a": 123}', '$' || '.' || 'b' DEFAULT 'foo' ON EMPTY);
+SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a');
+SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
+-- Should fail (invalid path)
+SELECT JSON_QUERY(jsonb '{"a": 123}', 'error' || ' ' || 'error');
