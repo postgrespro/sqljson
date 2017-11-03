@@ -3192,6 +3192,7 @@ expression_tree_mutator(Node *node,
 				JsonExpr    *newnode;
 
 				FLATCOPY(newnode, jexpr, JsonExpr);
+				MUTATE(newnode->raw_expr, jexpr->path_spec, Node *);
 				MUTATE(newnode->raw_expr, jexpr->raw_expr, Node *);
 				MUTATE(newnode->formatted_expr, jexpr->formatted_expr, Node *);
 				MUTATE(newnode->result_coercion, jexpr->result_coercion, JsonCoercion *);
@@ -3962,6 +3963,8 @@ raw_expression_tree_walker(Node *node,
 				JsonCommon *jc = (JsonCommon *) node;
 
 				if (walker(jc->expr, context))
+					return true;
+				if (walker(jc->pathspec, context))
 					return true;
 				if (walker(jc->passing, context))
 					return true;

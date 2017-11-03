@@ -1488,7 +1488,7 @@ typedef struct JsonCommon
 {
 	NodeTag		type;
 	JsonValueExpr *expr;		/* context item expression */
-	JsonPathSpec pathspec;		/* JSON path specification */
+	Node	   *pathspec;		/* JSON path specification expression */
 	char	   *pathname;		/* path name, if any */
 	List	   *passing;		/* list of PASSING clause arguments, if any */
 	int			location;		/* token location, or -1 if unknown */

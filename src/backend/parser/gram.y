@@ -612,6 +612,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 					json_aggregate_func
 					json_object_aggregate_constructor
 					json_array_aggregate_constructor
+					json_path_specification
 
 %type <list>		json_arguments
 					json_passing_clause_opt
@@ -621,8 +622,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <typnam>		json_returning_clause_opt
 
-%type <str>			json_path_specification
-					json_table_path_name
+%type <str>			json_table_path_name
 					json_as_path_name_clause_opt
 
 %type <ival>		json_encoding
@@ -827,6 +827,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 %nonassoc	UNBOUNDED		/* ideally should have same precedence as IDENT */
 %nonassoc	ERROR_P EMPTY_P DEFAULT ABSENT /* JSON error/empty behavior */
+%nonassoc	FALSE_P KEEP OMIT PASSING TRUE_P UNKNOWN
 %nonassoc	IDENT GENERATED NULL_P PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
@@ -14804,7 +14805,7 @@ json_context_item:
 		;
 
 json_path_specification:
-			Sconst									{ $$ = $1; }
+			a_expr									{ $$ = $1; }
 		;
 
 json_as_path_name_clause_opt:
