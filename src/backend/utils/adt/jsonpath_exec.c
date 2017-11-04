@@ -2736,13 +2736,20 @@ wrapItem(JsonbValue *jbv)
 {
 	JsonbParseState *ps = NULL;
 	JsonbValue	jbvbuf;
-	int			type = JsonbType(jbv);
 
-	if (type == jbvArray)
-		return jbv;
-
-	if (type == jbvScalar)
-		jbv = JsonbExtractScalar(jbv->val.binary.data, &jbvbuf);
+	switch (JsonbType(jbv))
+	{
+		case jbvArray:
+			return jbv;
+		case jbvScalar:
+			jbv = JsonbExtractScalar(jbv->val.binary.data, &jbvbuf);
+			break;
+		case jbvObject:
+			jbv = JsonbWrapInBinary(jbv, &jbvbuf);
+			break;
+		default:
+			;
+	}
 
 	pushJsonbValue(&ps, WJB_BEGIN_ARRAY, NULL);
 	pushJsonbValue(&ps, WJB_ELEM, jbv);
