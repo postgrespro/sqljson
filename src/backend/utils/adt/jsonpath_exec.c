@@ -2773,6 +2773,7 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				return recursiveExecuteUnwrap(cxt, jsp, jb, found);
 
 			case jpiAnyArray:
+			case jpiIndexArray:
 				jb = wrapItem(jb);
 				break;
 
