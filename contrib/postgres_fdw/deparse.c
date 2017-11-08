@@ -2439,7 +2439,8 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	 * If the function call came from an implicit coercion, then just show the
 	 * first argument.
 	 */
-	if (node->funcformat == COERCE_IMPLICIT_CAST)
+	if (node->funcformat == COERCE_IMPLICIT_CAST ||
+		node->funcformat == COERCE_INTERNAL_CAST)
 	{
 		deparseExpr((Expr *) linitial(node->args), context);
 		return;
@@ -2636,7 +2637,8 @@ static void
 deparseRelabelType(RelabelType *node, deparse_expr_cxt *context)
 {
 	deparseExpr(node->arg, context);
-	if (node->relabelformat != COERCE_IMPLICIT_CAST)
+	if (node->relabelformat != COERCE_IMPLICIT_CAST &&
+		node->relabelformat == COERCE_INTERNAL_CAST)
 		appendStringInfo(context->buf, "::%s",
 						 deparse_type_name(node->resulttype,
 										   node->resulttypmod));
