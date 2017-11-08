@@ -595,6 +595,8 @@ _readAggref(void)
 	READ_CHAR_FIELD(aggkind);
 	READ_UINT_FIELD(agglevelsup);
 	READ_ENUM_FIELD(aggsplit, AggSplit);
+	READ_ENUM_FIELD(aggformat, FuncFormat);
+	READ_NODE_FIELD(aggformatopts);
 	READ_LOCATION_FIELD(location);
 
 	READ_DONE();
@@ -634,6 +636,8 @@ _readWindowFunc(void)
 	READ_UINT_FIELD(winref);
 	READ_BOOL_FIELD(winstar);
 	READ_BOOL_FIELD(winagg);
+	READ_ENUM_FIELD(winformat, FuncFormat);
+	READ_NODE_FIELD(winformatopts);
 	READ_LOCATION_FIELD(location);
 
 	READ_DONE();
@@ -675,6 +679,8 @@ _readFuncExpr(void)
 	READ_OID_FIELD(funccollid);
 	READ_OID_FIELD(inputcollid);
 	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(funcformat2, FuncFormat);
+	READ_NODE_FIELD(funcformatopts);
 	READ_LOCATION_FIELD(location);
 
 	READ_DONE();

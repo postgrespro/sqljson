@@ -249,6 +249,11 @@ typedef struct Param
 	int			location;		/* token location, or -1 if unknown */
 } Param;
 
+typedef enum FuncFormat
+{
+	FUNCFMT_REGULAR = 0,
+} FuncFormat;
+
 /*
  * Aggref
  *
@@ -308,6 +313,8 @@ typedef struct Aggref
 	char		aggkind;		/* aggregate kind (see pg_aggregate.h) */
 	Index		agglevelsup;	/* > 0 if agg belongs to outer query */
 	AggSplit	aggsplit;		/* expected agg-splitting mode of parent Agg */
+	FuncFormat	aggformat;		/* how to display this aggregate */
+	Node	   *aggformatopts;	/* display options, if any */
 	int			location;		/* token location, or -1 if unknown */
 } Aggref;
 
@@ -361,6 +368,8 @@ typedef struct WindowFunc
 	Index		winref;			/* index of associated WindowClause */
 	bool		winstar;		/* true if argument list was really '*' */
 	bool		winagg;			/* is function a simple aggregate? */
+	FuncFormat	winformat;		/* how to display this window function */
+	Node	   *winformatopts;	/* display options, if any */
 	int			location;		/* token location, or -1 if unknown */
 } WindowFunc;
 
@@ -456,6 +465,8 @@ typedef struct FuncExpr
 	Oid			funccollid;		/* OID of collation of result */
 	Oid			inputcollid;	/* OID of collation that function should use */
 	List	   *args;			/* arguments to the function */
+	FuncFormat	funcformat2;	/* how to display this function call */
+	Node	   *funcformatopts;	/* display options, if any */
 	int			location;		/* token location, or -1 if unknown */
 } FuncExpr;
 
