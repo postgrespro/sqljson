@@ -8868,6 +8868,16 @@ get_oper_expr(OpExpr *expr, deparse_context *context)
 		appendStringInfoChar(buf, ')');
 }
 
+static void
+get_func_opts(FuncFormat aggformat, Node *aggformatopts, deparse_context *context)
+{
+	switch (aggformat)
+	{
+		default:
+			break;
+	}
+}
+
 /*
  * get_func_expr			- Parse back a FuncExpr node
  */
@@ -8882,6 +8892,7 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	List	   *argnames;
 	bool		use_variadic;
 	ListCell   *l;
+	const char *funcname;
 
 	/*
 	 * If the function call came from an implicit coercion, then just show the
@@ -8936,12 +8947,19 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(",
-					 generate_function_name(funcoid, nargs,
-											argnames, argtypes,
-											expr->funcvariadic,
-											&use_variadic,
-											context->special_exprkind));
+	switch (expr->funcformat2)
+	{
+		default:
+			funcname = generate_function_name(funcoid, nargs,
+											  argnames, argtypes,
+											  expr->funcvariadic,
+											  &use_variadic,
+											  context->special_exprkind);
+			break;
+	}
+
+	appendStringInfo(buf, "%s(", funcname);
+
 	nargs = 0;
 	foreach(l, expr->args)
 	{
@@ -8951,6 +8969,9 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 			appendStringInfoString(buf, "VARIADIC ");
 		get_rule_expr((Node *) lfirst(l), context, true);
 	}
+
+	get_func_opts(expr->funcformat2, expr->funcformatopts, context);
+
 	appendStringInfoChar(buf, ')');
 }
 
@@ -9049,6 +9070,8 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 		}
 	}
 
+	get_func_opts(aggref->aggformat, aggref->aggformatopts, context);
+
 	if (aggref->aggfilter != NULL)
 	{
 		appendStringInfoString(buf, ") FILTER (WHERE ");
@@ -9114,6 +9137,8 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		appendStringInfoChar(buf, '*');
 	else
 		get_rule_expr((Node *) wfunc->args, context, true);
+
+	get_func_opts(wfunc->winformat, wfunc->winformatopts, context);
 
 	if (wfunc->aggfilter != NULL)
 	{
