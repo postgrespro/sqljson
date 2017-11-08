@@ -2453,6 +2453,8 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->winref = expr->winref;
 				newexpr->winstar = expr->winstar;
 				newexpr->winagg = expr->winagg;
+				newexpr->winformat = expr->winformat;
+				newexpr->winformatopts = copyObject(expr->winformatopts);
 				newexpr->location = expr->location;
 
 				return (Node *) newexpr;
@@ -2499,6 +2501,8 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->funccollid = expr->funccollid;
 				newexpr->inputcollid = expr->inputcollid;
 				newexpr->args = args;
+				newexpr->funcformat2 = expr->funcformat2;
+				newexpr->funcformatopts = copyObject(expr->funcformatopts);
 				newexpr->location = expr->location;
 				return (Node *) newexpr;
 			}

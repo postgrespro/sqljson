@@ -2559,11 +2559,13 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				Aggref	   *expr = (Aggref *) node;
 
 				APP_JUMB(expr->aggfnoid);
+				APP_JUMB(expr->aggformat);
 				JumbleExpr(jstate, (Node *) expr->aggdirectargs);
 				JumbleExpr(jstate, (Node *) expr->args);
 				JumbleExpr(jstate, (Node *) expr->aggorder);
 				JumbleExpr(jstate, (Node *) expr->aggdistinct);
 				JumbleExpr(jstate, (Node *) expr->aggfilter);
+				JumbleExpr(jstate, (Node *) expr->aggformatopts);
 			}
 			break;
 		case T_GroupingFunc:
@@ -2579,8 +2581,10 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 
 				APP_JUMB(expr->winfnoid);
 				APP_JUMB(expr->winref);
+				APP_JUMB(expr->winformat);
 				JumbleExpr(jstate, (Node *) expr->args);
 				JumbleExpr(jstate, (Node *) expr->aggfilter);
+				JumbleExpr(jstate, (Node *) expr->winformatopts);
 			}
 			break;
 		case T_SubscriptingRef:
@@ -2598,7 +2602,9 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				FuncExpr   *expr = (FuncExpr *) node;
 
 				APP_JUMB(expr->funcid);
+				APP_JUMB(expr->funcformat2);
 				JumbleExpr(jstate, (Node *) expr->args);
+				JumbleExpr(jstate, (Node *) expr->funcformatopts);
 			}
 			break;
 		case T_NamedArgExpr:

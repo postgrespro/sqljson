@@ -228,6 +228,8 @@ _equalAggref(const Aggref *a, const Aggref *b)
 	COMPARE_SCALAR_FIELD(aggkind);
 	COMPARE_SCALAR_FIELD(agglevelsup);
 	COMPARE_SCALAR_FIELD(aggsplit);
+	COMPARE_SCALAR_FIELD(aggformat);
+	COMPARE_NODE_FIELD(aggformatopts);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -260,6 +262,8 @@ _equalWindowFunc(const WindowFunc *a, const WindowFunc *b)
 	COMPARE_SCALAR_FIELD(winref);
 	COMPARE_SCALAR_FIELD(winstar);
 	COMPARE_SCALAR_FIELD(winagg);
+	COMPARE_SCALAR_FIELD(winformat);
+	COMPARE_NODE_FIELD(winformatopts);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -291,6 +295,8 @@ _equalFuncExpr(const FuncExpr *a, const FuncExpr *b)
 	COMPARE_SCALAR_FIELD(funccollid);
 	COMPARE_SCALAR_FIELD(inputcollid);
 	COMPARE_NODE_FIELD(args);
+	COMPARE_SCALAR_FIELD(funcformat2);
+	COMPARE_NODE_FIELD(funcformatopts);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
