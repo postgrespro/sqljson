@@ -1432,6 +1432,8 @@ _copyAggref(const Aggref *from)
 	COPY_SCALAR_FIELD(aggkind);
 	COPY_SCALAR_FIELD(agglevelsup);
 	COPY_SCALAR_FIELD(aggsplit);
+	COPY_SCALAR_FIELD(aggformat);
+	COPY_NODE_FIELD(aggformatopts);
 	COPY_LOCATION_FIELD(location);
 
 	return newnode;
@@ -1471,6 +1473,8 @@ _copyWindowFunc(const WindowFunc *from)
 	COPY_SCALAR_FIELD(winref);
 	COPY_SCALAR_FIELD(winstar);
 	COPY_SCALAR_FIELD(winagg);
+	COPY_SCALAR_FIELD(winformat);
+	COPY_NODE_FIELD(winformatopts);
 	COPY_LOCATION_FIELD(location);
 
 	return newnode;
@@ -1512,6 +1516,8 @@ _copyFuncExpr(const FuncExpr *from)
 	COPY_SCALAR_FIELD(funccollid);
 	COPY_SCALAR_FIELD(inputcollid);
 	COPY_NODE_FIELD(args);
+	COPY_SCALAR_FIELD(funcformat2);
+	COPY_NODE_FIELD(funcformatopts);
 	COPY_LOCATION_FIELD(location);
 
 	return newnode;

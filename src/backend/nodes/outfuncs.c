@@ -1207,6 +1207,8 @@ _outAggref(StringInfo str, const Aggref *node)
 	WRITE_CHAR_FIELD(aggkind);
 	WRITE_UINT_FIELD(agglevelsup);
 	WRITE_ENUM_FIELD(aggsplit, AggSplit);
+	WRITE_ENUM_FIELD(aggformat, FuncFormat);
+	WRITE_NODE_FIELD(aggformatopts);
 	WRITE_LOCATION_FIELD(location);
 }
 
@@ -1236,6 +1238,8 @@ _outWindowFunc(StringInfo str, const WindowFunc *node)
 	WRITE_UINT_FIELD(winref);
 	WRITE_BOOL_FIELD(winstar);
 	WRITE_BOOL_FIELD(winagg);
+	WRITE_ENUM_FIELD(winformat, FuncFormat);
+	WRITE_NODE_FIELD(winformatopts);
 	WRITE_LOCATION_FIELD(location);
 }
 
@@ -1267,6 +1271,8 @@ _outFuncExpr(StringInfo str, const FuncExpr *node)
 	WRITE_OID_FIELD(funccollid);
 	WRITE_OID_FIELD(inputcollid);
 	WRITE_NODE_FIELD(args);
+	WRITE_ENUM_FIELD(funcformat2, FuncFormat);
+	WRITE_NODE_FIELD(funcformatopts);
 	WRITE_LOCATION_FIELD(location);
 }
 
