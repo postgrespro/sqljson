@@ -213,3 +213,70 @@ FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
 
 SELECT JSON_OBJECTAGG(k: v ABSENT ON NULL WITH UNIQUE KEYS RETURNING jsonb)
 FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
+
+-- Test JSON_OBJECT deparsing
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_OBJECT('foo' : '1' FORMAT JSON, 'bar' : 'baz' RETURNING json);
+
+CREATE VIEW json_object_view AS
+SELECT JSON_OBJECT('foo' : '1' FORMAT JSON, 'bar' : 'baz' RETURNING json);
+
+\sv json_object_view
+
+DROP VIEW json_object_view;
+
+-- Test JSON_ARRAY deparsing
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAY('1' FORMAT JSON, 2 RETURNING json);
+
+CREATE VIEW json_array_view AS
+SELECT JSON_ARRAY('1' FORMAT JSON, 2 RETURNING json);
+
+\sv json_array_view
+
+DROP VIEW json_array_view;
+
+-- Test JSON_OBJECTAGG deparsing
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_OBJECTAGG(i: ('111' || i)::bytea FORMAT JSON WITH UNIQUE RETURNING text) FILTER (WHERE i > 3)
+FROM generate_series(1,5) i;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_OBJECTAGG(i: ('111' || i)::bytea FORMAT JSON WITH UNIQUE RETURNING text) OVER (PARTITION BY i % 2)
+FROM generate_series(1,5) i;
+
+CREATE VIEW json_objectagg_view AS
+SELECT JSON_OBJECTAGG(i: ('111' || i)::bytea FORMAT JSON WITH UNIQUE RETURNING text) FILTER (WHERE i > 3)
+FROM generate_series(1,5) i;
+
+\sv json_objectagg_view
+
+DROP VIEW json_objectagg_view;
+
+-- Test JSON_ARRAYAGG deparsing
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAYAGG(('111' || i)::bytea FORMAT JSON NULL ON NULL RETURNING text) FILTER (WHERE i > 3)
+FROM generate_series(1,5) i;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAYAGG(('111' || i)::bytea FORMAT JSON NULL ON NULL RETURNING text) OVER (PARTITION BY i % 2)
+FROM generate_series(1,5) i;
+
+CREATE VIEW json_arrayagg_view AS
+SELECT JSON_ARRAYAGG(('111' || i)::bytea FORMAT JSON NULL ON NULL RETURNING text) FILTER (WHERE i > 3)
+FROM generate_series(1,5) i;
+
+\sv json_arrayagg_view
+
+DROP VIEW json_arrayagg_view;
+
+-- Test JSON_ARRAY(subquery) deparsing
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING jsonb);
+
+CREATE VIEW json_array_subquery_view AS
+SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING jsonb);
+
+\sv json_array_subquery_view
+
+DROP VIEW json_array_subquery_view;
