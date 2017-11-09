@@ -2568,6 +2568,7 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->aggorder, aggref->aggorder, List *);
 				MUTATE(newnode->aggdistinct, aggref->aggdistinct, List *);
 				MUTATE(newnode->aggfilter, aggref->aggfilter, Expr *);
+				/*MUTATE(newnode->aggformatopts, aggref->aggformatopts, Node *);*/
 				return (Node *) newnode;
 			}
 			break;
@@ -2602,6 +2603,7 @@ expression_tree_mutator(Node *node,
 				FLATCOPY(newnode, wfunc, WindowFunc);
 				MUTATE(newnode->args, wfunc->args, List *);
 				MUTATE(newnode->aggfilter, wfunc->aggfilter, Expr *);
+				/*MUTATE(newnode->winformatopts, wfunc->winformatopts, Node *);*/
 				return (Node *) newnode;
 			}
 			break;
