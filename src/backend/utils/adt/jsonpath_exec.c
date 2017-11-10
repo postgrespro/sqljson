@@ -2731,18 +2731,40 @@ recursiveExecuteUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found, false);
 }
 
+/*
+ * Wrap a non-array SQL/JSON item into an array for applying array subscription
+ * path steps in lax mode.
+ */
 static inline JsonbValue *
 wrapItem(JsonbValue *jbv)
 {
 	JsonbParseState *ps = NULL;
 	JsonbValue	jbvbuf;
-	int			type = JsonbType(jbv);
 
-	if (type == jbvArray)
-		return jbv;
+	switch (JsonbType(jbv))
+	{
+		case jbvArray:
+			/* Simply return an array item. */
+			return jbv;
 
-	if (type == jbvScalar)
-		jbv = JsonbExtractScalar(jbv->val.binary.data, &jbvbuf);
+		case jbvScalar:
+			/* Extract scalar value from singleton pseudo-array. */
+			jbv = JsonbExtractScalar(jbv->val.binary.data, &jbvbuf);
+			break;
+
+		case jbvObject:
+			/*
+			 * Need to wrap object into a binary JsonbValue for its unpacking
+			 * in pushJsonbValue().
+			 */
+			if (jbv->type != jbvBinary)
+				jbv = JsonbWrapInBinary(jbv, &jbvbuf);
+			break;
+
+		default:
+			/* Ordinary scalars can be pushed directly. */
+			break;
+	}
 
 	pushJsonbValue(&ps, WJB_BEGIN_ARRAY, NULL);
 	pushJsonbValue(&ps, WJB_ELEM, jbv);
