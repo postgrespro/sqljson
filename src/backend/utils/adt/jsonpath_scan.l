@@ -296,7 +296,7 @@ static keyword keywords[] = {
 static int
 checkSpecialVal()
 {
-	int			res = STRING_P;
+	int			res = IDENT_P;
 	int			diff;
 	keyword		*StopLow = keywords,
 				*StopHigh = keywords + lengthof(keywords),

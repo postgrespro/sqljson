@@ -275,7 +275,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 }
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P EXISTS_P
-%token	<str>		STRING_P NUMERIC_P INT_P VARIABLE_P
+%token	<str>		IDENT_P STRING_P NUMERIC_P INT_P VARIABLE_P
 %token	<str>		OR_P AND_P NOT_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
 %token	<str>		ANY_P STRICT_P LAX_P LAST_P STARTS_P WITH_P LIKE_REGEX_P FLAG_P
@@ -452,7 +452,8 @@ key:
 	;
 
 key_name:
-	STRING_P
+	IDENT_P
+	| STRING_P
 	| TO_P
 	| NULL_P
 	| TRUE_P

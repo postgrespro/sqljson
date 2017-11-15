@@ -186,7 +186,6 @@ select jsonb 'null' @* 'null.type()';
 select jsonb 'null' @* 'true.type()';
 select jsonb 'null' @* '123.type()';
 select jsonb 'null' @* '"123".type()';
-select jsonb 'null' @* 'aaa.type()';
 
 select jsonb '{"a": 2}' @* '($.a - 5).abs() + 10';
 select jsonb '{"a": 2.5}' @* '-($.a * $.a).floor() + 10';
