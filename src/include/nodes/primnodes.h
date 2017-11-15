@@ -1272,6 +1272,31 @@ typedef struct JsonPassing
 	List	   *names;			/* parallel list of Value strings */
 } JsonPassing;
 
+
+/*
+ * JsonExpr -
+ *		transformed representation of JSON_VALUE(), JSON_QUERY(), JSON_EXISTS()
+ */
+typedef struct JsonExpr
+{
+	Expr		xpr;
+	JsonExprOp	op;				/* json function ID */
+	Node	   *raw_expr;		/* raw context item expression */
+	Node	   *formatted_expr;	/* formatted context item expression */
+	Node	   *result_expr;	/* resulting expression (coerced to RETURNING type) */
+	bool		coerce_via_io;	/* coerce result using type input function */
+	Oid			coerce_via_io_collation; /* collation for conversion through I/O */
+	JsonFormat	format;			/* context item format (JSON/JSONB) */
+	Const	   *path_spec;		/* JSON path specification */
+	JsonPassing	passing;		/* PASSING clause arguments */
+	JsonReturning returning;	/* RETURNING clause type/format info */
+	JsonBehavior on_empty;		/* ON EMPTY behavior */
+	JsonBehavior on_error;		/* ON ERROR behavior */
+	JsonWrapper	wrapper;		/* WRAPPER for JSON_QUERY */
+	bool		omit_quotes;	/* KEEP/OMIT QUOTES for JSON_QUERY */
+	int			location;		/* token location, or -1 if unknown */
+} JsonExpr;
+
 /* ----------------
  * NullTest
  *

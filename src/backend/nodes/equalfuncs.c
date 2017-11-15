@@ -855,6 +855,40 @@ _equalJsonIsPredicateOpts(const JsonIsPredicateOpts *a,
 }
 
 /*
+ * _equalJsonExpr
+ */
+static bool
+_equalJsonExpr(const JsonExpr *a, const JsonExpr *b)
+{
+	COMPARE_SCALAR_FIELD(op);
+	COMPARE_NODE_FIELD(raw_expr);
+	COMPARE_NODE_FIELD(formatted_expr);
+	COMPARE_NODE_FIELD(result_expr);
+	COMPARE_SCALAR_FIELD(coerce_via_io);
+	COMPARE_SCALAR_FIELD(coerce_via_io_collation);
+	COMPARE_SCALAR_FIELD(format.type);
+	COMPARE_SCALAR_FIELD(format.encoding);
+	COMPARE_LOCATION_FIELD(format.location);
+	COMPARE_NODE_FIELD(path_spec);
+	COMPARE_NODE_FIELD(passing.values);
+	COMPARE_NODE_FIELD(passing.names);
+	COMPARE_SCALAR_FIELD(returning.format.type);
+	COMPARE_SCALAR_FIELD(returning.format.encoding);
+	COMPARE_LOCATION_FIELD(returning.format.location);
+	COMPARE_SCALAR_FIELD(returning.typid);
+	COMPARE_SCALAR_FIELD(returning.typmod);
+	COMPARE_SCALAR_FIELD(on_error.btype);
+	COMPARE_NODE_FIELD(on_error.default_expr);
+	COMPARE_SCALAR_FIELD(on_empty.btype);
+	COMPARE_NODE_FIELD(on_empty.default_expr);
+	COMPARE_SCALAR_FIELD(wrapper);
+	COMPARE_SCALAR_FIELD(omit_quotes);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+/*
  * Stuff from relation.h
  */
 
@@ -3185,6 +3219,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_JsonIsPredicateOpts:
 			retval = _equalJsonIsPredicateOpts(a, b);
+			break;
+		case T_JsonExpr:
+			retval = _equalJsonExpr(a, b);
 			break;
 
 			/*
