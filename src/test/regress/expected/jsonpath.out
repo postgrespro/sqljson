@@ -189,12 +189,6 @@ select '$.g ? (@ == 1)'::jsonpath;
  $."g"?(@ == 1)
 (1 row)
 
-select '$.g ? (a == 1)'::jsonpath;
-     jsonpath     
-------------------
- $."g"?("a" == 1)
-(1 row)
-
 select '$.g ? (.a == 1)'::jsonpath;
       jsonpath      
 --------------------
@@ -207,34 +201,34 @@ select '$.g ? (@.a == 1)'::jsonpath;
  $."g"?(@."a" == 1)
 (1 row)
 
-select '$.g ? (@.a == 1 || a == 4)'::jsonpath;
-            jsonpath            
---------------------------------
- $."g"?(@."a" == 1 || "a" == 4)
+select '$.g ? (@.a == 1 || @.a == 4)'::jsonpath;
+             jsonpath             
+----------------------------------
+ $."g"?(@."a" == 1 || @."a" == 4)
 (1 row)
 
-select '$.g ? (@.a == 1 && a == 4)'::jsonpath;
-            jsonpath            
---------------------------------
- $."g"?(@."a" == 1 && "a" == 4)
+select '$.g ? (@.a == 1 && @.a == 4)'::jsonpath;
+             jsonpath             
+----------------------------------
+ $."g"?(@."a" == 1 && @."a" == 4)
 (1 row)
 
-select '$.g ? (@.a == 1 || a == 4 && b == 7)'::jsonpath;
-                  jsonpath                  
---------------------------------------------
- $."g"?(@."a" == 1 || "a" == 4 && "b" == 7)
+select '$.g ? (@.a == 1 || @.a == 4 && @.b == 7)'::jsonpath;
+                    jsonpath                    
+------------------------------------------------
+ $."g"?(@."a" == 1 || @."a" == 4 && @."b" == 7)
 (1 row)
 
-select '$.g ? (@.a == 1 || !(a == 4) && b == 7)'::jsonpath;
-                   jsonpath                    
------------------------------------------------
- $."g"?(@."a" == 1 || !("a" == 4) && "b" == 7)
+select '$.g ? (@.a == 1 || !(@.a == 4) && @.b == 7)'::jsonpath;
+                     jsonpath                      
+---------------------------------------------------
+ $."g"?(@."a" == 1 || !(@."a" == 4) && @."b" == 7)
 (1 row)
 
-select '$.g ? (@.a == 1 || !(x >= 123 || a == 4) && b == 7)'::jsonpath;
-                          jsonpath                           
--------------------------------------------------------------
- $."g"?(@."a" == 1 || !("x" >= 123 || "a" == 4) && "b" == 7)
+select '$.g ? (@.a == 1 || !(@.x >= 123 || @.a == 4) && @.b == 7)'::jsonpath;
+                             jsonpath                              
+-------------------------------------------------------------------
+ $."g"?(@."a" == 1 || !(@."x" >= 123 || @."a" == 4) && @."b" == 7)
 (1 row)
 
 select '$.g ? (.x >= @[*]?(@.a > "abc"))'::jsonpath;
@@ -243,10 +237,10 @@ select '$.g ? (.x >= @[*]?(@.a > "abc"))'::jsonpath;
  $."g"?(@."x" >= @[*]?(@."a" > "abc"))
 (1 row)
 
-select '$.g ? ((x >= 123 || a == 4) is unknown)'::jsonpath;
-                  jsonpath                   
----------------------------------------------
- $."g"?(("x" >= 123 || "a" == 4) is unknown)
+select '$.g ? ((@.x >= 123 || @.a == 4) is unknown)'::jsonpath;
+                    jsonpath                     
+-------------------------------------------------
+ $."g"?((@."x" >= 123 || @."a" == 4) is unknown)
 (1 row)
 
 select '$.g ? (exists (.x))'::jsonpath;
@@ -267,16 +261,16 @@ select '$.g ? (exists (.x ? (@ == 14)))'::jsonpath;
  $."g"?(exists (@."x"?(@ == 14)))
 (1 row)
 
-select '$.g ? ((x >= 123 || a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
-                           jsonpath                           
---------------------------------------------------------------
- $."g"?(("x" >= 123 || "a" == 4) && exists (@."x"?(@ == 14)))
+select '$.g ? ((@.x >= 123 || @.a == 4) && exists (.x ? (@ == 14)))'::jsonpath;
+                             jsonpath                             
+------------------------------------------------------------------
+ $."g"?((@."x" >= 123 || @."a" == 4) && exists (@."x"?(@ == 14)))
 (1 row)
 
-select '$.g ? (+x >= +-(+a + 2))'::jsonpath;
-            jsonpath            
---------------------------------
- $."g"?(+"x" >= +(-(+"a" + 2)))
+select '$.g ? (+@.x >= +-(+@.a + 2))'::jsonpath;
+              jsonpath              
+------------------------------------
+ $."g"?(+@."x" >= +(-(+@."a" + 2)))
 (1 row)
 
 select '$a'::jsonpath;
@@ -297,10 +291,10 @@ select '$a[*]'::jsonpath;
  $"a"[*]
 (1 row)
 
-select '$.g ? (zip == $zip)'::jsonpath;
-        jsonpath         
--------------------------
- $."g"?("zip" == $"zip")
+select '$.g ? (@.zip == $zip)'::jsonpath;
+         jsonpath          
+---------------------------
+ $."g"?(@."zip" == $"zip")
 (1 row)
 
 select '$.a.[1,2, 3 to 16]'::jsonpath;
@@ -372,12 +366,6 @@ select '1.type()'::jsonpath;
 (1 row)
 
 select '"aaa".type()'::jsonpath;
-   jsonpath   
---------------
- "aaa".type()
-(1 row)
-
-select 'aaa.type()'::jsonpath;
    jsonpath   
 --------------
  "aaa".type()
@@ -510,291 +498,291 @@ select '1 + ($.a.b > 2).c.d'::jsonpath;
  (1 + ($."a"."b" > 2)."c"."d")
 (1 row)
 
-select '$ ? (a < 1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < -1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < -1)
-(1 row)
-
-select '$ ? (a < +1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < .1)'::jsonpath;
+select '$ ? (@.a < 1)'::jsonpath;
    jsonpath    
 ---------------
- $?("a" < 0.1)
+ $?(@."a" < 1)
 (1 row)
 
-select '$ ? (a < -.1)'::jsonpath;
+select '$ ? (@.a < -1)'::jsonpath;
     jsonpath    
 ----------------
- $?("a" < -0.1)
+ $?(@."a" < -1)
 (1 row)
 
-select '$ ? (a < +.1)'::jsonpath;
+select '$ ? (@.a < +1)'::jsonpath;
    jsonpath    
 ---------------
- $?("a" < 0.1)
+ $?(@."a" < 1)
 (1 row)
 
-select '$ ? (a < 0.1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 0.1)
-(1 row)
-
-select '$ ? (a < -0.1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < -0.1)
-(1 row)
-
-select '$ ? (a < +0.1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 0.1)
-(1 row)
-
-select '$ ? (a < 10.1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 10.1)
-(1 row)
-
-select '$ ? (a < -10.1)'::jsonpath;
+select '$ ? (@.a < .1)'::jsonpath;
     jsonpath     
 -----------------
- $?("a" < -10.1)
+ $?(@."a" < 0.1)
 (1 row)
 
-select '$ ? (a < +10.1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 10.1)
+select '$ ? (@.a < -.1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < -0.1)
 (1 row)
 
-select '$ ? (a < 1e1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < 10)
-(1 row)
-
-select '$ ? (a < -1e1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < -10)
-(1 row)
-
-select '$ ? (a < +1e1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < 10)
-(1 row)
-
-select '$ ? (a < .1e1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < -.1e1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < -1)
-(1 row)
-
-select '$ ? (a < +.1e1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < 0.1e1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < -0.1e1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < -1)
-(1 row)
-
-select '$ ? (a < +0.1e1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < 10.1e1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 101)
-(1 row)
-
-select '$ ? (a < -10.1e1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < -101)
-(1 row)
-
-select '$ ? (a < +10.1e1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 101)
-(1 row)
-
-select '$ ? (a < 1e-1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 0.1)
-(1 row)
-
-select '$ ? (a < -1e-1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < -0.1)
-(1 row)
-
-select '$ ? (a < +1e-1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 0.1)
-(1 row)
-
-select '$ ? (a < .1e-1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 0.01)
-(1 row)
-
-select '$ ? (a < -.1e-1)'::jsonpath;
+select '$ ? (@.a < +.1)'::jsonpath;
     jsonpath     
 -----------------
- $?("a" < -0.01)
+ $?(@."a" < 0.1)
 (1 row)
 
-select '$ ? (a < +.1e-1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 0.01)
-(1 row)
-
-select '$ ? (a < 0.1e-1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 0.01)
-(1 row)
-
-select '$ ? (a < -0.1e-1)'::jsonpath;
+select '$ ? (@.a < 0.1)'::jsonpath;
     jsonpath     
 -----------------
- $?("a" < -0.01)
+ $?(@."a" < 0.1)
 (1 row)
 
-select '$ ? (a < +0.1e-1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 0.01)
+select '$ ? (@.a < -0.1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < -0.1)
 (1 row)
 
-select '$ ? (a < 10.1e-1)'::jsonpath;
-    jsonpath    
-----------------
- $?("a" < 1.01)
-(1 row)
-
-select '$ ? (a < -10.1e-1)'::jsonpath;
+select '$ ? (@.a < +0.1)'::jsonpath;
     jsonpath     
 -----------------
- $?("a" < -1.01)
+ $?(@."a" < 0.1)
 (1 row)
 
-select '$ ? (a < +10.1e-1)'::jsonpath;
+select '$ ? (@.a < 10.1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 10.1)
+(1 row)
+
+select '$ ? (@.a < -10.1)'::jsonpath;
+     jsonpath      
+-------------------
+ $?(@."a" < -10.1)
+(1 row)
+
+select '$ ? (@.a < +10.1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 10.1)
+(1 row)
+
+select '$ ? (@.a < 1e1)'::jsonpath;
     jsonpath    
 ----------------
- $?("a" < 1.01)
+ $?(@."a" < 10)
 (1 row)
 
-select '$ ? (a < 1e+1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < 10)
+select '$ ? (@.a < -1e1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < -10)
 (1 row)
 
-select '$ ? (a < -1e+1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < -10)
-(1 row)
-
-select '$ ? (a < +1e+1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < 10)
-(1 row)
-
-select '$ ? (a < .1e+1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < -.1e+1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < -1)
-(1 row)
-
-select '$ ? (a < +.1e+1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < 0.1e+1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < -0.1e+1)'::jsonpath;
-   jsonpath   
---------------
- $?("a" < -1)
-(1 row)
-
-select '$ ? (a < +0.1e+1)'::jsonpath;
-  jsonpath   
--------------
- $?("a" < 1)
-(1 row)
-
-select '$ ? (a < 10.1e+1)'::jsonpath;
-   jsonpath    
----------------
- $?("a" < 101)
-(1 row)
-
-select '$ ? (a < -10.1e+1)'::jsonpath;
+select '$ ? (@.a < +1e1)'::jsonpath;
     jsonpath    
 ----------------
- $?("a" < -101)
+ $?(@."a" < 10)
 (1 row)
 
-select '$ ? (a < +10.1e+1)'::jsonpath;
+select '$ ? (@.a < .1e1)'::jsonpath;
    jsonpath    
 ---------------
- $?("a" < 101)
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < -.1e1)'::jsonpath;
+    jsonpath    
+----------------
+ $?(@."a" < -1)
+(1 row)
+
+select '$ ? (@.a < +.1e1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < 0.1e1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < -0.1e1)'::jsonpath;
+    jsonpath    
+----------------
+ $?(@."a" < -1)
+(1 row)
+
+select '$ ? (@.a < +0.1e1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < 10.1e1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < 101)
+(1 row)
+
+select '$ ? (@.a < -10.1e1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < -101)
+(1 row)
+
+select '$ ? (@.a < +10.1e1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < 101)
+(1 row)
+
+select '$ ? (@.a < 1e-1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < 0.1)
+(1 row)
+
+select '$ ? (@.a < -1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < -0.1)
+(1 row)
+
+select '$ ? (@.a < +1e-1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < 0.1)
+(1 row)
+
+select '$ ? (@.a < .1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 0.01)
+(1 row)
+
+select '$ ? (@.a < -.1e-1)'::jsonpath;
+     jsonpath      
+-------------------
+ $?(@."a" < -0.01)
+(1 row)
+
+select '$ ? (@.a < +.1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 0.01)
+(1 row)
+
+select '$ ? (@.a < 0.1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 0.01)
+(1 row)
+
+select '$ ? (@.a < -0.1e-1)'::jsonpath;
+     jsonpath      
+-------------------
+ $?(@."a" < -0.01)
+(1 row)
+
+select '$ ? (@.a < +0.1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 0.01)
+(1 row)
+
+select '$ ? (@.a < 10.1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 1.01)
+(1 row)
+
+select '$ ? (@.a < -10.1e-1)'::jsonpath;
+     jsonpath      
+-------------------
+ $?(@."a" < -1.01)
+(1 row)
+
+select '$ ? (@.a < +10.1e-1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < 1.01)
+(1 row)
+
+select '$ ? (@.a < 1e+1)'::jsonpath;
+    jsonpath    
+----------------
+ $?(@."a" < 10)
+(1 row)
+
+select '$ ? (@.a < -1e+1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < -10)
+(1 row)
+
+select '$ ? (@.a < +1e+1)'::jsonpath;
+    jsonpath    
+----------------
+ $?(@."a" < 10)
+(1 row)
+
+select '$ ? (@.a < .1e+1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < -.1e+1)'::jsonpath;
+    jsonpath    
+----------------
+ $?(@."a" < -1)
+(1 row)
+
+select '$ ? (@.a < +.1e+1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < 0.1e+1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < -0.1e+1)'::jsonpath;
+    jsonpath    
+----------------
+ $?(@."a" < -1)
+(1 row)
+
+select '$ ? (@.a < +0.1e+1)'::jsonpath;
+   jsonpath    
+---------------
+ $?(@."a" < 1)
+(1 row)
+
+select '$ ? (@.a < 10.1e+1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < 101)
+(1 row)
+
+select '$ ? (@.a < -10.1e+1)'::jsonpath;
+     jsonpath     
+------------------
+ $?(@."a" < -101)
+(1 row)
+
+select '$ ? (@.a < +10.1e+1)'::jsonpath;
+    jsonpath     
+-----------------
+ $?(@."a" < 101)
 (1 row)
 

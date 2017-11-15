@@ -919,12 +919,6 @@ select jsonb 'null' @* '"123".type()';
  "string"
 (1 row)
 
-select jsonb 'null' @* 'aaa.type()';
- ?column? 
-----------
- "string"
-(1 row)
-
 select jsonb '{"a": 2}' @* '($.a - 5).abs() + 10';
  ?column? 
 ----------
