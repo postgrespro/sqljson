@@ -545,6 +545,8 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 		case T_CaseTestExpr:
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
+		case T_JsonExpr:	/* Context item and PASSING arguments are already
+							 * marked with collations in parse_expr.c. */
 
 			/*
 			 * General case for childless expression nodes.  These should

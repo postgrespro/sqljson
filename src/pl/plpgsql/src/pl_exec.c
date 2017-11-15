@@ -6704,6 +6704,58 @@ exec_simple_check_node(Node *node)
 				return TRUE;
 			}
 
+		case T_JsonExpr:
+			{
+				JsonExpr    *expr = (JsonExpr *) node;
+
+				if (!exec_simple_check_node(expr->raw_expr))
+					return FALSE;
+				if (!exec_simple_check_node(expr->formatted_expr))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->result_coercion))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->passing.values))
+					return FALSE;
+				if (!exec_simple_check_node(expr->on_empty.default_expr))
+					return FALSE;
+				if (!exec_simple_check_node(expr->on_error.default_expr))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->coercions))
+					return FALSE;
+
+				return TRUE;
+			}
+
+		case T_JsonCoercion:
+			return exec_simple_check_node(((JsonCoercion *) node)->expr);
+
+		case T_JsonItemCoercions:
+			{
+				JsonItemCoercions *expr = (JsonItemCoercions *) node;
+
+				if (!exec_simple_check_node((Node *) expr->null))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->string))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->numeric))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->boolean))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->date))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->time))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->timetz))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->timestamp))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->timestamptz))
+					return FALSE;
+				if (!exec_simple_check_node((Node *) expr->composite))
+					return FALSE;
+
+				return TRUE;
+			}
 		default:
 			return FALSE;
 	}
