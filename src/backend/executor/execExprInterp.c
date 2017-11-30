@@ -59,6 +59,8 @@
 #include "postgres.h"
 
 #include "access/tuptoaster.h"
+#include "access/xact.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/sequence.h"
 #include "executor/execExpr.h"
@@ -76,6 +78,7 @@
 #include "utils/jsonb.h"
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
+#include "utils/resowner.h"
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
@@ -3992,18 +3995,63 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 
 	if (jexpr->on_error.btype == JSON_BEHAVIOR_ERROR)
 	{
-		/* No need to use PG_TRY/PG_CATCH. */
+		/* No need to use PG_TRY/PG_CATCH with subtransactions. */
 		res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item, isjsonb,
 							   op->resnull);
 	}
 	else
 	{
+		/*
+		 * We should catch exceptions of category ERRCODE_DATA_EXCEPTION and
+		 * execute corresponding ON ERROR behavior.
+		 */
+		char		volatility = op->d.jsonexpr.volatility;
+		bool		useSubTransaction = volatility == PROVOLATILE_VOLATILE;
+		bool		useSubResourceOwner = volatility == PROVOLATILE_STABLE;
 		MemoryContext oldcontext = CurrentMemoryContext;
+		ResourceOwner oldowner = CurrentResourceOwner;
+
+		if (useSubTransaction)
+		{
+			BeginInternalSubTransaction(NULL);
+			/* Want to execute expressions inside function's memory context */
+			MemoryContextSwitchTo(oldcontext);
+		}
+		else if (useSubResourceOwner)
+		{
+			CurrentResourceOwner = ResourceOwnerCreate(CurrentResourceOwner,
+													   "JsonExpr");
+		}
 
 		PG_TRY();
 		{
-			res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item,
+			/*
+			 * We need to execute expressions with a new econtext
+			 * that belongs to the current subtransaction; if we try to use
+			 * the outer econtext then ExprContext shutdown callbacks will be
+			 * called at the wrong times.
+			 */
+			ExprContext *newecontext = useSubTransaction ?
+				CreateExprContext(econtext->ecxt_estate) : econtext;
+
+			res = ExecEvalJsonExpr(state, op, newecontext, jexpr, path, item,
 								   isjsonb, op->resnull);
+
+			if (useSubTransaction)
+			{
+				/* Commit the inner transaction, return to outer xact context */
+				ReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldcontext);
+				CurrentResourceOwner = oldowner;
+			}
+			else if (useSubResourceOwner)
+			{
+				/* buffer pins are released here: */
+				ResourceOwnerRelease(CurrentResourceOwner,
+									 RESOURCE_RELEASE_BEFORE_LOCKS,
+									 false, true);
+				CurrentResourceOwner = oldowner;
+			}
 		}
 		PG_CATCH();
 		{
@@ -4013,6 +4061,22 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 			MemoryContextSwitchTo(oldcontext);
 			edata = CopyErrorData();
 			FlushErrorState();
+
+			if (useSubTransaction)
+			{
+				/* Abort the inner transaction */
+				RollbackAndReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldcontext);
+				CurrentResourceOwner = oldowner;
+			}
+			else if (useSubResourceOwner)
+			{
+				/* buffer pins are released here: */
+				ResourceOwnerRelease(CurrentResourceOwner,
+									 RESOURCE_RELEASE_BEFORE_LOCKS,
+									 false, true);
+				CurrentResourceOwner = oldowner;
+			}
 
 			if (ERRCODE_TO_CATEGORY(edata->sqlerrcode) != ERRCODE_DATA_EXCEPTION)
 				ReThrowError(edata);

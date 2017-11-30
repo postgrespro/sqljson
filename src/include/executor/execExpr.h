@@ -567,6 +567,7 @@ typedef struct ExprEvalStep
 		struct
 		{
 			JsonExpr   *jsexpr;			/* original expression node */
+			char		volatility;		/* volatility of subexpressions */
 
 			struct
 			{

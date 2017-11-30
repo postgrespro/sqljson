@@ -2123,6 +2123,9 @@ ExecInitExprRec(Expr *node, PlanState *parent, ExprState *state,
 					}
 				}
 
+				if (jexpr->on_error.btype != JSON_BEHAVIOR_ERROR)
+					scratch.d.jsonexpr.volatility = getJsonExprVolatility(jexpr);
+
 				ExprEvalPushStep(state, &scratch);
 			}
 			break;
