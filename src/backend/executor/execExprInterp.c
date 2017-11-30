@@ -57,6 +57,8 @@
 #include "postgres.h"
 
 #include "access/heaptoast.h"
+#include "access/xact.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/sequence.h"
 #include "executor/execExpr.h"
@@ -79,6 +81,7 @@
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/resowner.h"
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
@@ -4816,6 +4819,12 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 	return res;
 }
 
+bool
+ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr)
+{
+	return jsexpr->on_error->btype != JSON_BEHAVIOR_ERROR;
+}
+
 /* ----------------------------------------------------------------
  *		ExecEvalJson
  * ----------------------------------------------------------------
@@ -4855,7 +4864,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 		var->evaluated = false;
 	}
 
-	if (jexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
+	if (!ExecEvalJsonNeedsSubTransaction(jexpr))
 	{
 		/* No need to use PG_TRY/PG_CATCH with subtransactions. */
 		res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item,
@@ -4863,12 +4872,26 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	}
 	else
 	{
+		/*
+		 * We should catch exceptions of category ERRCODE_DATA_EXCEPTION and
+		 * execute corresponding ON ERROR behavior.
+		 */
 		MemoryContext oldcontext = CurrentMemoryContext;
+		ResourceOwner oldowner = CurrentResourceOwner;
+
+		BeginInternalSubTransaction(NULL);
+		/* Want to execute expressions inside function's memory context */
+		MemoryContextSwitchTo(oldcontext);
 
 		PG_TRY();
 		{
 			res = ExecEvalJsonExpr(state, op, econtext, jexpr, path, item,
 								   op->resnull);
+
+			/* Commit the inner transaction, return to outer xact context */
+			ReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldcontext);
+			CurrentResourceOwner = oldowner;
 		}
 		PG_CATCH();
 		{
@@ -4878,6 +4901,11 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 			MemoryContextSwitchTo(oldcontext);
 			edata = CopyErrorData();
 			FlushErrorState();
+
+			/* Abort the inner transaction */
+			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldcontext);
+			CurrentResourceOwner = oldowner;
 
 			if (ERRCODE_TO_CATEGORY(edata->sqlerrcode) != ERRCODE_DATA_EXCEPTION)
 				ReThrowError(edata);
