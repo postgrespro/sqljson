@@ -273,3 +273,19 @@ SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a');
 SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
 -- Should fail (invalid path)
 SELECT JSON_QUERY(jsonb '{"a": 123}', 'error' || ' ' || 'error');
+
+-- Test parallel JSON_VALUE()
+CREATE TABLE test_parallel_jsonb_value AS
+SELECT i::text::jsonb AS js
+FROM generate_series(1, 1000000) i;
+
+-- Should be non-parallel due to subtransactions
+EXPLAIN (COSTS OFF)
+SELECT sum(JSON_VALUE(js, '$' RETURNING numeric)) FROM test_parallel_jsonb_value;
+SELECT sum(JSON_VALUE(js, '$' RETURNING numeric)) FROM test_parallel_jsonb_value;
+
+-- Should be parallel
+EXPLAIN (COSTS OFF)
+SELECT sum(JSON_VALUE(js, '$' RETURNING numeric ERROR ON ERROR)) FROM test_parallel_jsonb_value;
+SELECT sum(JSON_VALUE(js, '$' RETURNING numeric ERROR ON ERROR)) FROM test_parallel_jsonb_value;
+
