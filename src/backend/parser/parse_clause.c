@@ -1065,6 +1065,18 @@ transformRangeTableSample(ParseState *pstate, RangeTableSample *rts)
 	return tablesample;
 }
 
+static Node *
+makeStringConst(char *str, int location)
+{
+	A_Const *n = makeNode(A_Const);
+
+	n->val.type = T_String;
+	n->val.val.str = str;
+	n->location = location;
+
+	return (Node *)n;
+}
+
 /*
  * getRTEForSpecialRelationTypes
  *
@@ -1108,6 +1120,7 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 	JsonValueExpr *jvexpr = makeNode(JsonValueExpr);
 	JsonCommon *common = makeNode(JsonCommon);
 	JsonOutput *output = makeNode(JsonOutput);
+	JsonPathSpec pathspec;
 
 	jfexpr->op = jtc->coltype == JTC_REGULAR ? IS_JSON_VALUE : IS_JSON_QUERY;
 	jfexpr->common = common;
@@ -1128,7 +1141,7 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 	common->passing = passingArgs;
 
 	if (jtc->pathspec)
-		common->pathspec = jtc->pathspec;
+		pathspec = jtc->pathspec;
 	else
 	{
 		/* Construct default path as '$."column_name"' */
@@ -1139,8 +1152,10 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 		appendStringInfoString(&path, "$.");
 		escape_json(&path, jtc->name);
 
-		common->pathspec = path.data;
+		pathspec = path.data;
 	}
+
+	common->pathspec = makeStringConst(pathspec, -1);
 
 	jvexpr->expr = (Expr *) contextItemExpr;
 	jvexpr->format.type = JS_FORMAT_DEFAULT;
@@ -1642,6 +1657,7 @@ transformJsonTable(ParseState *pstate, JsonTable *jt)
 	JsonCommon *jscommon;
 	JsonTablePlan *plan = jt->plan;
 	char	   *rootPathName = jt->common->pathname;
+	char	   *rootPath;
 	bool		is_lateral;
 
 	cxt.table = jt;
@@ -1671,7 +1687,7 @@ transformJsonTable(ParseState *pstate, JsonTable *jt)
 	}
 
 	jscommon = copyObject(jt->common);
-	jscommon->pathspec = pstrdup("$");
+	jscommon->pathspec = makeStringConst(pstrdup("$"), -1);
 
 	jfe->op = IS_JSON_TABLE;
 	jfe->common = jscommon;
@@ -1695,10 +1711,19 @@ transformJsonTable(ParseState *pstate, JsonTable *jt)
 
 	cxt.contextItemTypid = exprType(tf->docexpr);
 
+	if (!IsA(jt->common->pathspec, A_Const) ||
+		castNode(A_Const, jt->common->pathspec)->val.type != T_String)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("only string constants supported in JSON_TABLE path specification"),
+				 parser_errposition(pstate,
+									exprLocation(jt->common->pathspec))));
+
+	rootPath = castNode(A_Const, jt->common->pathspec)->val.val.str;
+
 	tf->plan = (Node *) transformJsonTableColumns(pstate, &cxt, plan,
 												  jt->columns,
-												  jt->common->pathspec,
-												  &rootPathName,
+												  rootPath, &rootPathName,
 												  jt->common->location);
 
 	tf->ordinalitycol = -1;		/* undefine ordinality column number */

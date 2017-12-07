@@ -1899,6 +1899,11 @@ SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
 SELECT JSON_QUERY(jsonb '{"a": 123}', 'error' || ' ' || 'error');
 ERROR:  bad jsonpath representation
 DETAIL:  syntax error, unexpected IDENT_P at or near " "
+-- Should fail (not supported)
+SELECT * FROM JSON_TABLE(jsonb '{"a": 123}', '$' || '.' || 'a' COLUMNS (foo int));
+ERROR:  only string constants supported in JSON_TABLE path specification
+LINE 1: SELECT * FROM JSON_TABLE(jsonb '{"a": 123}', '$' || '.' || '...
+                                                     ^
 -- Test parallel JSON_VALUE()
 CREATE TABLE test_parallel_jsonb_value AS
 SELECT i::text::jsonb AS js
