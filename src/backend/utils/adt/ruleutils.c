@@ -10360,7 +10360,8 @@ get_json_table_columns(TableFunc *tf, JsonTableParentNode *node,
 								   " FORMAT JSONB" : " FORMAT JSON");
 
 		appendStringInfoString(buf, " PATH ");
-		get_const_expr(colexpr->path_spec, context, -1);
+
+		get_json_path_spec(colexpr->path_spec, context, showimplicit);
 
 		if (colexpr->wrapper == JSW_CONDITIONAL)
 			appendStringInfo(buf, " WITH CONDITIONAL WRAPPER");
