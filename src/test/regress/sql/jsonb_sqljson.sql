@@ -835,3 +835,5 @@ SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a');
 SELECT JSON_QUERY(jsonb '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
 -- Should fail (invalid path)
 SELECT JSON_QUERY(jsonb '{"a": 123}', 'error' || ' ' || 'error');
+-- Should fail (not supported)
+SELECT * FROM JSON_TABLE(jsonb '{"a": 123}', '$' || '.' || 'a' COLUMNS (foo int));
