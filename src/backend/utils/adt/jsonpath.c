@@ -252,9 +252,10 @@ jsonPathToCstring(StringInfo out, JsonPath *in, int estimated_len)
 /*****************************INPUT/OUTPUT************************************/
 
 static inline int32
-appendJsonPathItemHeader(StringInfo buf, JsonPathItemType type)
+appendJsonPathItemHeader(StringInfo buf, JsonPathItemType type, char flags)
 {
 	appendStringInfoChar(buf, (char) type);
+	appendStringInfoChar(buf, (char) flags);
 
 	/*
 	 * We align buffer to int32 because a series of int32 values often goes
@@ -283,7 +284,7 @@ copyJsonPathItem(JsonPathContext *cxt, JsonPathItem *item, int level,
 
 	check_stack_depth();
 
-	nextOffs = appendJsonPathItemHeader(buf, item->type);
+	nextOffs = appendJsonPathItemHeader(buf, item->type, item->flags);
 
 	switch (item->type)
 	{
@@ -592,7 +593,7 @@ flattenJsonPathParseItem(JsonPathContext *cxt, JsonPathParseItem *item,
 		pos = copyJsonPath(cxt, item->value.binary, nestingLevel, &last, &next);
 	else
 	{
-		next = appendJsonPathItemHeader(buf, item->type);
+		next = appendJsonPathItemHeader(buf, item->type, item->flags);
 		last = pos;
 	}
 
@@ -1319,6 +1320,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 	v->base = base + pos;
 
 	read_byte(v->type, base, pos);
+	read_byte(v->flags, base, pos);
 	pos = INTALIGN((uintptr_t) (base + pos)) - (uintptr_t) base;
 	read_int32(v->nextPos, base, pos);
 
@@ -1602,6 +1604,7 @@ jspInitParseItem(JsonPathParseItem *item, JsonPathItemType type,
 		item = palloc(sizeof(*item));
 
 	item->type = type;
+	item->flags = 0;
 	item->next = next;
 
 	return item;

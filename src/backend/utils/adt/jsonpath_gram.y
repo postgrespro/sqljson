@@ -354,6 +354,7 @@ makeItemType(JsonPathItemType type)
 	CHECK_FOR_INTERRUPTS();
 
 	v->type = type;
+	v->flags = 0;
 	v->next = NULL;
 
 	return v;
