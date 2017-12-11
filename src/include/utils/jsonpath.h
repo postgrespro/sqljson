@@ -26,6 +26,7 @@ typedef struct
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	uint32		header;			/* version and flags (see below) */
+	uint32		ext_items_count; /* number of items that need cache for external execution */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } JsonPath;
 
