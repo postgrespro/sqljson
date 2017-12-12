@@ -372,7 +372,7 @@ comp_op:
 	;
 
 delimited_predicate:
-	'(' predicate ')'					{ $$ = $2; }
+	'(' predicate ')'				{ $$ = $2; }
 	| EXISTS_P '(' expr ')'			{ $$ = makeItemUnary(jpiExists, $3); }
 	;
 
