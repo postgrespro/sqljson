@@ -506,7 +506,6 @@ key_name:
 	| NULL_P
 	| TRUE_P
 	| FALSE_P
-	| INT_P
 	| IS_P
 	| UNKNOWN_P
 	| EXISTS_P
