@@ -594,5 +594,10 @@
   typname => 'anyrange', typlen => '-1', typbyval => 'f', typtype => 'p',
   typcategory => 'P', typinput => 'anyrange_in', typoutput => 'anyrange_out',
   typreceive => '-', typsend => '-', typalign => 'd', typstorage => 'x' },
+{ oid => '6103',
+  typname => 'jsonpath_fcxt', typlen => 'SIZEOF_POINTER', typbyval => 't',
+  typtype => 'p', typcategory => 'P', typinput => 'jsonpath_fcxt_in',
+  typoutput => 'jsonpath_fcxt_out', typreceive => '-', typsend => '-',
+  typalign => 'ALIGNOF_POINTER' },
 
 ]

@@ -1309,3 +1309,115 @@ select jsonpath '$[*] ? (@ > $min && @ <= $max)' @ jsonb '{"min": -1.23}' @ json
  $[*]?(@ > -1.23 && @ <= 5.0)
 (1 row)
 
+-- extension: user-defined item methods and functions with lambda expressions
+select jsonpath 'foo()';
+ jsonpath 
+----------
+ "foo"()
+(1 row)
+
+select jsonpath '$.foo()';
+ jsonpath  
+-----------
+ $."foo"()
+(1 row)
+
+select jsonpath 'foo($[*])';
+  jsonpath   
+-------------
+ "foo"($[*])
+(1 row)
+
+select jsonpath '$.foo("bar")';
+    jsonpath    
+----------------
+ $."foo"("bar")
+(1 row)
+
+select jsonpath 'foo($[*], "bar")';
+      jsonpath      
+--------------------
+ "foo"($[*], "bar")
+(1 row)
+
+select jsonpath '$.foo("bar", 123 + 456, "baz".type())';
+                jsonpath                 
+-----------------------------------------
+ $."foo"("bar", 123 + 456, "baz".type())
+(1 row)
+
+select jsonpath 'foo($[*], "bar", 123 + 456, "baz".type())';
+                  jsonpath                   
+---------------------------------------------
+ "foo"($[*], "bar", 123 + 456, "baz".type())
+(1 row)
+
+select jsonpath '$.foo(() => 1)';
+     jsonpath     
+------------------
+ $."foo"(() => 1)
+(1 row)
+
+select jsonpath 'foo($[*], () => 1)';
+       jsonpath       
+----------------------
+ "foo"($[*], () => 1)
+(1 row)
+
+select jsonpath '$.foo((x) => x + 5)';
+       jsonpath        
+-----------------------
+ $."foo"((x) => x + 5)
+(1 row)
+
+select jsonpath 'foo($[*], (x) => x + 5)';
+         jsonpath          
+---------------------------
+ "foo"($[*], (x) => x + 5)
+(1 row)
+
+select jsonpath '$.foo(x => x + 5)';
+       jsonpath        
+-----------------------
+ $."foo"((x) => x + 5)
+(1 row)
+
+select jsonpath 'foo($[*], x => x + 5)';
+         jsonpath          
+---------------------------
+ "foo"($[*], (x) => x + 5)
+(1 row)
+
+select jsonpath '$.foo((x, y) => x + 5 * y)';
+           jsonpath           
+------------------------------
+ $."foo"((x, y) => x + 5 * y)
+(1 row)
+
+select jsonpath 'foo($[*], (x, y) => x + 5 * y)';
+             jsonpath             
+----------------------------------
+ "foo"($[*], (x, y) => x + 5 * y)
+(1 row)
+
+select jsonpath '$.foo((x, y) => x + 5 * y, z => z.type(), () => $.bar(x => x + 1)).baz()';
+                                      jsonpath                                      
+------------------------------------------------------------------------------------
+ $."foo"((x, y) => x + 5 * y, (z) => z.type(), () => $."bar"((x) => x + 1))."baz"()
+(1 row)
+
+select jsonpath 'foo($[*], (x, y) => x + 5 * y, z => z.type(), () => $.bar(x => x + 1)).baz()';
+                                        jsonpath                                        
+----------------------------------------------------------------------------------------
+ "foo"($[*], (x, y) => x + 5 * y, (z) => z.type(), () => $."bar"((x) => x + 1))."baz"()
+(1 row)
+
+-- should fail
+select jsonpath '$.foo((x, y.a) => x + 5)';
+ERROR:  lambda arguments must be identifiers at or near ")" of jsonpath input
+LINE 1: select jsonpath '$.foo((x, y.a) => x + 5)';
+                        ^
+select jsonpath '$.foo((x, y + 1, z) => x + y)';
+ERROR:  lambda arguments must be identifiers at or near ")" of jsonpath input
+LINE 1: select jsonpath '$.foo((x, y + 1, z) => x + y)';
+                        ^

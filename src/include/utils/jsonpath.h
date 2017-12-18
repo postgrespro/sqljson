@@ -100,6 +100,8 @@ typedef enum JsonPathItemType
 	jpiObjectField,				/* element of object constructor: 'key : value' */
 	jpiLambda,					/* lambda expression: 'arg => expr' or '(arg,...) => expr' */
 	jpiArgument,				/* lambda argument */
+	jpiMethod,					/* user item method */
+	jpiFunction,				/* user function */
 
 	jpiBinary = 0xFF			/* for jsonpath operators implementation only */
 } JsonPathItemType;
@@ -220,6 +222,16 @@ typedef struct JsonPathItem
 			int32		nparams;
 			int32		expr;
 		}			lambda;
+
+		struct
+		{
+			int32		id;
+			int32		item;
+			char	   *name;
+			int32		namelen;
+			int32	   *args;
+			int32		nargs;
+		}			func;
 	}			content;
 } JsonPathItem;
 
@@ -243,6 +255,9 @@ extern void jspGetObjectField(JsonPathItem *v, int i,
 extern JsonPathItem *jspGetLambdaParam(JsonPathItem *func, int index,
 				  JsonPathItem *arg);
 extern JsonPathItem *jspGetLambdaExpr(JsonPathItem *lambda, JsonPathItem *expr);
+extern JsonPathItem *jspGetFunctionArg(JsonPathItem *func, int index,
+				  JsonPathItem *arg);
+extern JsonPathItem *jspGetMethodItem(JsonPathItem *method, JsonPathItem *arg);
 
 extern const char *jspOperationName(JsonPathItemType type);
 
@@ -315,6 +330,12 @@ struct JsonPathParseItem
 			List   *params;
 			JsonPathParseItem *expr;
 		} lambda;
+
+		struct {
+			List   *args;
+			char   *name;
+			int32	namelen;
+		} func;
 
 		/* scalars */
 		Numeric numeric;
@@ -556,6 +577,18 @@ typedef struct JsonValueListIterator
 {
 	JsonItem   *next;
 } JsonValueListIterator;
+
+typedef struct JsonPathFuncContext
+{
+	JsonPathExecContext *cxt;
+	JsonValueList  *result;
+	const char	   *funcname;
+	JsonItem	   *jb;
+	JsonItem	   *item;
+	JsonPathItem   *args;
+	void		  **argscache;
+	int				nargs;
+} JsonPathFuncContext;
 
 
 extern JsonItem *JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi);

@@ -576,6 +576,42 @@ copyJsonPathItem(JsonPathContext *cxt, JsonPathItem *item, int level,
 			}
 			break;
 
+		case jpiMethod:
+		case jpiFunction:
+			{
+				int32		nargs = item->content.func.nargs;
+				int			offset;
+				int			i;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) &cxt->id, sizeof(cxt->id));
+				++cxt->id;
+
+				appendBinaryStringInfo(buf, (char *) &nargs, sizeof(nargs));
+				offset = buf->len;
+				appendStringInfoSpaces(buf, sizeof(int32) * nargs);
+
+				appendBinaryStringInfo(buf, (char *) &item->content.func.namelen,
+									   sizeof(item->content.func.namelen));
+				appendBinaryStringInfo(buf, item->content.func.name,
+									   item->content.func.namelen);
+				appendStringInfoChar(buf, '\0');
+
+				for (i = 0; i < nargs; i++)
+				{
+					JsonPathItem arg;
+					int32		argpos;
+
+					jspGetFunctionArg(item, i, &arg);
+
+					argpos = copyJsonPathItem(cxt, &arg, level, NULL, NULL);
+
+					*(int32 *) &buf->data[offset] = argpos - pos;
+					offset += sizeof(int32);
+				}
+			}
+			break;
+
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -766,6 +802,39 @@ flattenJsonPathParseItem(JsonPathContext *cxt, JsonPathParseItem *item,
 												   insideArraySubscript);
 				*(int32 *) &buf->data[offset] = elempos - pos;
 				offset += sizeof(int32);
+			}
+			break;
+		case jpiMethod:
+		case jpiFunction:
+			{
+				int32		nargs = list_length(item->value.func.args);
+				ListCell   *lc;
+				int			offset;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) &cxt->id, sizeof(cxt->id));
+				++cxt->id;
+
+				appendBinaryStringInfo(buf, (char *) &nargs, sizeof(nargs));
+				offset = buf->len;
+				appendStringInfoSpaces(buf, sizeof(int32) * nargs);
+
+				appendBinaryStringInfo(buf, (char *) &item->value.func.namelen,
+									   sizeof(item->value.func.namelen));
+				appendBinaryStringInfo(buf, item->value.func.name,
+									   item->value.func.namelen);
+				appendStringInfoChar(buf, '\0');
+
+				foreach(lc, item->value.func.args)
+				{
+					int32		argpos =
+						flattenJsonPathParseItem(cxt, lfirst(lc),
+												 nestingLevel + 1,
+												 insideArraySubscript);
+
+					*(int32 *) &buf->data[offset] = argpos - pos;
+					offset += sizeof(int32);
+				}
 			}
 			break;
 		case jpiNull:
@@ -1278,6 +1347,31 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			if (printBracketes || jspHasNext(v))
 				appendStringInfoChar(buf, ')');
 			break;
+		case jpiMethod:
+		case jpiFunction:
+			if (v->type == jpiMethod)
+			{
+				jspGetMethodItem(v, &elem);
+				printJsonPathItem(buf, &elem, false,
+								  operationPriority(elem.type) <=
+								  operationPriority(v->type));
+				appendStringInfoChar(buf, '.');
+			}
+
+			escape_json(buf, v->content.func.name);
+			appendStringInfoChar(buf, '(');
+
+			for (i = v->type == jpiMethod ? 1 : 0; i < v->content.func.nargs; i++)
+			{
+				if (i > (v->type == jpiMethod ? 1 : 0))
+					appendBinaryStringInfo(buf, ", ", 2);
+
+				jspGetFunctionArg(v, i, &elem);
+				printJsonPathItem(buf, &elem, false, elem.type == jpiSequence);
+			}
+
+			appendStringInfoChar(buf, ')');
+			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", v->type);
 	}
@@ -1371,11 +1465,13 @@ operationPriority(JsonPathItemType op)
 		case jpiDiv:
 		case jpiMod:
 			return 4;
+		case jpiMethod:
+			return 5;
 		case jpiPlus:
 		case jpiMinus:
-			return 5;
-		default:
 			return 6;
+		default:
+			return 7;
 	}
 }
 
@@ -1483,6 +1579,15 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 						 v->content.lambda.nparams);
 			read_int32(v->content.lambda.expr, base, pos);
 			break;
+		case jpiMethod:
+		case jpiFunction:
+			read_int32(v->content.func.id, base, pos);
+			read_int32(v->content.func.nargs, base, pos);
+			read_int32_n(v->content.func.args, base, pos,
+						 v->content.func.nargs);
+			read_int32(v->content.func.namelen, base, pos);
+			v->content.func.name = base + pos;
+			break;
 		case jpiNot:
 		case jpiExists:
 		case jpiIsUnknown:
@@ -1581,7 +1686,9 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiArray ||
 			   v->type == jpiObject ||
 			   v->type == jpiLambda ||
-			   v->type == jpiArgument);
+			   v->type == jpiArgument ||
+			   v->type == jpiFunction ||
+			   v->type == jpiMethod);
 
 		if (a)
 			jspInitByBuffer(a, v->base, v->nextPos);
@@ -1715,6 +1822,24 @@ jspGetLambdaExpr(JsonPathItem *lambda, JsonPathItem *expr)
 	jspInitByBuffer(expr, lambda->base, lambda->content.lambda.expr);
 
 	return expr;
+}
+
+JsonPathItem *
+jspGetFunctionArg(JsonPathItem *func, int index, JsonPathItem *arg)
+{
+	Assert(func->type == jpiMethod || func->type == jpiFunction);
+	Assert(index < func->content.func.nargs);
+
+	jspInitByBuffer(arg, func->base, func->content.func.args[index]);
+
+	return arg;
+}
+
+JsonPathItem *
+jspGetMethodItem(JsonPathItem *method, JsonPathItem *arg)
+{
+	Assert(method->type == jpiMethod);
+	return jspGetFunctionArg(method, 0, arg);
 }
 
 static void

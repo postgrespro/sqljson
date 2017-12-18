@@ -254,3 +254,25 @@ select jsonpath '$.a + $a.double()' @ jsonb '{"a": "abc"}';
 select jsonpath '$.a + $a.x.double()' @ jsonb '{"a": {"x": -12.34}}';
 select jsonpath '$[*] ? (@ > $min && @ <= $max)' @ jsonb '{"min": -1.23, "max": 5.0}';
 select jsonpath '$[*] ? (@ > $min && @ <= $max)' @ jsonb '{"min": -1.23}' @ jsonb '{"max": 5.0}';
+
+-- extension: user-defined item methods and functions with lambda expressions
+select jsonpath 'foo()';
+select jsonpath '$.foo()';
+select jsonpath 'foo($[*])';
+select jsonpath '$.foo("bar")';
+select jsonpath 'foo($[*], "bar")';
+select jsonpath '$.foo("bar", 123 + 456, "baz".type())';
+select jsonpath 'foo($[*], "bar", 123 + 456, "baz".type())';
+select jsonpath '$.foo(() => 1)';
+select jsonpath 'foo($[*], () => 1)';
+select jsonpath '$.foo((x) => x + 5)';
+select jsonpath 'foo($[*], (x) => x + 5)';
+select jsonpath '$.foo(x => x + 5)';
+select jsonpath 'foo($[*], x => x + 5)';
+select jsonpath '$.foo((x, y) => x + 5 * y)';
+select jsonpath 'foo($[*], (x, y) => x + 5 * y)';
+select jsonpath '$.foo((x, y) => x + 5 * y, z => z.type(), () => $.bar(x => x + 1)).baz()';
+select jsonpath 'foo($[*], (x, y) => x + 5 * y, z => z.type(), () => $.bar(x => x + 1)).baz()';
+-- should fail
+select jsonpath '$.foo((x, y.a) => x + 5)';
+select jsonpath '$.foo((x, y + 1, z) => x + y)';

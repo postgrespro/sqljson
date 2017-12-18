@@ -51,6 +51,8 @@ static JsonPathParseItem *makeItemBinary(JsonPathItemType type,
 										 JsonPathParseItem *ra);
 static JsonPathParseItem *makeItemUnary(JsonPathItemType type,
 										JsonPathParseItem *a);
+static JsonPathParseItem *makeItemFunc(JsonPathString *name, List *args,
+									   bool method);
 static JsonPathParseItem *makeItemList(List *list);
 static JsonPathParseItem *makeIndexArray(List *list);
 static JsonPathParseItem *makeAny(int first, int last);
@@ -120,7 +122,7 @@ static List *setItemsOutPathMode(List *items);
 
 %type	<boolean>	mode
 
-%type	<str>		key_name
+%type	<str>		key_name method_name builtin_method_name function_name
 
 %type	<integer>	any_level
 
@@ -243,6 +245,8 @@ path_primary:
 	| '[' ']'						{ $$ = makeItemUnary(jpiArray, NULL); }
 	| '[' expr_or_seq ']'			{ $$ = makeItemUnary(jpiArray, $2); }
 	| '{' object_field_list '}'		{ $$ = makeItemObject($2); }
+	| function_name '(' lambda_or_expr_list ')'
+									{ $$ = makeItemFunc(&$1, $3, false); }
 	;
 
 object_field_list:
@@ -334,6 +338,8 @@ accessor_op:
 	| '.' DATETIME_P '(' datetime_template ',' expr ')'
 									{ $$ = makeItemBinary(jpiDatetime, $4, $6); }
 	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
+	| '.' method_name '(' lambda_or_expr_list ')'
+									{ $$ = makeItemFunc(&$2, $4, true); }
 	;
 
 datetime_template:
@@ -349,7 +355,24 @@ key:
 	key_name						{ $$ = makeItemKey(&$1); }
 	;
 
-key_name:
+function_name:
+	IDENT_P
+	| STRING_P
+/*	| TO_P */
+	| NULL_P
+	| TRUE_P
+	| FALSE_P
+	| IS_P
+	| UNKNOWN_P
+	| LAST_P
+	| STARTS_P
+	| WITH_P
+	| LIKE_REGEX_P
+	| FLAG_P
+	| builtin_method_name
+	;
+
+method_name:
 	IDENT_P
 	| STRING_P
 	| TO_P
@@ -361,7 +384,15 @@ key_name:
 	| EXISTS_P
 	| STRICT_P
 	| LAX_P
-	| ABS_P
+	| LAST_P
+	| STARTS_P
+	| WITH_P
+	| LIKE_REGEX_P
+	| FLAG_P
+	;
+
+builtin_method_name:
+	ABS_P
 	| SIZE_P
 	| TYPE_P
 	| FLOOR_P
@@ -369,11 +400,11 @@ key_name:
 	| CEILING_P
 	| DATETIME_P
 	| KEYVALUE_P
-	| LAST_P
-	| STARTS_P
-	| WITH_P
-	| LIKE_REGEX_P
-	| FLAG_P
+	;
+
+key_name:
+	method_name
+	| builtin_method_name
 	;
 
 method:
@@ -534,6 +565,18 @@ makeItemUnary(JsonPathItemType type, JsonPathParseItem *a)
 }
 
 static JsonPathParseItem *
+makeItemFunc(JsonPathString *name, List *args, bool method)
+{
+	JsonPathParseItem *v = makeItemType(method ? jpiMethod : jpiFunction);
+
+	v->value.func.name = name->val;
+	v->value.func.namelen = name->len;
+	v->value.func.args = args;
+
+	return v;
+}
+
+static JsonPathParseItem *
 makeItemList(List *list)
 {
 	JsonPathParseItem  *head,
@@ -553,8 +596,17 @@ makeItemList(List *list)
 	{
 		JsonPathParseItem *c = (JsonPathParseItem *) lfirst(cell);
 
-		end->next = c;
-		end = c;
+		if (c->type == jpiMethod)
+		{
+			c->value.func.args = lcons(head, c->value.func.args);
+			head = c;
+			end = c;
+		}
+		else
+		{
+			end->next = c;
+			end = c;
+		}
 	}
 
 	return head;

@@ -66,6 +66,7 @@
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "parser/parse_func.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -296,6 +297,9 @@ static int getJsonPathVariableFromJsonx(void *varsJsonb, bool isJsonb,
 static JsonPathBool executeComparison(JsonPathItem *cmp, JsonItem *lv,
 									  JsonItem *rv, void *p);
 static int	compareNumeric(Numeric a, Numeric b);
+static JsonPathExecResult executeFunction(JsonPathExecContext *cxt,
+				JsonPathItem *jsp, JsonItem *js,
+				JsonValueList *result /*, bool needBool */);
 
 static void JsonItemInitNull(JsonItem *item);
 static void JsonItemInitBool(JsonItem *item, bool val);
@@ -839,6 +843,7 @@ executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
 
 	cxt.vars = vars;
 	cxt.getVar = getVar;
+	cxt.args = NULL;
 	cxt.laxMode = (path->header & JSONPATH_LAX) != 0;
 	cxt.ignoreStructuralErrors = cxt.laxMode;
 	cxt.root = &jsi;
@@ -1912,6 +1917,11 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			elog(ERROR, "jsonpath lambda expression cannot be executed directly");
 			break;
 
+		case jpiMethod:
+		case jpiFunction:
+			res = executeFunction(cxt, jsp, jb, found);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
@@ -2050,6 +2060,130 @@ executeItemOptUnwrapResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	}
 
 	return executeItem(cxt, jsp, jb, found);
+}
+
+typedef struct JsonPathFuncCache
+{
+	FmgrInfo	finfo;
+	JsonPathItem *args;
+	void	  **argscache;
+} JsonPathFuncCache;
+
+static JsonPathFuncCache *
+prepareFunctionCache(JsonPathExecContext *cxt, JsonPathItem *jsp)
+{
+	MemoryContext oldcontext;
+	JsonPathFuncCache *cache = cxt->cache[jsp->content.func.id];
+	List	   *funcname = list_make1(makeString(jsp->content.func.name));
+	Oid			argtypes[] = {JSONPATH_FCXTOID};
+	Oid			funcid;
+	int32		i;
+
+	if (cache)
+		return cache;
+
+	funcid = LookupFuncName(funcname,
+							sizeof(argtypes) / sizeof(argtypes[0]), argtypes,
+							false);
+
+	if (get_func_rettype(funcid) != INT8OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("return type of jsonpath item function %s is not %s",
+						 NameListToString(funcname), format_type_be(INT8OID))));
+
+	oldcontext = MemoryContextSwitchTo(cxt->cache_mcxt);
+
+	cache = cxt->cache[jsp->content.func.id] = palloc0(sizeof(*cache));
+
+	fmgr_info(funcid, &cache->finfo);
+
+	cache->args = palloc(sizeof(*cache->args) * jsp->content.func.nargs);
+	cache->argscache = palloc0(sizeof(*cache->argscache) *
+							   jsp->content.func.nargs);
+
+	for (i = 0; i < jsp->content.func.nargs; i++)
+		jspGetFunctionArg(jsp, i, &cache->args[i]);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return cache;
+}
+
+static JsonPathExecResult
+executeFunction(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonItem *jb,
+				JsonValueList *result /*, bool needBool */)
+{
+	JsonPathFuncCache *cache = prepareFunctionCache(cxt, jsp);
+	JsonPathFuncContext fcxt;
+	JsonValueList tmpres = {0};
+	JsonValueListIterator tmpiter;
+	JsonPathExecResult res;
+	JsonItem   *jsi;
+
+	fcxt.cxt = cxt;
+	fcxt.funcname = jsp->content.func.name;
+	fcxt.jb = jb;
+	fcxt.result = jspHasNext(jsp) ? &tmpres : result;
+	fcxt.args = cache->args;
+	fcxt.argscache = cache->argscache;
+	fcxt.nargs = jsp->content.func.nargs;
+
+	if (jsp->type == jpiMethod)
+	{
+		JsonValueList items = {0};
+		JsonValueListIterator iter;
+
+		/* skip first item argument */
+		fcxt.args++;
+		fcxt.argscache++;
+		fcxt.nargs--;
+
+		res = executeItem(cxt, &cache->args[0], jb, &items);
+
+		if (jperIsError(res))
+			return res;
+
+		JsonValueListInitIterator(&items, &iter);
+
+		while ((jsi = JsonValueListNext(&items, &iter)))
+		{
+			fcxt.item = jsi;
+
+			res = (JsonPathExecResult)
+				DatumGetPointer(FunctionCall2(&cache->finfo,
+											  PointerGetDatum(&fcxt),
+											  PointerGetDatum(NULL)));
+			if (jperIsError(res))
+				return res;
+		}
+	}
+	else
+	{
+		fcxt.item = NULL;
+
+		res = (JsonPathExecResult)
+			DatumGetPointer(FunctionCall2(&cache->finfo,
+										  PointerGetDatum(&fcxt),
+										  PointerGetDatum(NULL)));
+		if (jperIsError(res))
+			return res;
+	}
+
+	if (!jspHasNext(jsp))
+		return res;
+
+	JsonValueListInitIterator(&tmpres, &tmpiter);
+
+	while ((jsi = JsonValueListNext(&tmpres, &tmpiter)))
+	{
+		res = executeNextItem(cxt, jsp, NULL, jsi, result, false /*, needBool FIXME */);
+
+		if (jperIsError(res))
+			return res;
+	}
+
+	return res;
 }
 
 /*

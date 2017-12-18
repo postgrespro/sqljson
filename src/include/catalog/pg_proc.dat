@@ -9466,6 +9466,15 @@
   proname => 'jsonpath_bind_jsonb', prorettype => 'jsonpath',
   proargtypes => 'jsonpath jsonb', prosrc => 'jsonpath_bind_jsonb' },
 
+# jsonpath_fcxt
+{ oid => '6122', descr => 'I/O',
+  proname => 'jsonpath_fcxt_in', proisstrict => 'f',
+  prorettype => 'jsonpath_fcxt', proargtypes => 'cstring',
+  prosrc => 'jsonpath_fcxt_in' },
+{ oid => '6123', descr => 'I/O',
+  proname => 'jsonpath_fcxt_out', prorettype => 'cstring',
+  proargtypes => 'jsonpath_fcxt', prosrc => 'jsonpath_fcxt_out' },
+
 # txid
 { oid => '2939', descr => 'I/O',
   proname => 'txid_snapshot_in', prorettype => 'txid_snapshot',
