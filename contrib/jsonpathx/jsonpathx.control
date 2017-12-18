@@ -1,0 +1,5 @@
+# jsonpathx extension
+comment = 'extended JSON path item methods'
+default_version = '1.0'
+module_pathname = '$libdir/jsonpathx'
+relocatable = true

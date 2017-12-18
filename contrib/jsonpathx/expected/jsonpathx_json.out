@@ -1,0 +1,439 @@
+CREATE EXTENSION jsonpathx;
+-- map item method
+select json_path_query('1', 'strict $.map(x => x + 10)');
+ERROR:  SQL/JSON array not found
+DETAIL:  jsonpath .map() is applied to not an array
+select json_path_query('1', 'lax $.map(x => x + 10)');
+ json_path_query 
+-----------------
+ 11
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.map(x => x + 10)');
+ json_path_query 
+-----------------
+ [11, 12, 13]
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.map(x => x + 10)[*]');
+ json_path_query 
+-----------------
+ 11
+ 12
+ 13
+(3 rows)
+
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '$.map(a => a.map(x => x + 10))');
+            json_path_query             
+----------------------------------------
+ [[11, 12], [13, 14, 15], [], [16, 17]]
+(1 row)
+
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '$.flatmap(a => a.map(a => a + 10))');
+       json_path_query        
+------------------------------
+ [11, 12, 13, 14, 15, 16, 17]
+(1 row)
+
+-- map function
+select json_path_query('1', 'strict map($, x => x + 10)');
+ json_path_query 
+-----------------
+ 11
+(1 row)
+
+select json_path_query('1', 'lax map($, x => x + 10)');
+ json_path_query 
+-----------------
+ 11
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'map($[*], x => x + 10)');
+ json_path_query 
+-----------------
+ 11
+ 12
+ 13
+(3 rows)
+
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', 'map($[*], x => [map(x[*], x => x + 10)])');
+ json_path_query 
+-----------------
+ [11, 12]
+ [13, 14, 15]
+ []
+ [16, 17]
+(4 rows)
+
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', 'flatmap($[*], a => map(a[*], x => x + 10))');
+ json_path_query 
+-----------------
+ 11
+ 12
+ 13
+ 14
+ 15
+ 16
+ 17
+(7 rows)
+
+-- reduce/fold item methods
+select json_path_query('1', 'strict $.reduce((x, y) => x + y)');
+ERROR:  SQL/JSON array not found
+DETAIL:  jsonpath .reduce() is applied to not an array
+select json_path_query('1', 'lax $.reduce((x, y) => x + y)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('1', 'strict $.fold((x, y) => x + y, 10)');
+ERROR:  SQL/JSON array not found
+DETAIL:  jsonpath .fold() is applied to not an array
+select json_path_query('1', 'lax $.fold((x, y) => x + y, 10)');
+ json_path_query 
+-----------------
+ 11
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.reduce((x, y) => x + y)');
+ json_path_query 
+-----------------
+ 6
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.fold((x, y) => x + y, 100)');
+ json_path_query 
+-----------------
+ 106
+(1 row)
+
+select json_path_query('[]', '$.reduce((x, y) => x + y)');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('[]', '$.fold((x, y) => x + y, 100)');
+ json_path_query 
+-----------------
+ 100
+(1 row)
+
+select json_path_query('[1]', '$.reduce((x, y) => x + y)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.foldl((x, y) => [x, y], [])');
+  json_path_query  
+-------------------
+ [[[[], 1], 2], 3]
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.foldr((x, y) => [y, x], [])');
+  json_path_query  
+-------------------
+ [[[[], 3], 2], 1]
+(1 row)
+
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '$.fold((x, y) => x + y.fold((a, b) => a + b, 100), 1000)');
+ json_path_query 
+-----------------
+ 1428
+(1 row)
+
+-- reduce/fold functions
+select json_path_query('1', 'strict reduce($, (x, y) => x + y)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('1', 'lax reduce($, (x, y) => x + y)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('1', 'strict fold($, (x, y) => x + y, 10)');
+ json_path_query 
+-----------------
+ 11
+(1 row)
+
+select json_path_query('1', 'lax fold($, (x, y) => x + y, 10)');
+ json_path_query 
+-----------------
+ 11
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'reduce($[*], (x, y) => x + y)');
+ json_path_query 
+-----------------
+ 6
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'fold($[*], (x, y) => x + y, 100)');
+ json_path_query 
+-----------------
+ 106
+(1 row)
+
+select json_path_query('[]', 'reduce($[*], (x, y) => x + y)');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('[]', 'fold($[*], (x, y) => x + y, 100)');
+ json_path_query 
+-----------------
+ 100
+(1 row)
+
+select json_path_query('[1]', 'reduce($[*], (x, y) => x + y)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'foldl($[*], (x, y) => [x, y], [])');
+  json_path_query  
+-------------------
+ [[[[], 1], 2], 3]
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'foldr($[*], (x, y) => [y, x], [])');
+  json_path_query  
+-------------------
+ [[[[], 3], 2], 1]
+(1 row)
+
+select json_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', 'fold($[*], (x, y) => x + y.fold((a, b) => a + b, 100), 1000)');
+ json_path_query 
+-----------------
+ 1428
+(1 row)
+
+-- min/max item methods
+select json_path_query('1', 'strict $.min()');
+ERROR:  SQL/JSON array not found
+DETAIL:  jsonpath .min() is applied to not an array
+select json_path_query('1', 'lax $.min()');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[]', '$.min()');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('[]', '$.max()');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('[null]', '$.min()');
+ json_path_query 
+-----------------
+ null
+(1 row)
+
+select json_path_query('[null]', '$.max()');
+ json_path_query 
+-----------------
+ null
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.min()');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.max()');
+ json_path_query 
+-----------------
+ 3
+(1 row)
+
+select json_path_query('[2, 3, 5, null, 1, 4, null]', '$.min()');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[2, 3, 5, null, 1, 4, null]', '$.max()');
+ json_path_query 
+-----------------
+ 5
+(1 row)
+
+select json_path_query('["aa", null, "a", "bbb"]', '$.min()');
+ json_path_query 
+-----------------
+ "a"
+(1 row)
+
+select json_path_query('["aa", null, "a", "bbb"]', '$.max()');
+ json_path_query 
+-----------------
+ "bbb"
+(1 row)
+
+select json_path_query('[1, null, "2"]', '$.max()');
+ERROR:  SQL/JSON scalar required
+DETAIL:  boolean lambda expression in jsonpath .max() returned Unknown
+-- min/max functions
+select json_path_query('1', 'strict min($)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('1', 'lax min($)');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[]', 'min($[*])');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('[]', 'max($[*])');
+ json_path_query 
+-----------------
+(0 rows)
+
+select json_path_query('[null]', 'min($[*])');
+ json_path_query 
+-----------------
+ null
+(1 row)
+
+select json_path_query('[null]', 'max($[*])');
+ json_path_query 
+-----------------
+ null
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'min($[*])');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'max($[*])');
+ json_path_query 
+-----------------
+ 3
+(1 row)
+
+select json_path_query('[2, 3, 5, null, 1, 4, null]', 'min($[*])');
+ json_path_query 
+-----------------
+ 1
+(1 row)
+
+select json_path_query('[2, 3, 5, null, 1, 4, null]', 'max($[*])');
+ json_path_query 
+-----------------
+ 5
+(1 row)
+
+select json_path_query('["aa", null, "a", "bbb"]', 'min($[*])');
+ json_path_query 
+-----------------
+ "a"
+(1 row)
+
+select json_path_query('["aa", null, "a", "bbb"]', 'max($[*])');
+ json_path_query 
+-----------------
+ "bbb"
+(1 row)
+
+select json_path_query('[1, null, "2"]', 'max($[*])');
+ERROR:  SQL/JSON scalar required
+DETAIL:  boolean lambda expression in jsonpath .max() returned Unknown
+-- tests for simplified variable-based lambda syntax
+select json_path_query('[1, 2, 3]', '$.map($1 + 100)');
+ json_path_query 
+-----------------
+ [101, 102, 103]
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'map($[*], $1 + 100)');
+ json_path_query 
+-----------------
+ 101
+ 102
+ 103
+(3 rows)
+
+select json_path_query('[1, 2, 3]', '$.reduce($1 + $2)');
+ json_path_query 
+-----------------
+ 6
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'reduce($[*], $1 + $2)');
+ json_path_query 
+-----------------
+ 6
+(1 row)
+
+select json_path_query('[1, 2, 3]', '$.fold($1 + $2, 100)');
+ json_path_query 
+-----------------
+ 106
+(1 row)
+
+select json_path_query('[1, 2, 3]', 'fold($[*], $1 + $2, 100)');
+ json_path_query 
+-----------------
+ 106
+(1 row)
+
+-- more complex tests
+select json_path_query('[0,1,2,3,4,5,6,7,8,9]', '$.map((x,i,a) => {n: i, sum: reduce(a[0 to i], (x,y) => x + y)})[*]');
+   json_path_query   
+---------------------
+ {"n": 0, "sum": 0}
+ {"n": 1, "sum": 1}
+ {"n": 2, "sum": 3}
+ {"n": 3, "sum": 6}
+ {"n": 4, "sum": 10}
+ {"n": 5, "sum": 15}
+ {"n": 6, "sum": 21}
+ {"n": 7, "sum": 28}
+ {"n": 8, "sum": 36}
+ {"n": 9, "sum": 45}
+(10 rows)
+
+select json_path_query('[0,1,2,3,4,5,6,7,8,9]', '$.fold((x,y,i,a) => [x[*], {n:y, s: [a[0 to i]].reduce($1+$2)}], [])[*]');
+  json_path_query  
+-------------------
+ {"n": 0, "s": 0}
+ {"n": 1, "s": 1}
+ {"n": 2, "s": 3}
+ {"n": 3, "s": 6}
+ {"n": 4, "s": 10}
+ {"n": 5, "s": 15}
+ {"n": 6, "s": 21}
+ {"n": 7, "s": 28}
+ {"n": 8, "s": 36}
+ {"n": 9, "s": 45}
+(10 rows)
+
+select json_path_query('[0,1,2,3,4,5,6,7,8,9]', '$.fold((x,y) => [y,y,y].map((a) => a + y).reduce((x,y)=>x+y) + x * 100, 0)');
+  json_path_query  
+-------------------
+ 61218243036424854
+(1 row)
+
+DROP EXTENSION jsonpathx;
