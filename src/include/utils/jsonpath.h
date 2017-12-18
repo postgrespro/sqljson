@@ -415,6 +415,123 @@ typedef struct JsonItem
 #define JsonItemIsNumber(jsi)		(JsonItemIsNumeric(jsi) || \
 									 JsonItemIsDouble(jsi))
 
+typedef union Jsonx
+{
+	Jsonb		jb;
+	Json		js;
+} Jsonx;
+
+#define DatumGetJsonxP(datum, isJsonb) \
+	((isJsonb) ? (Jsonx *) DatumGetJsonbP(datum) : (Jsonx *) DatumGetJsonP(datum))
+
+typedef JsonbContainer JsonxContainer;
+
+typedef struct JsonxIterator
+{
+	bool		isJsonb;
+	union
+	{
+		JsonbIterator *jb;
+		JsonIterator *js;
+	}			it;
+} JsonxIterator;
+
+/*
+ * Represents "base object" and it's "id" for .keyvalue() evaluation.
+ */
+typedef struct JsonBaseObjectInfo
+{
+	JsonxContainer *jbc;
+	int			id;
+} JsonBaseObjectInfo;
+
+/*
+ * Special data structure representing stack of current items.  We use it
+ * instead of regular list in order to evade extra memory allocation.  These
+ * items are always allocated in local variables.
+ */
+typedef struct JsonItemStackEntry
+{
+	JsonBaseObjectInfo base;
+	JsonItem   *item;
+	struct JsonItemStackEntry *parent;
+} JsonItemStackEntry;
+
+typedef JsonItemStackEntry *JsonItemStack;
+
+typedef int (*JsonPathVarCallback) (void *vars, bool isJsonb,
+									char *varName, int varNameLen,
+									JsonItem *val, JsonbValue *baseObject);
+
+/*
+ * Context of jsonpath execution.
+ */
+typedef struct JsonPathExecContext
+{
+	void	   *vars;			/* variables to substitute into jsonpath */
+	JsonPathVarCallback getVar;
+	JsonItem   *root;			/* for $ evaluation */
+	JsonItemStack stack;		/* for @ evaluation */
+	JsonBaseObjectInfo baseObject;	/* "base object" for .keyvalue()
+									 * evaluation */
+	int			lastGeneratedObjectId;	/* "id" counter for .keyvalue()
+										 * evaluation */
+	void	  **cache;
+	MemoryContext cache_mcxt;
+	int			innermostArraySize; /* for LAST array index evaluation */
+	bool		laxMode;		/* true for "lax" mode, false for "strict"
+								 * mode */
+	bool		ignoreStructuralErrors; /* with "true" structural errors such
+										 * as absence of required json item or
+										 * unexpected json item type are
+										 * ignored */
+	bool		throwErrors;	/* with "false" all suppressible errors are
+								 * suppressed */
+	bool		isJsonb;
+} JsonPathExecContext;
+
+/* strict/lax flags is decomposed into four [un]wrap/error flags */
+#define jspStrictAbsenseOfErrors(cxt)	(!(cxt)->laxMode)
+#define jspAutoUnwrap(cxt)				((cxt)->laxMode)
+#define jspAutoWrap(cxt)				((cxt)->laxMode)
+#define jspIgnoreStructuralErrors(cxt)	((cxt)->ignoreStructuralErrors)
+#define jspThrowErrors(cxt)				((cxt)->throwErrors)
+
+/* Result of jsonpath predicate evaluation */
+typedef enum JsonPathBool
+{
+	jpbFalse = 0,
+	jpbTrue = 1,
+	jpbUnknown = 2
+} JsonPathBool;
+
+/* Result of jsonpath expression evaluation */
+typedef enum JsonPathExecResult
+{
+	jperOk = 0,
+	jperNotFound = 1,
+	jperError = 2
+} JsonPathExecResult;
+
+#define jperIsError(jper)			((jper) == jperError)
+
+/*
+ * List of SQL/JSON items with shortcut for single-value list.
+ */
+typedef struct JsonValueList
+{
+	JsonItem   *head;
+	JsonItem   *tail;
+	int			length;
+} JsonValueList;
+
+typedef struct JsonValueListIterator
+{
+	JsonItem   *next;
+} JsonValueListIterator;
+
+
+extern JsonItem *JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi);
 extern Jsonb *JsonItemToJsonb(JsonItem *jsi);
 extern Json *JsonItemToJson(JsonItem *jsi);
 extern void JsonItemFromDatum(Datum val, Oid typid, int32 typmod,
@@ -434,5 +551,56 @@ extern int EvalJsonPathVar(void *vars, bool isJsonb, char *varName,
 
 extern const TableFuncRoutine JsonTableRoutine;
 extern const TableFuncRoutine JsonbTableRoutine;
+
+extern int JsonbType(JsonItem *jb);
+extern int JsonxArraySize(JsonItem *jb, bool isJsonb);
+
+extern JsonItem *copyJsonItem(JsonItem *src);
+extern JsonItem *JsonWrapItemInArray(JsonItem *jbv, bool isJsonb);
+extern JsonbValue *JsonWrapItemsInArray(const JsonValueList *items,
+										bool isJsonb);
+extern void JsonAppendWrappedItems(JsonValueList *found, JsonValueList *items,
+								   bool isJsonb);
+
+extern void pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry,
+						 JsonItem *item, JsonBaseObjectInfo *base);
+extern void popJsonItem(JsonItemStack *stack);
+
+#define JsonValueListLength(jvl) ((jvl)->length)
+#define JsonValueListIsEmpty(jvl) (!(jvl)->length)
+#define JsonValueListHead(jvl) ((jvl)->head)
+extern void JsonValueListClear(JsonValueList *jvl);
+extern void JsonValueListAppend(JsonValueList *jvl, JsonItem *jbv);
+extern List *JsonValueListGetList(JsonValueList *jvl);
+extern void JsonValueListInitIterator(const JsonValueList *jvl,
+									  JsonValueListIterator *it);
+extern JsonItem *JsonValueListNext(const JsonValueList *jvl,
+								   JsonValueListIterator *it);
+extern void JsonValueListConcat(JsonValueList *jvl1, JsonValueList jvl2);
+extern void JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc,
+							  bool isJsonb);
+extern JsonbIteratorToken JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv,
+											bool skipNested);
+
+extern JsonPathExecResult jspExecuteItem(JsonPathExecContext *cxt,
+										 JsonPathItem *jsp, JsonItem *jb,
+										 JsonValueList *found);
+extern JsonPathExecResult jspExecuteItemNested(JsonPathExecContext *cxt,
+											   JsonPathItem *jsp, JsonItem *jb,
+											   JsonValueList *found);
+extern JsonPathBool jspCompareItems(int32 op, JsonItem *jb1, JsonItem *jb2);
+
+/* Standard error message for SQL/JSON errors */
+#define ERRMSG_JSON_ARRAY_NOT_FOUND			"SQL/JSON array not found"
+#define ERRMSG_JSON_OBJECT_NOT_FOUND		"SQL/JSON object not found"
+#define ERRMSG_JSON_MEMBER_NOT_FOUND		"SQL/JSON member not found"
+#define ERRMSG_JSON_NUMBER_NOT_FOUND		"SQL/JSON number not found"
+#define ERRMSG_JSON_SCALAR_REQUIRED			"SQL/JSON scalar required"
+#define ERRMSG_MORE_THAN_ONE_JSON_ITEM		"more than one SQL/JSON item"
+#define ERRMSG_SINGLETON_JSON_ITEM_REQUIRED	"singleton SQL/JSON item required"
+#define ERRMSG_NON_NUMERIC_JSON_ITEM		"non-numeric SQL/JSON item"
+#define ERRMSG_INVALID_JSON_SUBSCRIPT		"invalid SQL/JSON subscript"
+#define ERRMSG_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION	\
+	"invalid argument for SQL/JSON datetime function"
 
 #endif

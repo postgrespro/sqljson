@@ -82,121 +82,12 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-
-typedef union Jsonx
-{
-	Jsonb		jb;
-	Json		js;
-} Jsonx;
-
-#define DatumGetJsonxP(datum, isJsonb) \
-	((isJsonb) ? (Jsonx *) DatumGetJsonbP(datum) : (Jsonx *) DatumGetJsonP(datum))
-
-typedef JsonbContainer JsonxContainer;
-
-typedef struct JsonxIterator
-{
-	bool		isJsonb;
-	union
-	{
-		JsonbIterator *jb;
-		JsonIterator *js;
-	}			it;
-} JsonxIterator;
-
-/*
- * Represents "base object" and it's "id" for .keyvalue() evaluation.
- */
-typedef struct JsonBaseObjectInfo
-{
-	JsonxContainer *jbc;
-	int			id;
-} JsonBaseObjectInfo;
-
-/*
- * Special data structure representing stack of current items.  We use it
- * instead of regular list in order to evade extra memory allocation.  These
- * items are always allocated in local variables.
- */
-typedef struct JsonItemStackEntry
-{
-	JsonBaseObjectInfo base;
-	JsonItem   *item;
-	struct JsonItemStackEntry *parent;
-} JsonItemStackEntry;
-
-typedef JsonItemStackEntry *JsonItemStack;
-
-typedef int (*JsonPathVarCallback) (void *vars, bool isJsonb,
-									char *varName, int varNameLen,
-									JsonItem *val, JsonbValue *baseObject);
-
-/*
- * Context of jsonpath execution.
- */
-typedef struct JsonPathExecContext
-{
-	void	   *vars;			/* variables to substitute into jsonpath */
-	JsonPathVarCallback getVar;
-	JsonItem   *root;			/* for $ evaluation */
-	JsonItemStack stack;		/* for @ evaluation */
-	JsonBaseObjectInfo baseObject;	/* "base object" for .keyvalue()
-									 * evaluation */
-	int			lastGeneratedObjectId;	/* "id" counter for .keyvalue()
-										 * evaluation */
-	void	  **cache;
-	MemoryContext cache_mcxt;
-	int			innermostArraySize; /* for LAST array index evaluation */
-	bool		laxMode;		/* true for "lax" mode, false for "strict"
-								 * mode */
-	bool		ignoreStructuralErrors; /* with "true" structural errors such
-										 * as absence of required json item or
-										 * unexpected json item type are
-										 * ignored */
-	bool		throwErrors;	/* with "false" all suppressible errors are
-								 * suppressed */
-	bool		isJsonb;
-} JsonPathExecContext;
-
 /* Context for LIKE_REGEX execution. */
 typedef struct JsonLikeRegexContext
 {
 	text	   *regex;
 	int			cflags;
 } JsonLikeRegexContext;
-
-/* Result of jsonpath predicate evaluation */
-typedef enum JsonPathBool
-{
-	jpbFalse = 0,
-	jpbTrue = 1,
-	jpbUnknown = 2
-} JsonPathBool;
-
-/* Result of jsonpath expression evaluation */
-typedef enum JsonPathExecResult
-{
-	jperOk = 0,
-	jperNotFound = 1,
-	jperError = 2
-} JsonPathExecResult;
-
-#define jperIsError(jper)			((jper) == jperError)
-
-/*
- * List of SQL/JSON items with shortcut for single-value list.
- */
-typedef struct JsonValueList
-{
-	JsonItem   *head;
-	JsonItem   *tail;
-	int			length;
-} JsonValueList;
-
-typedef struct JsonValueListIterator
-{
-	JsonItem   *next;
-} JsonValueListIterator;
 
 /*
  * Context for execution of
@@ -272,13 +163,6 @@ typedef struct JsonTableContext
 	bool		empty;
 	bool		isJsonb;
 } JsonTableContext;
-
-/* strict/lax flags is decomposed into four [un]wrap/error flags */
-#define jspStrictAbsenseOfErrors(cxt)	(!(cxt)->laxMode)
-#define jspAutoUnwrap(cxt)				((cxt)->laxMode)
-#define jspAutoWrap(cxt)				((cxt)->laxMode)
-#define jspIgnoreStructuralErrors(cxt)	((cxt)->ignoreStructuralErrors)
-#define jspThrowErrors(cxt)				((cxt)->throwErrors)
 
 /* Convenience macro: return or throw error depending on context */
 #define RETURN_ERROR(throw_error) \
@@ -389,10 +273,8 @@ static void getJsonPathVariable(JsonPathExecContext *cxt,
 static int getJsonPathVariableFromJsonx(void *varsJsonb, bool isJsonb,
 										char *varName, int varNameLen,
 										JsonItem *val, JsonbValue *baseObject);
-static int	JsonxArraySize(JsonItem *jb, bool isJsonb);
 static JsonPathBool executeComparison(JsonPathItem *cmp, JsonItem *lv,
 									  JsonItem *rv, void *p);
-static JsonPathBool compareItems(int32 op, JsonItem *jb1, JsonItem *jb2);
 static int	compareNumeric(Numeric a, Numeric b);
 
 static void JsonItemInitNull(JsonItem *item);
@@ -405,8 +287,6 @@ static void JsonItemInitString(JsonItem *item, char *str, int len);
 static void JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid,
 					 int32 typmod, int tz);
 
-static JsonItem *copyJsonItem(JsonItem *src);
-static JsonItem *JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
 static const char *JsonItemTypeName(JsonItem *jsi);
 static JsonPathExecResult getArrayIndex(JsonPathExecContext *cxt,
@@ -414,25 +294,12 @@ static JsonPathExecResult getArrayIndex(JsonPathExecContext *cxt,
 										int32 *index);
 static JsonBaseObjectInfo setBaseObject(JsonPathExecContext *cxt,
 										JsonItem *jsi, int32 id);
-static void JsonValueListClear(JsonValueList *jvl);
-static void JsonValueListAppend(JsonValueList *jvl, JsonItem *jbv);
-static void JsonValueListConcat(JsonValueList *jvl1, JsonValueList jvl2);
-static int	JsonValueListLength(const JsonValueList *jvl);
-static bool JsonValueListIsEmpty(JsonValueList *jvl);
-static JsonItem *JsonValueListHead(JsonValueList *jvl);
-static List *JsonValueListGetList(JsonValueList *jvl);
-static void JsonValueListInitIterator(const JsonValueList *jvl,
-									  JsonValueListIterator *it);
-static JsonItem *JsonValueListNext(const JsonValueList *jvl,
-								   JsonValueListIterator *it);
-static int	JsonbType(JsonItem *jb);
 static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static inline JsonbValue *JsonInitBinary(JsonbValue *jbv, Json *js);
 static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
 static JsonItem *getNumber(JsonItem *scalar);
 static bool convertJsonDoubleToNumeric(JsonItem *dbl, JsonItem *num);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items, bool isJsonb);
-static JsonItem *wrapItem(JsonItem *jbv, bool isJsonb);
 static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
 static JsonItem *wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf,
 					  bool isJsonb);
@@ -446,10 +313,6 @@ static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
 static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb,
 					JsonItem *res);
 
-static void JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc,
-				  bool isJsonb);
-static JsonbIteratorToken JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv,
-				  bool skipNested);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
 static Jsonx *JsonbValueToJsonx(JsonbValue *jbv, bool isJsonb);
 
@@ -459,10 +322,6 @@ static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 static int compareDatetime(Datum val1, Oid typid1, int tz1,
 				Datum val2, Oid typid2, int tz2,
 				bool *error);
-
-static void pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry,
-			 JsonItem *item, JsonBaseObjectInfo *base);
-static void popJsonItem(JsonItemStack *stack);
 
 static JsonTableJoinState *JsonTableInitPlanState(JsonTableContext *cxt,
 									Node *plan, JsonTableScanState *parent);
@@ -1005,6 +864,13 @@ executeItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			JsonItem *jb, JsonValueList *found)
 {
 	return executeItemOptUnwrapTarget(cxt, jsp, jb, found, jspAutoUnwrap(cxt));
+}
+
+JsonPathExecResult
+jspExecuteItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
+			   JsonItem *jb, JsonValueList *found)
+{
+	return executeItem(cxt, jsp, jb, found);
 }
 
 /*
@@ -2311,6 +2177,30 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 }
 
 /*
+ * Execute nested expression pushing current SQL/JSON item onto the stack.
+ */
+static inline JsonPathExecResult
+executeItemNested(JsonPathExecContext *cxt, JsonPathItem *jsp,
+				  JsonItem *jb, JsonValueList *found)
+{
+	JsonItemStackEntry current;
+	JsonPathExecResult res;
+
+	pushJsonItem(&cxt->stack, &current, jb, &cxt->baseObject);
+	res = executeItem(cxt, jsp, jb, found);
+	popJsonItem(&cxt->stack);
+
+	return res;
+}
+
+JsonPathExecResult
+jspExecuteItemNested(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					 JsonItem *jb, JsonValueList *found)
+{
+	return executeItemNested(cxt, jsp, jb, found);
+}
+
+/*
  * Execute nested (filters etc.) boolean expression pushing current SQL/JSON
  * item onto the stack.
  */
@@ -3137,7 +3027,7 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 /*
  * Returns the size of an array item, or -1 if item is not an array.
  */
-static int
+int
 JsonxArraySize(JsonItem *jb, bool isJsonb)
 {
 	if (JsonItemIsArray(jb))
@@ -3168,14 +3058,14 @@ JsonxArraySize(JsonItem *jb, bool isJsonb)
 static JsonPathBool
 executeComparison(JsonPathItem *cmp, JsonItem *lv, JsonItem *rv, void *p)
 {
-	return compareItems(cmp->type, lv, rv);
+	return jspCompareItems(cmp->type, lv, rv);
 }
 
 /*
  * Compare two SQL/JSON items using comparison operation 'op'.
  */
-static JsonPathBool
-compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
+JsonPathBool
+jspCompareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 {
 	JsonbValue *jb1 = JsonItemJbv(jsi1);
 	JsonbValue *jb2 = JsonItemJbv(jsi2);
@@ -3303,7 +3193,7 @@ compareNumeric(Numeric a, Numeric b)
 											 NumericGetDatum(b)));
 }
 
-static JsonItem *
+JsonItem *
 copyJsonItem(JsonItem *src)
 {
 	JsonItem *dst = palloc(sizeof(*dst));
@@ -3313,7 +3203,7 @@ copyJsonItem(JsonItem *src)
 	return dst;
 }
 
-static JsonItem *
+JsonItem *
 JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi)
 {
 	*JsonItemJbv(jsi) = *jbv;
@@ -3465,7 +3355,7 @@ setBaseObject(JsonPathExecContext *cxt, JsonItem *jbv, int32 id)
 	return baseObject;
 }
 
-static void
+void
 JsonValueListClear(JsonValueList *jvl)
 {
 	jvl->head = NULL;
@@ -3473,7 +3363,7 @@ JsonValueListClear(JsonValueList *jvl)
 	jvl->length = 0;
 }
 
-static void
+void
 JsonValueListAppend(JsonValueList *jvl, JsonItem *jsi)
 {
 	jsi->next = NULL;
@@ -3492,7 +3382,7 @@ JsonValueListAppend(JsonValueList *jvl, JsonItem *jsi)
 	jvl->length++;
 }
 
-static void
+void
 JsonValueListConcat(JsonValueList *jvl1, JsonValueList jvl2)
 {
 	if (!jvl1->tail)
@@ -3510,25 +3400,7 @@ JsonValueListConcat(JsonValueList *jvl1, JsonValueList jvl2)
 	}
 }
 
-static int
-JsonValueListLength(const JsonValueList *jvl)
-{
-	return jvl->length;
-}
-
-static bool
-JsonValueListIsEmpty(JsonValueList *jvl)
-{
-	return !jvl->length;
-}
-
-static JsonItem *
-JsonValueListHead(JsonValueList *jvl)
-{
-	return jvl->head;
-}
-
-static List *
+List *
 JsonValueListGetList(JsonValueList *jvl)
 {
 	List	   *list = NIL;
@@ -3540,7 +3412,7 @@ JsonValueListGetList(JsonValueList *jvl)
 	return list;
 }
 
-static void
+void
 JsonValueListInitIterator(const JsonValueList *jvl, JsonValueListIterator *it)
 {
 	it->next = jvl->head;
@@ -3549,7 +3421,7 @@ JsonValueListInitIterator(const JsonValueList *jvl, JsonValueListIterator *it)
 /*
  * Get the next item from the sequence advancing iterator.
  */
-static JsonItem *
+JsonItem *
 JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 {
 	JsonItem   *result = it->next;
@@ -3624,7 +3496,7 @@ wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf, bool isJsonb)
 /*
  * Returns jbv* type of of JsonbValue. Note, it never returns jbvBinary as is.
  */
-static int
+int
 JsonbType(JsonItem *jb)
 {
 	int			type = JsonItemGetType(jb);
@@ -3750,7 +3622,7 @@ getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb, JsonItem *res)
 	return elem ? res : NULL;
 }
 
-static inline void
+void
 JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc, bool isJsonb)
 {
 	it->isJsonb = isJsonb;
@@ -3760,7 +3632,7 @@ JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc, bool isJsonb)
 		it->it.js = JsonIteratorInit((JsonContainer *) jxc);
 }
 
-static JsonbIteratorToken
+JsonbIteratorToken
 JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv, bool skipNested)
 {
 	return it->isJsonb ?
@@ -3836,8 +3708,8 @@ convertJsonDoubleToNumeric(JsonItem *dbl, JsonItem *num)
  * Wrap a non-array SQL/JSON item into an array for applying array subscription
  * path steps in lax mode.
  */
-static JsonItem *
-wrapItem(JsonItem *jsi, bool isJsonb)
+JsonItem *
+JsonWrapItemInArray(JsonItem *jsi, bool isJsonb)
 {
 	JsonbParseState *ps = NULL;
 	JsonItem	jsibuf;
@@ -3896,6 +3768,12 @@ wrapItemsInArray(const JsonValueList *items, bool isJsonb)
 	return push(&ps, WJB_END_ARRAY, NULL);
 }
 
+JsonbValue *
+JsonWrapItemsInArray(const JsonValueList *items, bool isJsonb)
+{
+	return wrapItemsInArray(items, isJsonb);
+}
+
 static void
 appendWrappedItems(JsonValueList *found, JsonValueList *items, bool isJsonb)
 {
@@ -3903,6 +3781,12 @@ appendWrappedItems(JsonValueList *found, JsonValueList *items, bool isJsonb)
 	JsonItem   *jsi = palloc(sizeof(*jsi));
 
 	JsonValueListAppend(found, JsonbValueToJsonItem(wrapped, jsi));
+}
+
+void
+JsonAppendWrappedItems(JsonValueList *found, JsonValueList *items, bool isJsonb)
+{
+	return appendWrappedItems(found, items, isJsonb);
 }
 
 static JsonValueList
@@ -3941,7 +3825,7 @@ prependKey(char *keystr, int keylen, const JsonValueList *items, bool isJsonb)
 	return objs;
 }
 
-static void
+void
 pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry, JsonItem *item,
 			 JsonBaseObjectInfo *base)
 {
@@ -3951,7 +3835,7 @@ pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry, JsonItem *item,
 	*stack = entry;
 }
 
-static void
+void
 popJsonItem(JsonItemStack *stack)
 {
 	*stack = (*stack)->parent;
