@@ -276,15 +276,20 @@ extern Datum HeapTupleHeaderGetDatum(HeapTupleHeader tuple);
  */
 
 /* from funcapi.c */
-extern FuncCallContext *init_MultiFuncCall(PG_FUNCTION_ARGS);
-extern FuncCallContext *per_MultiFuncCall(PG_FUNCTION_ARGS);
-extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx);
+extern FuncCallContext *init_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext **pfuncctx);
+extern FuncCallContext *per_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext **pfuncctx);
+extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx, FuncCallContext **pfuncctx);
 
-#define SRF_IS_FIRSTCALL() (fcinfo->flinfo->fn_extra == NULL)
+#define SRF_DEFAULT_FCTX ((FuncCallContext **) &fcinfo->flinfo->fn_extra)
 
-#define SRF_FIRSTCALL_INIT() init_MultiFuncCall(fcinfo)
+#define SRF_IS_FIRSTCALL_EXT(_pfuncctx) (*(_pfuncctx) == NULL)
+#define SRF_IS_FIRSTCALL()		SRF_IS_FIRSTCALL_EXT(SRF_DEFAULT_FCTX)
 
-#define SRF_PERCALL_SETUP() per_MultiFuncCall(fcinfo)
+#define SRF_FIRSTCALL_INIT_EXT(_pfuncctx) init_MultiFuncCall(fcinfo, _pfuncctx)
+#define SRF_FIRSTCALL_INIT()	SRF_FIRSTCALL_INIT_EXT(SRF_DEFAULT_FCTX)
+
+#define SRF_PERCALL_SETUP_EXT(_pfuncctx) per_MultiFuncCall(fcinfo, _pfuncctx)
+#define SRF_PERCALL_SETUP()		SRF_PERCALL_SETUP_EXT(SRF_DEFAULT_FCTX)
 
 #define SRF_RETURN_NEXT(_funcctx, _result) \
 	do { \
@@ -304,14 +309,17 @@ extern void end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx);
 		PG_RETURN_NULL(); \
 	} while (0)
 
-#define  SRF_RETURN_DONE(_funcctx) \
+#define  SRF_RETURN_DONE_EXT(_funcctx, _pfuncctx) \
 	do { \
 		ReturnSetInfo	   *rsi; \
-		end_MultiFuncCall(fcinfo, _funcctx); \
+		end_MultiFuncCall(fcinfo, _funcctx, _pfuncctx); \
 		rsi = (ReturnSetInfo *) fcinfo->resultinfo; \
 		rsi->isDone = ExprEndResult; \
 		PG_RETURN_NULL(); \
 	} while (0)
+
+#define  SRF_RETURN_DONE(_funcctx) \
+	SRF_RETURN_DONE_EXT(_funcctx, SRF_DEFAULT_FCTX)
 
 /*----------
  *	Support to ease writing of functions dealing with VARIADIC inputs

@@ -50,7 +50,7 @@ static TypeFuncClass get_type_func_class(Oid typid, Oid *base_typeid);
  * and error checking
  */
 FuncCallContext *
-init_MultiFuncCall(PG_FUNCTION_ARGS)
+init_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext **pfuncctx)
 {
 	FuncCallContext *retval;
 
@@ -62,7 +62,7 @@ init_MultiFuncCall(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("set-valued function called in context that cannot accept a set")));
 
-	if (fcinfo->flinfo->fn_extra == NULL)
+	if (*pfuncctx == NULL)
 	{
 		/*
 		 * First call
@@ -97,7 +97,7 @@ init_MultiFuncCall(PG_FUNCTION_ARGS)
 		/*
 		 * save the pointer for cross-call use
 		 */
-		fcinfo->flinfo->fn_extra = retval;
+		*pfuncctx = retval;
 
 		/*
 		 * Ensure we will get shut down cleanly if the exprcontext is not run
@@ -105,7 +105,7 @@ init_MultiFuncCall(PG_FUNCTION_ARGS)
 		 */
 		RegisterExprContextCallback(rsi->econtext,
 									shutdown_MultiFuncCall,
-									PointerGetDatum(fcinfo->flinfo));
+									PointerGetDatum(pfuncctx));
 	}
 	else
 	{
@@ -125,9 +125,9 @@ init_MultiFuncCall(PG_FUNCTION_ARGS)
  * Do Multi-function per-call setup
  */
 FuncCallContext *
-per_MultiFuncCall(PG_FUNCTION_ARGS)
+per_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext **pfuncctx)
 {
-	FuncCallContext *retval = (FuncCallContext *) fcinfo->flinfo->fn_extra;
+	FuncCallContext *retval = *pfuncctx;
 
 	return retval;
 }
@@ -137,17 +137,18 @@ per_MultiFuncCall(PG_FUNCTION_ARGS)
  * Clean up after init_MultiFuncCall
  */
 void
-end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx)
+end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx,
+				  FuncCallContext **pfuncctx)
 {
 	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 
 	/* Deregister the shutdown callback */
 	UnregisterExprContextCallback(rsi->econtext,
 								  shutdown_MultiFuncCall,
-								  PointerGetDatum(fcinfo->flinfo));
+								  PointerGetDatum(pfuncctx));
 
 	/* But use it to do the real work */
-	shutdown_MultiFuncCall(PointerGetDatum(fcinfo->flinfo));
+	shutdown_MultiFuncCall(PointerGetDatum(pfuncctx));
 }
 
 /*
@@ -157,11 +158,11 @@ end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx)
 static void
 shutdown_MultiFuncCall(Datum arg)
 {
-	FmgrInfo   *flinfo = (FmgrInfo *) DatumGetPointer(arg);
-	FuncCallContext *funcctx = (FuncCallContext *) flinfo->fn_extra;
+	FuncCallContext **pfuncctx = (FuncCallContext **) DatumGetPointer(arg);
+	FuncCallContext *funcctx = *pfuncctx;
 
 	/* unbind from flinfo */
-	flinfo->fn_extra = NULL;
+	*pfuncctx = NULL;
 
 	/*
 	 * Delete context that holds all multi-call data, including the
