@@ -2068,7 +2068,7 @@ SELECT JSON_QUERY(json '{"a": 123}', '$' || '.' || 'a' WITH WRAPPER);
 
 -- Should fail (invalid path)
 SELECT JSON_QUERY(json '{"a": 123}', 'error' || ' ' || 'error');
-ERROR:  syntax error, unexpected IDENT_P at or near "error" of jsonpath input
+ERROR:  syntax error, unexpected IDENT_P, expecting $end at or near "error" of jsonpath input
 -- Should fail (not supported)
 SELECT * FROM JSON_TABLE(json '{"a": 123}', '$' || '.' || 'a' COLUMNS (foo int));
 ERROR:  only string constants supported in JSON_TABLE path specification

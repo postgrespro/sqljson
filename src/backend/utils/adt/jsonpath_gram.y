@@ -43,6 +43,7 @@ static JsonPathParseItem *makeItemType(JsonPathItemType type);
 static JsonPathParseItem *makeItemString(JsonPathString *s);
 static JsonPathParseItem *makeItemVariable(JsonPathString *s);
 static JsonPathParseItem *makeItemKey(JsonPathString *s);
+static JsonPathParseItem *makeItemArgument(JsonPathString *s);
 static JsonPathParseItem *makeItemNumeric(JsonPathString *s);
 static JsonPathParseItem *makeItemBool(bool val);
 static JsonPathParseItem *makeItemBinary(JsonPathItemType type,
@@ -59,6 +60,7 @@ static JsonPathParseItem *makeItemLikeRegex(JsonPathParseItem *expr,
 static JsonPathParseItem *makeItemSequence(List *elems);
 static JsonPathParseItem *makeItemObject(List *fields);
 static JsonPathParseItem *makeItemCurrentN(int level);
+static JsonPathParseItem *makeItemLambda(List *params, JsonPathParseItem *expr);
 static JsonPathParseItem *setItemOutPathMode(JsonPathParseItem *jpi);
 static List *setItemsOutPathMode(List *items);
 
@@ -95,7 +97,7 @@ static List *setItemsOutPathMode(List *items);
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P EXISTS_P
 %token	<str>		IDENT_P STRING_P NUMERIC_P INT_P VARIABLE_P
-%token	<str>		OR_P AND_P NOT_P
+%token	<str>		OR_P AND_P NOT_P ARROW_P
 %token	<str>		LESS_P LESSEQUAL_P EQUAL_P NOTEQUAL_P GREATEREQUAL_P GREATER_P
 %token	<str>		ANY_P STRICT_P LAX_P LAST_P STARTS_P WITH_P LIKE_REGEX_P FLAG_P
 %token	<str>		ABS_P SIZE_P TYPE_P FLOOR_P DOUBLE_P CEILING_P KEYVALUE_P
@@ -107,9 +109,10 @@ static List *setItemsOutPathMode(List *items);
 					any_path accessor_op key predicate delimited_predicate
 					index_elem starts_with_initial expr_or_predicate
 					datetime_template opt_datetime_template expr_seq expr_or_seq
-					object_field
+					object_field lambda_expr lambda_or_expr
 
 %type	<elems>		accessor_expr accessor_ops expr_list object_field_list
+					lambda_or_expr_list
 
 %type	<indexs>	index_list
 
@@ -160,6 +163,25 @@ expr_list:
 	| expr_list ',' expr_or_predicate		{ $$ = lappend($1, $3); }
 	;
 
+
+lambda_expr:
+	IDENT_P ARROW_P expr			{ $$ = makeItemLambda(list_make1(
+										makeItemArgument(&$1)), $3); }
+	| '(' expr ')' ARROW_P expr		{ $$ = makeItemLambda(list_make1($2), $5); }
+	| '(' ')' ARROW_P expr			{ $$ = makeItemLambda(NIL, $4); }
+	| '(' expr_seq ')' ARROW_P expr	{ $$ = makeItemLambda($2->value.sequence.elems, $5); }
+	;
+
+lambda_or_expr:
+	expr
+	| lambda_expr
+	;
+
+lambda_or_expr_list:
+	/* EMPYT*/									{ $$ = NIL; }
+	| lambda_or_expr							{ $$ = list_make1($1); }
+	| lambda_or_expr_list ',' lambda_or_expr	{ $$ = lappend($1, $3); }
+	;
 mode:
 	STRICT_P						{ $$ = false; }
 	| LAX_P							{ $$ = true; }
@@ -174,6 +196,7 @@ scalar_value:
 	| NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
 	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
+	| IDENT_P						{ $$ = makeItemArgument(&$1); }
 	;
 
 comp_op:
@@ -440,6 +463,17 @@ makeItemKey(JsonPathString *s)
 }
 
 static JsonPathParseItem *
+makeItemArgument(JsonPathString *s)
+{
+	JsonPathParseItem *v;
+
+	v = makeItemString(s);
+	v->type = jpiArgument;
+
+	return v;
+}
+
+static JsonPathParseItem *
 makeItemNumeric(JsonPathString *s)
 {
 	JsonPathParseItem  *v;
@@ -640,6 +674,39 @@ makeItemObject(List *fields)
 	JsonPathParseItem *v = makeItemType(jpiObject);
 
 	v->value.object.fields = fields;
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemLambda(List *params, JsonPathParseItem *expr)
+{
+	JsonPathParseItem *v = makeItemType(jpiLambda);
+	ListCell *lc;
+
+	v->value.lambda.params = params;
+	v->value.lambda.expr = expr;
+
+	foreach(lc, params)
+	{
+		JsonPathParseItem *param1 = lfirst(lc);
+		ListCell *lc2;
+
+		if (param1->type != jpiArgument || param1->next)
+			yyerror(NULL, "lambda arguments must be identifiers");
+
+		foreach(lc2, params)
+		{
+			JsonPathParseItem *param2 = lfirst(lc2);
+
+			if (lc != lc2 &&
+				param1->value.string.len == param2->value.string.len &&
+				!strncmp(param1->value.string.val,
+						 param2->value.string.val,
+						 param1->value.string.len))
+				yyerror(NULL, "lambda argument names must be unique");
+		}
+	}
 
 	return v;
 }

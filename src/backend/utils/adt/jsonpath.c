@@ -328,6 +328,7 @@ copyJsonPathItem(JsonPathContext *cxt, JsonPathItem *item, int level,
 		case jpiKey:
 		case jpiString:
 		case jpiVariable:
+		case jpiArgument:
 			{
 				int32		len;
 				char	   *data = jspGetString(item, &len);
@@ -542,6 +543,39 @@ copyJsonPathItem(JsonPathContext *cxt, JsonPathItem *item, int level,
 			}
 			break;
 
+		case jpiLambda:
+			{
+				JsonPathItem arg;
+				int32		nparams = item->content.lambda.nparams;
+				int			offset;
+				int32		elempos;
+				int32		i;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) &cxt->id, sizeof(cxt->id));
+				++cxt->id;
+
+				appendBinaryStringInfo(buf, (char *) &nparams, sizeof(nparams));
+				offset = buf->len;
+
+				appendStringInfoSpaces(buf, sizeof(int32) * (nparams + 1));
+
+				for (i = 0; i < nparams; i++)
+				{
+					jspGetLambdaParam(item, i, &arg);
+					elempos = copyJsonPathItem(cxt, &arg, level, NULL, NULL);
+					*(int32 *) &buf->data[offset] = elempos - pos;
+					offset += sizeof(int32);
+				}
+
+				jspGetLambdaExpr(item, &arg);
+				elempos = copyJsonPathItem(cxt, &arg, level, NULL, NULL);
+
+				*(int32 *) &buf->data[offset] = elempos - pos;
+				offset += sizeof(int32);
+			}
+			break;
+
 		default:
 			elog(ERROR, "Unknown jsonpath item type: %d", item->type);
 	}
@@ -608,6 +642,7 @@ flattenJsonPathParseItem(JsonPathContext *cxt, JsonPathParseItem *item,
 		case jpiString:
 		case jpiVariable:
 		case jpiKey:
+		case jpiArgument:
 			appendBinaryStringInfo(buf, (char *) &item->value.string.len,
 								   sizeof(item->value.string.len));
 			appendBinaryStringInfo(buf, item->value.string.val,
@@ -699,6 +734,38 @@ flattenJsonPathParseItem(JsonPathContext *cxt, JsonPathParseItem *item,
 												argNestingLevel,
 												insideArraySubscript);
 				*(int32 *) (buf->data + arg) = chld - pos;
+			}
+			break;
+		case jpiLambda:
+			{
+				int32		nelems = list_length(item->value.lambda.params);
+				ListCell   *lc;
+				int			offset;
+				int32		elempos;
+
+				/* assign cache id */
+				appendBinaryStringInfo(buf, (const char *) &cxt->id, sizeof(cxt->id));
+				++cxt->id;
+
+				appendBinaryStringInfo(buf, (char *) &nelems, sizeof(nelems));
+				offset = buf->len;
+
+				appendStringInfoSpaces(buf, sizeof(int32) * (nelems + 1));
+
+				foreach(lc, item->value.lambda.params)
+				{
+					elempos = flattenJsonPathParseItem(cxt, lfirst(lc),
+												 nestingLevel,
+												 insideArraySubscript);
+					*(int32 *) &buf->data[offset] = elempos - pos;
+					offset += sizeof(int32);
+				}
+
+				elempos = flattenJsonPathParseItem(cxt, item->value.lambda.expr,
+												   nestingLevel,
+												   insideArraySubscript);
+				*(int32 *) &buf->data[offset] = elempos - pos;
+				offset += sizeof(int32);
 			}
 			break;
 		case jpiNull:
@@ -916,6 +983,9 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 		case jpiVariable:
 			appendStringInfoChar(buf, '$');
 			escape_json(buf, jspGetString(v, NULL));
+			break;
+		case jpiArgument:
+			appendStringInfoString(buf, jspGetString(v, NULL));
 			break;
 		case jpiNumeric:
 			appendStringInfoString(buf,
@@ -1183,6 +1253,31 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 
 			appendStringInfoChar(buf, '}');
 			break;
+		case jpiLambda:
+			if (printBracketes || jspHasNext(v))
+				appendStringInfoChar(buf, '(');
+
+			appendStringInfoChar(buf, '(');
+
+			for (i = 0; i < v->content.lambda.nparams; i++)
+			{
+				JsonPathItem elem;
+
+				if (i)
+					appendBinaryStringInfo(buf, ", ", 2);
+
+				jspGetLambdaParam(v, i, &elem);
+				printJsonPathItem(buf, &elem, false, false);
+			}
+
+			appendStringInfoString(buf, ") => ");
+
+			jspGetLambdaExpr(v, &elem);
+			printJsonPathItem(buf, &elem, false, false);
+
+			if (printBracketes || jspHasNext(v))
+				appendStringInfoChar(buf, ')');
+			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", v->type);
 	}
@@ -1350,6 +1445,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiKey:
 		case jpiString:
 		case jpiVariable:
+		case jpiArgument:
 			read_int32(v->content.value.datalen, base, pos);
 			/* FALLTHROUGH */
 		case jpiNumeric:
@@ -1379,6 +1475,13 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 			read_int32(v->content.like_regex.expr, base, pos);
 			read_int32(v->content.like_regex.patternlen, base, pos);
 			v->content.like_regex.pattern = base + pos;
+			break;
+		case jpiLambda:
+			read_int32(v->content.lambda.id, base, pos);
+			read_int32(v->content.lambda.nparams, base, pos);
+			read_int32_n(v->content.lambda.params, base, pos,
+						 v->content.lambda.nparams);
+			read_int32(v->content.lambda.expr, base, pos);
 			break;
 		case jpiNot:
 		case jpiExists:
@@ -1476,7 +1579,9 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiStartsWith ||
 			   v->type == jpiSequence ||
 			   v->type == jpiArray ||
-			   v->type == jpiObject);
+			   v->type == jpiObject ||
+			   v->type == jpiLambda ||
+			   v->type == jpiArgument);
 
 		if (a)
 			jspInitByBuffer(a, v->base, v->nextPos);
@@ -1551,7 +1656,8 @@ jspGetString(JsonPathItem *v, int32 *len)
 {
 	Assert(v->type == jpiKey ||
 		   v->type == jpiString ||
-		   v->type == jpiVariable);
+		   v->type == jpiVariable ||
+		   v->type == jpiArgument);
 
 	if (len)
 		*len = v->content.value.datalen;
@@ -1588,6 +1694,27 @@ jspGetObjectField(JsonPathItem *v, int i, JsonPathItem *key, JsonPathItem *val)
 	Assert(v->type == jpiObject);
 	jspInitByBuffer(key, v->base, v->content.object.fields[i].key);
 	jspInitByBuffer(val, v->base, v->content.object.fields[i].val);
+}
+
+JsonPathItem *
+jspGetLambdaParam(JsonPathItem *lambda, int index, JsonPathItem *arg)
+{
+	Assert(lambda->type == jpiLambda);
+	Assert(index < lambda->content.lambda.nparams);
+
+	jspInitByBuffer(arg, lambda->base, lambda->content.lambda.params[index]);
+
+	return arg;
+}
+
+JsonPathItem *
+jspGetLambdaExpr(JsonPathItem *lambda, JsonPathItem *expr)
+{
+	Assert(lambda->type == jpiLambda);
+
+	jspInitByBuffer(expr, lambda->base, lambda->content.lambda.expr);
+
+	return expr;
 }
 
 static void

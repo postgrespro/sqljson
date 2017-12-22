@@ -89,6 +89,26 @@ typedef struct JsonLikeRegexContext
 	int			cflags;
 } JsonLikeRegexContext;
 
+typedef struct JsonLambdaVar
+{
+	char	   *name;
+	JsonItem   *val;
+} JsonLambdaVar;
+
+typedef struct JsonLambdaVars
+{
+	int			nvars;
+	JsonLambdaVar *vars;
+	void	   *parentVars;
+	JsonPathVarCallback parentGetVar;
+} JsonLambdaVars;
+
+typedef union JsonLambdaCache
+{
+	JsonLambdaArg *args;
+	JsonLambdaVars vars;
+} JsonLambdaCache;
+
 /*
  * Context for execution of
  * jsonb_path_*(jsonb, jsonpath [, vars jsonb, silent boolean]) user functions.
@@ -1417,6 +1437,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiNumeric:
 		case jpiString:
 		case jpiVariable:
+		case jpiArgument:
 			{
 				JsonItem	vbuf;
 				JsonItem   *v;
@@ -1887,6 +1908,10 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				break;
 			}
 
+		case jpiLambda:
+			elog(ERROR, "jsonpath lambda expression cannot be executed directly");
+			break;
+
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
@@ -2216,6 +2241,187 @@ executeNestedBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	popJsonItem(&cxt->stack);
 
 	return res;
+}
+
+static int
+getLambdaVar(void *cxt, bool isJsonb, char *varName, int varNameLen,
+			 JsonItem *val, JsonbValue *baseObject)
+{
+	JsonLambdaVars *vars = cxt;
+	int			i = 0;
+
+	for (i = 0; i < vars->nvars; i++)
+	{
+		JsonLambdaVar *var = &vars->vars[i];
+
+		if (!strncmp(var->name, varName, varNameLen))
+		{
+			*val = *var->val;
+			return 0;	/* FIXME */
+		}
+	}
+
+	return vars->parentGetVar(vars->parentVars, isJsonb, varName, varNameLen,
+							  val, baseObject);
+}
+
+static JsonPathExecResult
+recursiveExecuteLambdaVars(JsonPathExecContext *cxt, JsonPathItem *jsp,
+						   JsonItem *jb, JsonValueList *found,
+						   JsonItem **params, int nparams, void **pcache)
+{
+	JsonLambdaCache *cache = *pcache;
+	JsonPathExecResult res;
+	int			i;
+
+	if (nparams > 0 && !cache)
+	{
+		MemoryContext oldcontext = MemoryContextSwitchTo(cxt->cache_mcxt);
+
+		cache = *pcache = palloc0(sizeof(*cache));
+		cache->vars.vars = palloc(sizeof(*cache->vars.vars) * nparams);
+		cache->vars.nvars = nparams;
+		cache->vars.parentVars = NULL;
+		cache->vars.parentGetVar = NULL;
+
+		for (i = 0; i < nparams; i++)
+		{
+			JsonLambdaVar *var = &cache->vars.vars[i];
+			char		varname[20];
+
+			snprintf(varname, sizeof(varname), "%d", i + 1);
+
+			var->name = pstrdup(varname);
+			var->val = NULL;
+		}
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	for (i = 0; i < nparams; i++)
+		cache->vars.vars[i].val = params[i];
+
+	cache->vars.parentVars = cxt->vars;
+	cache->vars.parentGetVar = cxt->getVar;
+	cxt->vars = cache;
+	cxt->getVar = getLambdaVar;
+
+	if (found)
+	{
+		res = executeItem(cxt, jsp, jb, found);
+	}
+	else
+	{
+		JsonPathBool ok = executeBoolItem(cxt, jsp, jb, false);
+
+		if (ok == jpbUnknown)
+		{
+			cxt->vars = cache->vars.parentVars;
+			cxt->getVar = cache->vars.parentGetVar;
+
+			RETURN_ERROR(ereport(ERROR,
+								 (errcode(ERRCODE_NO_JSON_ITEM),
+								  errmsg(ERRMSG_NO_JSON_ITEM))));  /* FIXME */
+		}
+		res = ok == jpbTrue ? jperOk : jperNotFound;
+	}
+
+	cxt->vars = cache->vars.parentVars;
+	cxt->getVar = cache->vars.parentGetVar;
+
+	return res;
+}
+
+static inline JsonPathExecResult
+recursiveExecuteLambdaExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
+						   JsonItem *jb, JsonValueList *found,
+						   JsonItem **params, int nparams, void **pcache)
+{
+	JsonPathItem expr;
+	JsonPathExecResult res;
+	JsonLambdaCache *cache = *pcache;
+	JsonLambdaArg *oldargs;
+	int			i;
+
+	if (jsp->content.lambda.nparams > nparams)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("jsonpath lambda arguments mismatch: expected %d but given %d",
+						jsp->content.lambda.nparams, nparams)));
+
+	if (jsp->content.lambda.nparams > 0 && !cache)
+	{
+		MemoryContext oldcontext = MemoryContextSwitchTo(cxt->cache_mcxt);
+
+		cache = *pcache = palloc0(sizeof(*cache));
+		cache->args = palloc(sizeof(cache->args[0]) *
+							 jsp->content.lambda.nparams);
+
+		for (i = 0; i < jsp->content.lambda.nparams; i++)
+		{
+			JsonLambdaArg *arg = &cache->args[i];
+			JsonPathItem argname;
+
+			jspGetLambdaParam(jsp, i, &argname);
+
+			if (argname.type != jpiArgument)
+				elog(ERROR, "invalid jsonpath lambda argument item type: %d",
+					 argname.type);
+
+			arg->name = jspGetString(&argname, &arg->namelen);
+			arg->val = NULL;
+			arg->next = arg + 1;
+		}
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	oldargs = cxt->args;
+
+	if (jsp->content.lambda.nparams > 0)
+	{
+		for (i = 0; i < jsp->content.lambda.nparams; i++)
+			cache->args[i].val = params[i];
+
+		cache->args[jsp->content.lambda.nparams - 1].next = oldargs;
+		cxt->args = &cache->args[0];
+	}
+
+	jspGetLambdaExpr(jsp, &expr);
+
+	/* found == NULL is used here when executing boolean filter expressions */
+	if (found)
+	{
+		res = executeItem(cxt, &expr, jb, found);
+	}
+	else
+	{
+		JsonPathBool ok = executeBoolItem(cxt, &expr, jb, false);
+
+		if (ok == jpbUnknown)
+		{
+			cxt->args = oldargs;
+			RETURN_ERROR(ereport(ERROR,
+								 (errcode(ERRCODE_NO_JSON_ITEM),
+								  errmsg(ERRMSG_NO_JSON_ITEM))));  /* FIXME */
+		}
+
+		res = ok == jpbTrue ? jperOk : jperNotFound;
+	}
+
+	cxt->args = oldargs;
+
+	return res;
+}
+
+JsonPathExecResult
+jspExecuteLambda(JsonPathExecContext *cxt, JsonPathItem *jsp,
+				 JsonItem *jb, JsonValueList *res,
+				 JsonItem **params, int nparams, void **cache)
+{
+	return jsp->type == jpiLambda
+		? recursiveExecuteLambdaExpr(cxt, jsp, jb, res, params, nparams, cache)
+		: recursiveExecuteLambdaVars(cxt, jsp, jb, res, params, nparams, cache);
 }
 
 /*
@@ -2941,6 +3147,32 @@ getJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item,
 		case jpiVariable:
 			getJsonPathVariable(cxt, item, value);
 			return;
+
+		case jpiArgument:
+			{
+				JsonLambdaArg *arg;
+				char	   *argname;
+				int			argnamelen;
+
+				argname = jspGetString(item, &argnamelen);
+
+				for (arg = cxt->args; arg; arg = arg->next)
+				{
+					if (arg->namelen == argnamelen &&
+						!strncmp(arg->name, argname, argnamelen))
+					{
+						*value = *arg->val;
+						return;	/* FIXME object id */
+					}
+				}
+
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("cannot find jsonpath lambda variable '%s'",
+								pnstrdup(argname, argnamelen))));
+				break;
+			}
+
 		default:
 			elog(ERROR, "unexpected jsonpath item type");
 	}

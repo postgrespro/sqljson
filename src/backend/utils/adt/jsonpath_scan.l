@@ -182,7 +182,9 @@ hex_fail	\\x{hex_dig}{0,1}
 
 \>								{ return GREATER_P; }
 
-\${id}							{
+\=\>							{ return ARROW_P; }
+
+\$({id}|{integer})				{
 									addstring(true, yytext + 1, yyleng - 1);
 									addchar(false, '\0');
 									yylval->str = scanstring;

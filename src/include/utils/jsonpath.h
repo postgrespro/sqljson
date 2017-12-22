@@ -98,6 +98,8 @@ typedef enum JsonPathItemType
 	jpiArray,					/* array constructor: '[expr, ...]' */
 	jpiObject,					/* object constructor: '{ key : value, ... }' */
 	jpiObjectField,				/* element of object constructor: 'key : value' */
+	jpiLambda,					/* lambda expression: 'arg => expr' or '(arg,...) => expr' */
+	jpiArgument,				/* lambda argument */
 
 	jpiBinary = 0xFF			/* for jsonpath operators implementation only */
 } JsonPathItemType;
@@ -210,6 +212,14 @@ typedef struct JsonPathItem
 			int32		patternlen;
 			uint32		flags;
 		}			like_regex;
+
+		struct
+		{
+			int32		id;
+			int32	   *params;
+			int32		nparams;
+			int32		expr;
+		}			lambda;
 	}			content;
 } JsonPathItem;
 
@@ -230,6 +240,9 @@ extern bool jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from,
 extern void jspGetSequenceElement(JsonPathItem *v, int i, JsonPathItem *elem);
 extern void jspGetObjectField(JsonPathItem *v, int i,
 							  JsonPathItem *key, JsonPathItem *val);
+extern JsonPathItem *jspGetLambdaParam(JsonPathItem *func, int index,
+				  JsonPathItem *arg);
+extern JsonPathItem *jspGetLambdaExpr(JsonPathItem *lambda, JsonPathItem *expr);
 
 extern const char *jspOperationName(JsonPathItemType type);
 
@@ -297,6 +310,11 @@ struct JsonPathParseItem
 		} current;
 
 		JsonPath   *binary;
+
+		struct {
+			List   *params;
+			JsonPathParseItem *expr;
+		} lambda;
 
 		/* scalars */
 		Numeric numeric;
@@ -463,6 +481,14 @@ typedef int (*JsonPathVarCallback) (void *vars, bool isJsonb,
 									char *varName, int varNameLen,
 									JsonItem *val, JsonbValue *baseObject);
 
+typedef struct JsonLambdaArg
+{
+	struct JsonLambdaArg *next;
+	JsonItem   *val;
+	const char *name;
+	int			namelen;
+} JsonLambdaArg;
+
 /*
  * Context of jsonpath execution.
  */
@@ -470,6 +496,7 @@ typedef struct JsonPathExecContext
 {
 	void	   *vars;			/* variables to substitute into jsonpath */
 	JsonPathVarCallback getVar;
+	JsonLambdaArg *args;		/* for lambda evaluation */
 	JsonItem   *root;			/* for $ evaluation */
 	JsonItemStack stack;		/* for @ evaluation */
 	JsonBaseObjectInfo baseObject;	/* "base object" for .keyvalue()
@@ -588,6 +615,11 @@ extern JsonPathExecResult jspExecuteItem(JsonPathExecContext *cxt,
 extern JsonPathExecResult jspExecuteItemNested(JsonPathExecContext *cxt,
 											   JsonPathItem *jsp, JsonItem *jb,
 											   JsonValueList *found);
+extern JsonPathExecResult jspExecuteLambda(JsonPathExecContext *cxt,
+										   JsonPathItem *jsp, JsonItem *jb,
+										   JsonValueList *found,
+										   JsonItem **params, int nparams,
+										   void **pcache);
 extern JsonPathBool jspCompareItems(int32 op, JsonItem *jb1, JsonItem *jb2);
 
 /* Standard error message for SQL/JSON errors */
@@ -602,5 +634,6 @@ extern JsonPathBool jspCompareItems(int32 op, JsonItem *jb1, JsonItem *jb2);
 #define ERRMSG_INVALID_JSON_SUBSCRIPT		"invalid SQL/JSON subscript"
 #define ERRMSG_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION	\
 	"invalid argument for SQL/JSON datetime function"
+#define ERRMSG_NO_JSON_ITEM					"no SQL/JSON item"
 
 #endif
