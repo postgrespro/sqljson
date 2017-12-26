@@ -607,3 +607,18 @@ select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[
 select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.a[*].(b)');
 select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a)[*].(b)');
 select jsonb_path_query('{"a": [{"b": 1, "c": 10}, {"b": 2, "c": 20}]}', '$.(a[0 to 1].b)');
+
+-- extension: user-defined functions and item methods
+-- array_map(jsonpath_fcxt, jsonb) function created in create_function_1.sql
+-- array_map() item method
+select jsonb_path_query('1', 'strict $.array_map(x => x + 10)');
+select jsonb_path_query('1', 'lax $.array_map(x => x + 10)');
+select jsonb_path_query('[1, 2, 3]', '$.array_map(x => x + 10)');
+select jsonb_path_query('[1, 2, 3]', '$.array_map(x => x + 10)[*]');
+select jsonb_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', '$.array_map(a => a.array_map(x => x + 10))');
+
+-- array_map() function
+select jsonb_path_query('1', 'strict array_map($, x => x + 10)');
+select jsonb_path_query('1', 'lax array_map($, x => x + 10)');
+select jsonb_path_query('[3, 4, 5]', 'array_map($[*], (x, i) => x + i * 10)');
+select jsonb_path_query('[[1, 2], [3, 4, 5], [], [6, 7]]', 'array_map($[*], x => [array_map(x[*], x => x + 10)])');

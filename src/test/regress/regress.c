@@ -36,6 +36,7 @@
 #include "port/atomics.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
+#include "utils/jsonpath.h"
 #include "utils/rel.h"
 #include "utils/typcache.h"
 #include "utils/memutils.h"
@@ -939,4 +940,200 @@ test_support_func(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_POINTER(ret);
+}
+
+PG_FUNCTION_INFO_V1(jsonpath_array_map);
+Datum
+jsonpath_array_map(PG_FUNCTION_ARGS)
+{
+	JsonPathFuncContext *fcxt = (JsonPathFuncContext *) PG_GETARG_POINTER(0);
+	JsonPathExecContext *cxt = fcxt->cxt;
+	JsonItem    *jb = fcxt->item;
+	JsonPathItem *func = &fcxt->args[jb ? 0 : 1];
+	void	   **funccache = &fcxt->argscache[jb ? 0 : 1];
+	JsonPathExecResult res;
+	JsonItem   *args[3];
+	JsonItem	jbvidx;
+	int			index = 0;
+	int			nargs = 1;
+
+	if (fcxt->nargs != (jb ? 1 : 2))
+	{
+		if (jspThrowErrors(cxt))
+			ereport(ERROR,
+					(errcode(ERRCODE_JSON_SCALAR_REQUIRED),
+					 errmsg(ERRMSG_JSON_SCALAR_REQUIRED),
+					 errdetail("jsonpath .array_map() requires %d arguments "
+							   "but given %d", jb ? 1 : 2, fcxt->nargs)));
+
+		PG_RETURN_INT64(jperError);
+	}
+
+	if (func->type == jpiLambda && func->content.lambda.nparams > 1)
+	{
+		args[nargs++] = &jbvidx;
+		JsonItemGetType(&jbvidx) = jbvNumeric;
+	}
+
+	if (!jb)
+	{
+		JsonValueList items = {0};
+		JsonValueListIterator iter;
+		JsonItem   *item;
+
+		res = jspExecuteItem(cxt, &fcxt->args[0], fcxt->jb, &items);
+
+		if (jperIsError(res))
+			PG_RETURN_INT64(res);
+
+		JsonValueListInitIterator(&items, &iter);
+
+		while ((item = JsonValueListNext(&items, &iter)))
+		{
+			JsonValueList reslist = {0};
+
+			args[0] = item;
+
+			if (nargs > 1)
+			{
+				JsonItemNumeric(&jbvidx) = DatumGetNumeric(
+					DirectFunctionCall1(int4_numeric, Int32GetDatum(index)));
+				index++;
+			}
+
+			res = jspExecuteLambda(cxt, func, fcxt->jb, &reslist,
+								   args, nargs, funccache);
+
+			if (jperIsError(res))
+				PG_RETURN_INT64(res);
+
+			if (JsonValueListLength(&reslist) != 1)
+			{
+				if (jspThrowErrors(cxt))
+					ereport(ERROR,
+							(errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
+							 errmsg(ERRMSG_SINGLETON_JSON_ITEM_REQUIRED),
+							 errdetail("lambda expression in .array_map() "
+									   "should return singleton item")));
+
+				PG_RETURN_INT64(jperError);
+			}
+
+			JsonValueListAppend(fcxt->result, JsonValueListHead(&reslist));
+		}
+	}
+	else if (JsonbType(jb) != jbvArray)
+	{
+		JsonValueList reslist = {0};
+
+		if (!jspAutoWrap(cxt))
+		{
+			if (jspThrowErrors(cxt))
+				ereport(ERROR,
+						(errcode(ERRCODE_JSON_ARRAY_NOT_FOUND),
+						 errmsg(ERRMSG_JSON_ARRAY_NOT_FOUND),
+						 errdetail("jsonpath .array_map() is applied to "
+								   "not an array")));
+
+			PG_RETURN_INT64(jperError);
+		}
+
+		args[0] = jb;
+
+		if (nargs > 1)
+			JsonItemNumeric(&jbvidx) = DatumGetNumeric(
+				DirectFunctionCall1(int4_numeric, Int32GetDatum(0)));
+
+		res = jspExecuteLambda(cxt, func, jb, &reslist, args, nargs, funccache);
+
+		if (jperIsError(res))
+			PG_RETURN_INT64(res);
+
+		if (JsonValueListLength(&reslist) != 1)
+		{
+			if (jspThrowErrors(cxt))
+				ereport(ERROR,
+						(errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
+						 errmsg(ERRMSG_SINGLETON_JSON_ITEM_REQUIRED),
+						 errdetail("lambda expression in jsonpath .array_map() "
+								   "should return singleton item")));
+
+			PG_RETURN_INT64(jperError);
+		}
+
+		JsonValueListAppend(fcxt->result, JsonValueListHead(&reslist));
+	}
+	else
+	{
+		JsonbValue	elembuf;
+		JsonbValue *elem;
+		JsonxIterator it;
+		JsonbIteratorToken tok;
+		JsonValueList result = {0};
+		int			size = JsonxArraySize(jb, cxt->isJsonb);
+		int			i;
+		bool		isBinary = JsonItemIsBinary(jb);
+
+		if (isBinary && size > 0)
+		{
+			elem = &elembuf;
+			JsonxIteratorInit(&it, JsonItemBinary(jb).data, cxt->isJsonb);
+			tok = JsonxIteratorNext(&it, &elembuf, false);
+			if (tok != WJB_BEGIN_ARRAY)
+				elog(ERROR, "unexpected jsonb token at the array start");
+		}
+
+		if (nargs > 1)
+		{
+			nargs = 3;
+			args[2] = jb;
+		}
+
+		for (i = 0; i < size; i++)
+		{
+			JsonValueList reslist = {0};
+			JsonItem	elemjsi;
+
+			if (isBinary)
+			{
+				tok = JsonxIteratorNext(&it, elem, true);
+				if (tok != WJB_ELEM)
+					break;
+			}
+			else
+				elem = &JsonItemArray(jb).elems[i];
+
+			args[0] = JsonbValueToJsonItem(elem, &elemjsi);
+
+			if (nargs > 1)
+			{
+				JsonItemNumeric(&jbvidx) = DatumGetNumeric(
+					DirectFunctionCall1(int4_numeric, Int32GetDatum(index)));
+				index++;
+			}
+
+			res = jspExecuteLambda(cxt, func, jb, &reslist, args, nargs, funccache);
+
+			if (jperIsError(res))
+				PG_RETURN_INT64(res);
+
+			if (JsonValueListLength(&reslist) != 1)
+			{
+				if (jspThrowErrors(cxt))
+					ereport(ERROR,
+							(errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
+							 errmsg(ERRMSG_SINGLETON_JSON_ITEM_REQUIRED),
+							 errdetail("lambda expression in jsonpath .array_map() "
+									   "should return singleton item")));
+
+				PG_RETURN_INT64(jperError);
+			}
+
+			JsonValueListConcat(&result, reslist);
+		}
+
+		JsonAppendWrappedItems(fcxt->result, &result, cxt->isJsonb);
+	}
+
+	PG_RETURN_INT64(jperOk);
 }
