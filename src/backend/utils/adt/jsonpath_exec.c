@@ -132,6 +132,9 @@ JsonValueListGetList(JsonValueList *jvl)
 	return jvl->list;
 }
 
+/*
+ * Get the next item from the sequence advancing iterator.
+ */
 static inline JsonbValue *
 JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 {
@@ -160,6 +163,9 @@ JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 	return lfirst(it->lcell);
 }
 
+/*
+ * Initialize a binary JsonbValue with the given jsonb container.
+ */
 static inline JsonbValue *
 JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
 {
@@ -170,6 +176,10 @@ JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
 	return jbv;
 }
 
+/*
+ * Transform a JsonbValue into a binary JsonbValue by encoding it to a
+ * binary jsonb container.
+ */
 static inline JsonbValue *
 JsonbWrapInBinary(JsonbValue *jbv, JsonbValue *out)
 {
@@ -358,6 +368,9 @@ JsonbType(JsonbValue *jb)
 	return type;
 }
 
+/*
+ * Get the type name of a SQL/JSON item.
+ */
 static const char *
 JsonbTypeName(JsonbValue *jb)
 {
@@ -415,6 +428,9 @@ JsonbTypeName(JsonbValue *jb)
 	}
 }
 
+/*
+ * Returns the size of an array item, or -1 if item is not an array.
+ */
 static int
 JsonbArraySize(JsonbValue *jb)
 {
@@ -432,6 +448,9 @@ JsonbArraySize(JsonbValue *jb)
 	return -1;
 }
 
+/*
+ * Compare two numerics.
+ */
 static int
 compareNumeric(Numeric a, Numeric b)
 {
@@ -444,6 +463,10 @@ compareNumeric(Numeric a, Numeric b)
 			);
 }
 
+/*
+ * Cross-type comparison of two datetime SQL/JSON items.  If items are
+ * uncomparable, 'error' flag is set.
+ */
 static int
 compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2, bool *error)
 {
@@ -556,6 +579,9 @@ compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2, bool *error)
 	return DatumGetInt32(DirectFunctionCall2(cmpfunc, val1, val2));
 }
 
+/*
+ * Check equality of two SLQ/JSON items of the same type.
+ */
 static inline JsonPathBool
 checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 {
@@ -613,6 +639,9 @@ checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 	return (not ^ eq) ? jpbTrue : jpbFalse;
 }
 
+/*
+ * Compare two SLQ/JSON items using comparison operation 'op'.
+ */
 static JsonPathBool
 makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 {
@@ -701,6 +730,9 @@ copyJsonbValue(JsonbValue *src)
 	return dst;
 }
 
+/*
+ * Execute next jsonpath item if it does exist.
+ */
 static inline JsonPathExecResult
 recursiveExecuteNext(JsonPathExecContext *cxt,
 					 JsonPathItem *cur, JsonPathItem *next,
@@ -728,6 +760,10 @@ recursiveExecuteNext(JsonPathExecContext *cxt,
 	return jperOk;
 }
 
+/*
+ * Execute jsonpath expression and automatically unwrap each array item from
+ * the resulting sequence in lax mode.
+ */
 static inline JsonPathExecResult
 recursiveExecuteAndUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						  JsonbValue *jb, JsonValueList *found)
@@ -775,6 +811,12 @@ recursiveExecuteAndUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return recursiveExecute(cxt, jsp, jb, found);
 }
 
+/*
+ * Execute comparison expression.  True is returned only if found any pair of
+ * items from the left and right operand's sequences which is satisfying
+ * condition.  In strict mode all pairs should be comparable, otherwise an error
+ * is returned.
+ */
 static JsonPathBool
 executeComparison(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 {
@@ -852,6 +894,10 @@ executeComparison(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 	return jpbFalse;
 }
 
+/*
+ * Execute binary arithemitc expression on singleton numeric operands.
+ * Array operands are automatically unwrapped in lax mode.
+ */
 static JsonPathExecResult
 executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						JsonbValue *jb, JsonValueList *found)
@@ -961,6 +1007,10 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return recursiveExecuteNext(cxt, jsp, &elem, lval, found, false);
 }
 
+/*
+ * Execute unary arithmetic expression for each numeric item in its operand's
+ * sequence.  Array operand is automatically unwrapped in lax mode.
+ */
 static JsonPathExecResult
 executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					   JsonbValue *jb,  JsonValueList *found)
@@ -1095,6 +1145,10 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	return res;
 }
 
+/*
+ * Execute array subscript expression and convert resulting numeric item to the
+ * integer type with truncation.
+ */
 static JsonPathExecResult
 getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			  int32 *index)
@@ -2136,6 +2190,9 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return res;
 }
 
+/*
+ * Unwrap current array item and execute jsonpath for each of its elements.
+ */
 static JsonPathExecResult
 recursiveExecuteUnwrapArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							JsonbValue *jb, JsonValueList *found)
@@ -2181,6 +2238,9 @@ recursiveExecuteUnwrapArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return res;
 }
 
+/*
+ * Execute jsonpath with unwrapping of current item if it is an array.
+ */
 static inline JsonPathExecResult
 recursiveExecuteUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					   JsonbValue *jb, JsonValueList *found)
@@ -2233,6 +2293,9 @@ wrapItem(JsonbValue *jbv)
 	return JsonbWrapInBinary(jbv, NULL);
 }
 
+/*
+ * Execute jsonpath with automatic unwrapping of current item in lax mode.
+ */
 static inline JsonPathExecResult
 recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				 JsonValueList *found)
