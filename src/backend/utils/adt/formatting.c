@@ -995,8 +995,8 @@ static int	from_char_parse_int_len(int *dest, char **src, const int len, FormatN
 static int	from_char_parse_int(int *dest, char **src, FormatNode *node);
 static int	seq_search(char *name, const char *const *array, int type, int max, int *len);
 static int	from_char_seq_search(int *dest, char **src, const char *const *array, int type, int max, FormatNode *node);
-static void do_to_timestamp(text *date_txt, text *fmt, bool strict,
-				struct pg_tm *tm, fsec_t *fsec);
+static void do_to_timestamp(text *date_txt, const char *fmt, int fmt_len,
+				bool strict, struct pg_tm *tm, fsec_t *fsec);
 static char *fill_str(char *str, int c, int max);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
@@ -3703,7 +3703,8 @@ to_timestamp(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
-	do_to_timestamp(date_txt, fmt, false, &tm, &fsec);
+	do_to_timestamp(date_txt, VARDATA(fmt), VARSIZE_ANY_EXHDR(fmt), false,
+					&tm, &fsec);
 
 	/* Use the specified time zone, if any. */
 	if (tm.tm_zone)
@@ -3738,7 +3739,8 @@ to_date(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
-	do_to_timestamp(date_txt, fmt, false, &tm, &fsec);
+	do_to_timestamp(date_txt, VARDATA(fmt), VARSIZE_ANY_EXHDR(fmt), false,
+					&tm, &fsec);
 
 	/* Prevent overflow in Julian-day routines */
 	if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
@@ -3775,12 +3777,12 @@ to_date(PG_FUNCTION_ARGS)
  * format strings after parsing.
  */
 static void
-do_to_timestamp(text *date_txt, text *fmt, bool strict,
+do_to_timestamp(text *date_txt, const char *fmt_str, int fmt_len, bool strict,
 				struct pg_tm *tm, fsec_t *fsec)
 {
 	FormatNode *format;
 	TmFromChar	tmfc;
-	int			fmt_len;
+	char 	   *fmt_tmp = NULL;
 	char	   *date_str;
 	int			fmask;
 
@@ -3791,14 +3793,14 @@ do_to_timestamp(text *date_txt, text *fmt, bool strict,
 	*fsec = 0;
 	fmask = 0;					/* bit mask for ValidateDate() */
 
-	fmt_len = VARSIZE_ANY_EXHDR(fmt);
+	if (fmt_len < 0) /* zero-terminated */
+		fmt_len = strlen(fmt_str);
+	else if (fmt_len > 0) /* not zero-terminated */
+		fmt_str = fmt_tmp = pnstrdup(fmt_str, fmt_len);
 
 	if (fmt_len)
 	{
-		char	   *fmt_str;
 		bool		incache;
-
-		fmt_str = text_to_cstring(fmt);
 
 		if (fmt_len > DCH_CACHE_SIZE)
 		{
@@ -3831,10 +3833,12 @@ do_to_timestamp(text *date_txt, text *fmt, bool strict,
 
 		DCH_from_char(format, date_str, &tmfc, strict);
 
-		pfree(fmt_str);
 		if (!incache)
 			pfree(format);
 	}
+
+	if (fmt_tmp)
+		pfree(fmt_tmp);
 
 	DEBUG_TMFC(&tmfc);
 
