@@ -960,7 +960,8 @@ static void parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 
 static void DCH_to_char(FormatNode *node, bool is_interval,
 			TmToChar *in, char *out, Oid collid);
-static void DCH_from_char(FormatNode *node, char *in, TmFromChar *out);
+static void DCH_from_char(FormatNode *node, char *in, TmFromChar *out,
+						  bool strict);
 
 #ifdef DEBUG_TO_FROM_CHAR
 static void dump_index(const KeyWord *k, const int *index);
@@ -977,7 +978,7 @@ static int	from_char_parse_int_len(int *dest, char **src, const int len, FormatN
 static int	from_char_parse_int(int *dest, char **src, FormatNode *node);
 static int	seq_search(char *name, const char *const *array, int type, int max, int *len);
 static int	from_char_seq_search(int *dest, char **src, const char *const *array, int type, int max, FormatNode *node);
-static void do_to_timestamp(text *date_txt, text *fmt,
+static void do_to_timestamp(text *date_txt, text *fmt, bool strict,
 				struct pg_tm *tm, fsec_t *fsec);
 static char *fill_str(char *str, int c, int max);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
@@ -2973,13 +2974,15 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 /* ----------
  * Process a string as denoted by a list of FormatNodes.
  * The TmFromChar struct pointed to by 'out' is populated with the results.
+ * 'strict' enables error reporting when trailing input characters or format
+ * nodes remain after parsing.
  *
  * Note: we currently don't have any to_interval() function, so there
  * is no need here for INVALID_FOR_INTERVAL checks.
  * ----------
  */
 static void
-DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
+DCH_from_char(FormatNode *node, char *in, TmFromChar *out, bool strict)
 {
 	FormatNode *n;
 	char	   *s;
@@ -3260,6 +3263,23 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 				SKIP_THth(s, n->suffix);
 				break;
 		}
+	}
+
+	if (strict)
+	{
+		if (n->type != NODE_TYPE_END)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("input string is too short for datetime format")));
+
+		while (*s == ' ')
+			s++;
+
+		if (*s != '\0')
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+					 errmsg("trailing characters remain in input string after "
+							"datetime format")));
 	}
 }
 
@@ -3562,7 +3582,7 @@ to_timestamp(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
-	do_to_timestamp(date_txt, fmt, &tm, &fsec);
+	do_to_timestamp(date_txt, fmt, false, &tm, &fsec);
 
 	/* Use the specified time zone, if any. */
 	if (tm.tm_zone)
@@ -3597,7 +3617,7 @@ to_date(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
-	do_to_timestamp(date_txt, fmt, &tm, &fsec);
+	do_to_timestamp(date_txt, fmt, false, &tm, &fsec);
 
 	/* Prevent overflow in Julian-day routines */
 	if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
@@ -3630,9 +3650,11 @@ to_date(PG_FUNCTION_ARGS)
  *
  * The TmFromChar is then analysed and converted into the final results in
  * struct 'tm' and 'fsec'.
+ * 'strict' enables error reporting when trailing characters remain in input or
+ * format strings after parsing.
  */
 static void
-do_to_timestamp(text *date_txt, text *fmt,
+do_to_timestamp(text *date_txt, text *fmt, bool strict,
 				struct pg_tm *tm, fsec_t *fsec)
 {
 	FormatNode *format;
@@ -3686,7 +3708,7 @@ do_to_timestamp(text *date_txt, text *fmt,
 		/* dump_index(DCH_keywords, DCH_index); */
 #endif
 
-		DCH_from_char(format, date_str, &tmfc);
+		DCH_from_char(format, date_str, &tmfc, strict);
 
 		pfree(fmt_str);
 		if (!incache)
