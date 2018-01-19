@@ -39,22 +39,10 @@ select '$.a.*'::jsonpath;
  $."a".*
 (1 row)
 
-select '$.*.[*]'::jsonpath;
- jsonpath 
-----------
- $.*[*]
-(1 row)
-
 select '$.*[*]'::jsonpath;
  jsonpath 
 ----------
  $.*[*]
-(1 row)
-
-select '$.a.[*]'::jsonpath;
- jsonpath 
-----------
- $."a"[*]
 (1 row)
 
 select '$.a[*]'::jsonpath;
@@ -63,25 +51,7 @@ select '$.a[*]'::jsonpath;
  $."a"[*]
 (1 row)
 
-select '$.a.[*][*]'::jsonpath;
-  jsonpath   
--------------
- $."a"[*][*]
-(1 row)
-
-select '$.a.[*].[*]'::jsonpath;
-  jsonpath   
--------------
- $."a"[*][*]
-(1 row)
-
 select '$.a[*][*]'::jsonpath;
-  jsonpath   
--------------
- $."a"[*][*]
-(1 row)
-
-select '$.a[*].[*]'::jsonpath;
   jsonpath   
 -------------
  $."a"[*][*]
@@ -295,12 +265,6 @@ select '$.g ? (@.zip == $zip)'::jsonpath;
          jsonpath          
 ---------------------------
  $."g"?(@."zip" == $"zip")
-(1 row)
-
-select '$.a.[1,2, 3 to 16]'::jsonpath;
-      jsonpath      
---------------------
- $."a"[1,2,3 to 16]
 (1 row)
 
 select '$.a[1,2, 3 to 16]'::jsonpath;
