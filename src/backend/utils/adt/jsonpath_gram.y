@@ -431,7 +431,6 @@ accessor_op:
 	'.' key							{ $$ = $2; }
 	| '.' '*'						{ $$ = makeItemType(jpiAnyKey); }
 	| array_accessor				{ $$ = $1; }
-	| '.' array_accessor			{ $$ = $2; }
 	| '.' any_path					{ $$ = $2; }
 	| '.' method '(' ')'			{ $$ = makeItemType($2); }
 	| '.' DATETIME_P '(' opt_datetime_template ')'

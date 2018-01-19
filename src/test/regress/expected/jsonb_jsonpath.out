@@ -58,25 +58,25 @@ select jsonb '{"a": {"b": 1}}' @? 'lax $.**{3}';
  f
 (1 row)
 
-select jsonb '[]' @? '$.[*]';
+select jsonb '[]' @? '$[*]';
  ?column? 
 ----------
  f
 (1 row)
 
-select jsonb '[1]' @? '$.[*]';
+select jsonb '[1]' @? '$[*]';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '[1]' @? '$.[1]';
+select jsonb '[1]' @? '$[1]';
  ?column? 
 ----------
  f
 (1 row)
 
-select jsonb '[1]' @? 'strict $.[1]';
+select jsonb '[1]' @? 'strict $[1]';
  ?column? 
 ----------
  
@@ -84,37 +84,37 @@ select jsonb '[1]' @? 'strict $.[1]';
 
 select jsonb '[1]' @* 'strict $[1]';
 ERROR:  Invalid SQL/JSON subscript
-select jsonb '[1]' @? '$.[0]';
+select jsonb '[1]' @? '$[0]';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '[1]' @? '$.[0.3]';
+select jsonb '[1]' @? '$[0.3]';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '[1]' @? '$.[0.5]';
+select jsonb '[1]' @? '$[0.5]';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '[1]' @? '$.[0.9]';
+select jsonb '[1]' @? '$[0.9]';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '[1]' @? '$.[1.2]';
+select jsonb '[1]' @? '$[1.2]';
  ?column? 
 ----------
  f
 (1 row)
 
-select jsonb '[1]' @? 'strict $.[1.2]';
+select jsonb '[1]' @? 'strict $[1.2]';
  ?column? 
 ----------
  
@@ -193,48 +193,48 @@ select jsonb '{"a": 12, "b": {"a": 13}}' @* 'lax $.*.a';
  13
 (1 row)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[*].a';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[*].a';
  ?column? 
 ----------
  13
 (1 row)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[*].*';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[*].*';
  ?column? 
 ----------
  13
  14
 (2 rows)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[0].a';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0].a';
  ?column? 
 ----------
 (0 rows)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[1].a';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[1].a';
  ?column? 
 ----------
  13
 (1 row)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[2].a';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[2].a';
  ?column? 
 ----------
 (0 rows)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[0,1].a';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0,1].a';
  ?column? 
 ----------
  13
 (1 row)
 
-select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $.[0 to 10].a';
+select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0 to 10].a';
  ?column? 
 ----------
  13
 (1 row)
 
-select jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$.[2.5 - 1 to @.size() - 2]';
+select jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$[2.5 - 1 to @.size() - 2]';
  ?column?  
 -----------
  {"a": 13}
@@ -332,7 +332,7 @@ select * from jsonpath_query(jsonb '{"a": 10}', '$.a ? (@ < $value)', '{"value" 
  10
 (1 row)
 
-select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)', '{"value" : 13}');
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$[*] ? (@ < $value)', '{"value" : 13}');
  jsonpath_query 
 ----------------
  10
@@ -340,14 +340,14 @@ select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[*] ? (@ < $value)'
  12
 (3 rows)
 
-select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0,1] ? (@ < $value)', '{"value" : 13}');
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$[0,1] ? (@ < $value)', '{"value" : 13}');
  jsonpath_query 
 ----------------
  10
  11
 (2 rows)
 
-select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $value)', '{"value" : 15}');
+select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$[0 to 2] ? (@ < $value)', '{"value" : 15}');
  jsonpath_query 
 ----------------
  10
@@ -355,13 +355,13 @@ select * from jsonpath_query(jsonb '[10,11,12,13,14,15]', '$.[0 to 2] ? (@ < $va
  12
 (3 rows)
 
-select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == "1")');
+select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$[*] ? (@ == "1")');
  jsonpath_query 
 ----------------
  "1"
 (1 row)
 
-select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$.[*] ? (@ == $value)', '{"value" : "1"}');
+select * from jsonpath_query(jsonb '[1,"1",2,"2",null]', '$[*] ? (@ == $value)', '{"value" : "1"}');
  jsonpath_query 
 ----------------
  "1"
