@@ -2480,6 +2480,44 @@ jsonb_jsonpath_query3(PG_FUNCTION_ARGS)
 	return jsonb_jsonpath_query(fcinfo);
 }
 
+static Datum
+jsonb_jsonpath_query_wrapped(FunctionCallInfo fcinfo, List *vars)
+{
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
+	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
+	JsonValueList found = { 0 };
+	JsonPathExecResult	res;
+	int			size;
+
+	res = executeJsonPath(jp, vars, jb, &found);
+
+	if (jperIsError(res))
+		throwJsonPathError(res);
+
+	size = JsonValueListLength(&found);
+
+	if (size == 0)
+		PG_RETURN_NULL();
+
+	if (size == 1)
+		PG_RETURN_JSONB_P(JsonbValueToJsonb(JsonValueListHead(&found)));
+
+	PG_RETURN_JSONB_P(JsonbValueToJsonb(wrapItemsInArray(&found)));
+}
+
+Datum
+jsonb_jsonpath_query_wrapped2(PG_FUNCTION_ARGS)
+{
+	return jsonb_jsonpath_query_wrapped(fcinfo, NIL);
+}
+
+Datum
+jsonb_jsonpath_query_wrapped3(PG_FUNCTION_ARGS)
+{
+	return jsonb_jsonpath_query_wrapped(fcinfo,
+										makePassingVars(PG_GETARG_JSONB_P(2)));
+}
+
 /* Construct a JSON array from the item list */
 static inline JsonbValue *
 wrapItemsInArray(const JsonValueList *items)
