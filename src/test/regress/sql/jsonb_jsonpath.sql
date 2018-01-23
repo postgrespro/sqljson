@@ -361,6 +361,10 @@ set time zone default;
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*]';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
 
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ == 1)';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ > 10)';
+
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a ? (@ > 1)';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*] ? (@.a > 2)';
 
