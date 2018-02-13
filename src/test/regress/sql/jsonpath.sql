@@ -86,6 +86,9 @@ select '($.a.b + -$.x.y).c.d'::jsonpath;
 select '(-+$.a.b).c.d'::jsonpath;
 select '1 + ($.a.b + 2).c.d'::jsonpath;
 select '1 + ($.a.b > 2).c.d'::jsonpath;
+select '($)'::jsonpath;
+select '(($))'::jsonpath;
+select '((($ + 1)).a + ((2)).b ? ((((@ > 1)) || (exists(@.c)))))'::jsonpath;
 
 select '$ ? (@.a < 1)'::jsonpath;
 select '$ ? (@.a < -1)'::jsonpath;
