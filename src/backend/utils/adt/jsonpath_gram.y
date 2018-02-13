@@ -284,7 +284,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 
 %type	<result>	result
 
-%type	<value>		scalar_value path_primary expr pexpr array_accessor
+%type	<value>		scalar_value path_primary expr array_accessor
 					any_path accessor_op key predicate delimited_predicate
 					index_elem starts_with_initial opt_datetime_template
 					expr_or_predicate
@@ -351,21 +351,21 @@ comp_op:
 	;
 
 delimited_predicate:
-	'(' predicate ')'					{ $$ = $2; }
+	'(' predicate ')'						{ $$ = $2; }
 	| EXISTS_P '(' expr ')'			{ $$ = makeItemUnary(jpiExists, $3); }
 	;
 
 predicate:
 	delimited_predicate				{ $$ = $1; }
-	| pexpr comp_op pexpr			{ $$ = makeItemBinary($2, $1, $3); }
+	| expr comp_op expr				{ $$ = makeItemBinary($2, $1, $3); }
 	| predicate AND_P predicate		{ $$ = makeItemBinary(jpiAnd, $1, $3); }
 	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
 	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }
 	| '(' predicate ')' IS_P UNKNOWN_P	{ $$ = makeItemUnary(jpiIsUnknown, $2); }
-	| pexpr STARTS_P WITH_P starts_with_initial
+	| expr STARTS_P WITH_P starts_with_initial
 		{ $$ = makeItemBinary(jpiStartsWith, $1, $4); }
-	| pexpr LIKE_REGEX_P STRING_P 	{ $$ = makeItemLikeRegex($1, &$3, NULL); }
-	| pexpr LIKE_REGEX_P STRING_P FLAG_P STRING_P
+	| expr LIKE_REGEX_P STRING_P 	{ $$ = makeItemLikeRegex($1, &$3, NULL); }
+	| expr LIKE_REGEX_P STRING_P FLAG_P STRING_P
 									{ $$ = makeItemLikeRegex($1, &$3, &$5); }
 	;
 
@@ -385,29 +385,25 @@ accessor_expr:
 	path_primary					{ $$ = list_make1($1); }
 	| '.' key						{ $$ = list_make2(makeItemType(jpiCurrent), $2); }
 	| '(' expr ')' accessor_op		{ $$ = list_make2($2, $4); }
-	| '(' predicate ')'	accessor_op	{ $$ = list_make2($2, $4); }
+	| '(' predicate ')' accessor_op	{ $$ = list_make2($2, $4); }
 	| accessor_expr accessor_op		{ $$ = lappend($1, $2); }
 	;
 
-pexpr:
-	expr							{ $$ = $1; }
-	| '(' expr ')'					{ $$ = $2; }
-	;
-
 expr:
-	accessor_expr						{ $$ = makeItemList($1); }
-	| '+' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiPlus, $2); }
-	| '-' pexpr %prec UMINUS			{ $$ = makeItemUnary(jpiMinus, $2); }
-	| pexpr '+' pexpr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
-	| pexpr '-' pexpr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
-	| pexpr '*' pexpr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
-	| pexpr '/' pexpr					{ $$ = makeItemBinary(jpiDiv, $1, $3); }
-	| pexpr '%' pexpr					{ $$ = makeItemBinary(jpiMod, $1, $3); }
+	accessor_expr					{ $$ = makeItemList($1); }
+	| '(' expr ')'					{ $$ = $2; }
+	| '+' expr %prec UMINUS			{ $$ = makeItemUnary(jpiPlus, $2); }
+	| '-' expr %prec UMINUS			{ $$ = makeItemUnary(jpiMinus, $2); }
+	| expr '+' expr					{ $$ = makeItemBinary(jpiAdd, $1, $3); }
+	| expr '-' expr					{ $$ = makeItemBinary(jpiSub, $1, $3); }
+	| expr '*' expr					{ $$ = makeItemBinary(jpiMul, $1, $3); }
+	| expr '/' expr					{ $$ = makeItemBinary(jpiDiv, $1, $3); }
+	| expr '%' expr					{ $$ = makeItemBinary(jpiMod, $1, $3); }
 	;
 
 index_elem:
-	pexpr							{ $$ = makeItemBinary(jpiSubscript, $1, NULL); }
-	| pexpr TO_P pexpr				{ $$ = makeItemBinary(jpiSubscript, $1, $3); }
+	expr							{ $$ = makeItemBinary(jpiSubscript, $1, NULL); }
+	| expr TO_P expr				{ $$ = makeItemBinary(jpiSubscript, $1, $3); }
 	;
 
 index_list:
