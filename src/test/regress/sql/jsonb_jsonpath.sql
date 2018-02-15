@@ -156,6 +156,11 @@ select jsonb '[1,2,3]' @? '$ ? (-@[*] < -2)';
 select jsonb '[1,2,3]' @? '$ ? (-@[*] < -3)';
 select jsonb '1' @? '$ ? ($ > 0)';
 
+-- arithmetic errors
+select jsonb '[1,2,0,3]' @* '$[*] ? (2 / @ > 0)';
+select jsonb '[1,2,0,3]' @* '$[*] ? ((2 / @ > 0) is unknown)';
+select jsonb '0' @* '1 / $';
+
 -- unwrapping of operator arguments in lax mode
 select jsonb '{"a": [2]}' @* 'lax $.a * 3';
 select jsonb '{"a": [2]}' @* 'lax $.a + 3';

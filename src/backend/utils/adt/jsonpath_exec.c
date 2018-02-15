@@ -812,6 +812,7 @@ static JsonPathExecResult
 executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						JsonbValue *jb, JsonValueList *found)
 {
+	MemoryContext mcxt = CurrentMemoryContext;
 	JsonPathExecResult jper;
 	JsonPathItem elem;
 	JsonValueList lseq = { 0 };
@@ -820,6 +821,7 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonbValue *rval;
 	JsonbValue	lvalbuf;
 	JsonbValue	rvalbuf;
+	PGFunction	func;
 	Datum		ldatum;
 	Datum		rdatum;
 	Datum		res;
@@ -868,23 +870,43 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	switch (jsp->type)
 	{
 		case jpiAdd:
-			res = DirectFunctionCall2(numeric_add, ldatum, rdatum);
+			func = numeric_add;
 			break;
 		case jpiSub:
-			res = DirectFunctionCall2(numeric_sub, ldatum, rdatum);
+			func = numeric_sub;
 			break;
 		case jpiMul:
-			res = DirectFunctionCall2(numeric_mul, ldatum, rdatum);
+			func = numeric_mul;
 			break;
 		case jpiDiv:
-			res = DirectFunctionCall2(numeric_div, ldatum, rdatum);
+			func = numeric_div;
 			break;
 		case jpiMod:
-			res = DirectFunctionCall2(numeric_mod, ldatum, rdatum);
+			func = numeric_mod;
 			break;
 		default:
 			elog(ERROR, "unknown jsonpath arithmetic operation %d", jsp->type);
+			func = NULL;
+			break;
 	}
+
+	PG_TRY();
+	{
+		res = DirectFunctionCall2(func, ldatum, rdatum);
+	}
+	PG_CATCH();
+	{
+		int			errcode = geterrcode();
+
+		if (ERRCODE_TO_CATEGORY(errcode) != ERRCODE_DATA_EXCEPTION)
+			PG_RE_THROW();
+
+		FlushErrorState();
+		MemoryContextSwitchTo(mcxt);
+
+		return jperMakeError(errcode);
+	}
+	PG_END_TRY();
 
 	lval = palloc(sizeof(*lval));
 	lval->type = jbvNumeric;
