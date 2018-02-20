@@ -3748,8 +3748,8 @@ to_date(PG_FUNCTION_ARGS)
  * presence of date/time/zone components in the format string.
  */
 Datum
-to_datetime(text *date_txt, const char *fmt, int fmt_len, bool strict,
-			Oid *typid, int32 *typmod)
+to_datetime(text *date_txt, const char *fmt, int fmt_len, char *tzname,
+			bool strict, Oid *typid, int32 *typmod, int *tz)
 {
 	struct pg_tm tm;
 	fsec_t		fsec;
@@ -3758,6 +3758,7 @@ to_datetime(text *date_txt, const char *fmt, int fmt_len, bool strict,
 	do_to_timestamp(date_txt, fmt, fmt_len, strict, &tm, &fsec, &flags);
 
 	*typmod = -1; /* TODO implement FF1, ..., FF9 */
+	*tz = 0;
 
 	if (flags & DCH_DATED)
 	{
@@ -3766,20 +3767,27 @@ to_datetime(text *date_txt, const char *fmt, int fmt_len, bool strict,
 			if (flags & DCH_ZONED)
 			{
 				TimestampTz	result;
-				int			tz;
 
 				if (tm.tm_zone)
+					tzname = (char *) tm.tm_zone;
+
+				if (tzname)
 				{
-					int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
+					int			dterr = DecodeTimezone(tzname, tz);
 
 					if (dterr)
-						DateTimeParseError(dterr, text_to_cstring(date_txt),
-										   "timestamptz");
+						DateTimeParseError(dterr, tzname, "timestamptz");
 				}
 				else
-					tz = DetermineTimeZoneOffset(&tm, session_timezone);
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+							 errmsg("missing time-zone in timestamptz input string")));
 
-				if (tm2timestamp(&tm, fsec, &tz, &result) != 0)
+					*tz = DetermineTimeZoneOffset(&tm, session_timezone);
+				}
+
+				if (tm2timestamp(&tm, fsec, tz, &result) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("timestamptz out of range")));
@@ -3843,20 +3851,27 @@ to_datetime(text *date_txt, const char *fmt, int fmt_len, bool strict,
 		if (flags & DCH_ZONED)
 		{
 			TimeTzADT  *result = palloc(sizeof(TimeTzADT));
-			int			tz;
 
 			if (tm.tm_zone)
+				tzname = (char *) tm.tm_zone;
+
+			if (tzname)
 			{
-				int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
+				int			dterr = DecodeTimezone(tzname, tz);
 
 				if (dterr)
-					DateTimeParseError(dterr, text_to_cstring(date_txt),
-									   "timetz");
+					DateTimeParseError(dterr, tzname, "timetz");
 			}
 			else
-				tz = DetermineTimeZoneOffset(&tm, session_timezone);
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+						 errmsg("missing time-zone in timestamptz input string")));
 
-			if (tm2timetz(&tm, fsec, tz, result) != 0)
+				*tz = DetermineTimeZoneOffset(&tm, session_timezone);
+			}
+
+			if (tm2timetz(&tm, fsec, *tz, result) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 						 errmsg("timetz out of range")));
