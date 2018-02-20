@@ -555,6 +555,37 @@ SELECT JSON_VALUE(json 'null', '$a' PASSING point ' (1, 2 )' AS a RETURNING poin
  (1,2)
 (1 row)
 
+-- Test timestamptz passing and output
+SELECT JSON_VALUE(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts);
+          json_value          
+------------------------------
+ Tue Feb 20 18:34:56 2018 PST
+(1 row)
+
+SELECT JSON_VALUE(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING timestamptz);
+          json_value          
+------------------------------
+ Tue Feb 20 18:34:56 2018 PST
+(1 row)
+
+SELECT JSON_VALUE(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING timestamp);
+        json_value        
+--------------------------
+ Tue Feb 20 18:34:56 2018
+(1 row)
+
+SELECT JSON_VALUE(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING json);
+         json_value          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
+SELECT JSON_VALUE(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING jsonb);
+         json_value          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
 -- JSON_QUERY
 SELECT
 	JSON_QUERY(js FORMAT JSON, '$'),
@@ -918,6 +949,25 @@ SELECT JSON_QUERY(json '{"a": 1}', '$.a' RETURNING sqljson_int_not_null);
 
 SELECT JSON_QUERY(json '{"a": 1}', '$.b' RETURNING sqljson_int_not_null);
 ERROR:  domain sqljson_int_not_null does not allow null values
+-- Test timestamptz passing and output
+SELECT JSON_QUERY(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts);
+         json_query          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
+SELECT JSON_QUERY(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING json);
+         json_query          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
+SELECT JSON_QUERY(json 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING jsonb);
+         json_query          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
 -- Test constraints
 CREATE TABLE test_json_constraints (
 	js text,
