@@ -1752,7 +1752,8 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
 
 				JsonEncodeDateTime(buf,
 								   scalarVal->val.datetime.value,
-								   scalarVal->val.datetime.typid);
+								   scalarVal->val.datetime.typid,
+								   &scalarVal->val.datetime.tz);
 				len = strlen(buf);
 				appendToBuffer(buffer, buf, len);
 

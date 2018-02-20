@@ -292,6 +292,7 @@ struct JsonbValue
 			Datum		value;
 			Oid			typid;
 			int32		typmod;
+			int			tz;
 		}			datetime;
 	}			val;
 };

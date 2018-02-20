@@ -235,6 +235,7 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 			value->type = jbvDatetime;
 			value->val.datetime.typid = var->typid;
 			value->val.datetime.typmod = var->typmod;
+			value->val.datetime.tz = 0;
 			value->val.datetime.value = computedValue;
 			break;
 		case JSONBOID:
@@ -1211,16 +1212,22 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return jperNotFound;
 }
 
+/*
+ * Try to parse datetime text with the specified datetime template and
+ * default time-zone 'tzname'.
+ * Returns 'value' datum, its type 'typid' and 'typmod'.
+ */
 static bool
-tryToParseDatetime(const char *template, text *datetime,
-				   Datum *value, Oid *typid, int32 *typmod)
+tryToParseDatetime(const char *fmt, int fmtlen, text *datetime, char *tzname,
+				   bool strict, Datum *value, Oid *typid, int32 *typmod, int *tz)
 {
 	MemoryContext mcxt = CurrentMemoryContext;
 	bool		ok = false;
 
 	PG_TRY();
 	{
-		*value = to_datetime(datetime, template, -1, true, typid, typmod);
+		*value = to_datetime(datetime, fmt, fmtlen, tzname, strict,
+							 typid, typmod, tz);
 		ok = true;
 	}
 	PG_CATCH();
@@ -1826,83 +1833,95 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			{
 				JsonbValue	jbvbuf;
 				Datum		value;
-				text	   *datetime_txt;
+				text	   *datetime;
 				Oid			typid;
 				int32		typmod = -1;
+				int			tz;
 				bool		hasNext;
 
 				if (JsonbType(jb) == jbvScalar)
 					jb = JsonbExtractScalar(jb->val.binary.data, &jbvbuf);
 
+				res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
+
 				if (jb->type != jbvString)
-				{
-					res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
 					break;
-				}
 
-				datetime_txt = cstring_to_text_with_len(jb->val.string.val,
-														jb->val.string.len);
+				datetime = cstring_to_text_with_len(jb->val.string.val,
+													jb->val.string.len);
 
-				res = jperOk;
-
-				if (jsp->content.arg)
+				if (jsp->content.args.left)
 				{
-					text	   *template_txt;
 					char	   *template_str;
 					int			template_len;
-					MemoryContext mcxt = CurrentMemoryContext;
+					char	   *tzname = NULL;
 
-					jspGetArg(jsp, &elem);
+					jspGetLeftArg(jsp, &elem);
 
 					if (elem.type != jpiString)
 						elog(ERROR, "invalid jsonpath item type for .datetime() argument");
 
 					template_str = jspGetString(&elem, &template_len);
-					template_txt = cstring_to_text_with_len(template_str,
-															template_len);
 
-					PG_TRY();
+					if (jsp->content.args.right)
 					{
-						value = to_datetime(datetime_txt,
-											template_str, template_len,
-											false,
-											&typid, &typmod);
+						JsonValueList tzlist = { 0 };
+						JsonPathExecResult tzres;
+						JsonbValue *tzjbv;
+
+						jspGetRightArg(jsp, &elem);
+						tzres = recursiveExecuteNoUnwrap(cxt, &elem, jb,
+														 &tzlist, false);
+
+						if (jperIsError(tzres))
+							return tzres;
+
+						if (JsonValueListLength(&tzlist) != 1)
+							break;
+
+						tzjbv = JsonValueListHead(&tzlist);
+
+						if (tzjbv->type != jbvString)
+							break;
+
+						tzname = pnstrdup(tzjbv->val.string.val,
+										  tzjbv->val.string.len);
 					}
-					PG_CATCH();
-					{
-						if (ERRCODE_TO_CATEGORY(geterrcode()) !=
-														ERRCODE_DATA_EXCEPTION)
-							PG_RE_THROW();
 
-						FlushErrorState();
-						MemoryContextSwitchTo(mcxt);
+					if (tryToParseDatetime(template_str, template_len, datetime,
+										   tzname, false,
+										   &value, &typid, &typmod, &tz))
+						res = jperOk;
 
-						res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
-					}
-					PG_END_TRY();
-
-					pfree(template_txt);
+					if (tzname)
+						pfree(tzname);
 				}
 				else
 				{
-					if (!tryToParseDatetime("yyyy-mm-dd HH24:MI:SS TZH:TZM",
-									datetime_txt, &value, &typid, &typmod) &&
-						!tryToParseDatetime("yyyy-mm-dd HH24:MI:SS TZH",
-									datetime_txt, &value, &typid, &typmod) &&
-						!tryToParseDatetime("yyyy-mm-dd HH24:MI:SS",
-									datetime_txt, &value, &typid, &typmod) &&
-						!tryToParseDatetime("yyyy-mm-dd",
-									datetime_txt, &value, &typid, &typmod) &&
-						!tryToParseDatetime("HH24:MI:SS TZH:TZM",
-									datetime_txt, &value, &typid, &typmod) &&
-						!tryToParseDatetime("HH24:MI:SS TZH",
-									datetime_txt, &value, &typid, &typmod) &&
-						!tryToParseDatetime("HH24:MI:SS",
-									datetime_txt, &value, &typid, &typmod))
-						res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
+					const char *templates[] = {
+						"yyyy-mm-dd HH24:MI:SS TZH:TZM",
+						"yyyy-mm-dd HH24:MI:SS TZH",
+						"yyyy-mm-dd HH24:MI:SS",
+						"yyyy-mm-dd",
+						"HH24:MI:SS TZH:TZM",
+						"HH24:MI:SS TZH",
+						"HH24:MI:SS"
+					};
+					int			i;
+
+					for (i = 0; i < sizeof(templates) / sizeof(*templates); i++)
+					{
+						if (tryToParseDatetime(templates[i], -1, datetime,
+											   NULL, true,  &value, &typid,
+											   &typmod, &tz))
+						{
+							res = jperOk;
+							break;
+						}
+					}
 				}
 
-				pfree(datetime_txt);
+				pfree(datetime);
 
 				if (jperIsError(res))
 					break;
@@ -1918,6 +1937,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				jb->val.datetime.value = value;
 				jb->val.datetime.typid = typid;
 				jb->val.datetime.typmod = typmod;
+				jb->val.datetime.tz = tz;
 
 				res = recursiveExecuteNext(cxt, jsp, &elem, jb, found, hasNext);
 			}
