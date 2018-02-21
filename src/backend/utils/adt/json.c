@@ -2985,7 +2985,8 @@ JsonEncodeJsonbValue(StringInfo buf, JsonbValue *jbv)
 
 				JsonEncodeDateTime(dtbuf,
 								   jbv->val.datetime.value,
-								   jbv->val.datetime.typid);
+								   jbv->val.datetime.typid,
+								   &jbv->val.datetime.tz);
 
 				escape_json(buf, dtbuf);
 
