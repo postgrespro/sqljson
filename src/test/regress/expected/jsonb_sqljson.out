@@ -436,6 +436,37 @@ SELECT JSON_VALUE(jsonb 'null', '$a' PASSING point ' (1, 2 )' AS a RETURNING poi
  (1,2)
 (1 row)
 
+-- Test timestamptz passing and output
+SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts);
+          json_value          
+------------------------------
+ Tue Feb 20 18:34:56 2018 PST
+(1 row)
+
+SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING timestamptz);
+          json_value          
+------------------------------
+ Tue Feb 20 18:34:56 2018 PST
+(1 row)
+
+SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING timestamp);
+        json_value        
+--------------------------
+ Tue Feb 20 18:34:56 2018
+(1 row)
+
+SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING json);
+         json_value          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
+SELECT JSON_VALUE(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING jsonb);
+         json_value          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
 -- JSON_QUERY
 SELECT
 	JSON_QUERY(js, '$'),
@@ -798,6 +829,25 @@ SELECT JSON_QUERY(jsonb '{"a": 1}', '$.a' RETURNING sqljsonb_int_not_null);
 
 SELECT JSON_QUERY(jsonb '{"a": 1}', '$.b' RETURNING sqljsonb_int_not_null);
 ERROR:  domain sqljsonb_int_not_null does not allow null values
+-- Test timestamptz passing and output
+SELECT JSON_QUERY(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts);
+         json_query          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
+SELECT JSON_QUERY(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING json);
+         json_query          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
+SELECT JSON_QUERY(jsonb 'null', '$ts' PASSING timestamptz '2018-02-21 12:34:56 +10' AS ts RETURNING jsonb);
+         json_query          
+-----------------------------
+ "2018-02-21T02:34:56+00:00"
+(1 row)
+
 -- Test constraints
 CREATE TABLE test_jsonb_constraints (
 	js text,
