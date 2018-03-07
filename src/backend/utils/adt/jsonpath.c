@@ -508,16 +508,21 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey, bool printBracket
 				appendStringInfoChar(buf, '.');
 
 			if (v->content.anybounds.first == 0 &&
-					v->content.anybounds.last == PG_UINT32_MAX)
+				v->content.anybounds.last == PG_UINT32_MAX)
 				appendBinaryStringInfo(buf, "**", 2);
-			else if (v->content.anybounds.first == 0)
-				appendStringInfo(buf, "**{,%u}", v->content.anybounds.last);
-			else if (v->content.anybounds.last == PG_UINT32_MAX)
-				appendStringInfo(buf, "**{%u,}", v->content.anybounds.first);
 			else if (v->content.anybounds.first == v->content.anybounds.last)
-				appendStringInfo(buf, "**{%u}", v->content.anybounds.first);
+			{
+				if (v->content.anybounds.first == PG_UINT32_MAX)
+					appendStringInfo(buf, "**{last}");
+				else
+					appendStringInfo(buf, "**{%u}", v->content.anybounds.first);
+			}
+			else if (v->content.anybounds.first == PG_UINT32_MAX)
+				appendStringInfo(buf, "**{last to %u}", v->content.anybounds.last);
+			else if (v->content.anybounds.last == PG_UINT32_MAX)
+				appendStringInfo(buf, "**{%u to last}", v->content.anybounds.first);
 			else
-				appendStringInfo(buf, "**{%u,%u}", v->content.anybounds.first,
+				appendStringInfo(buf, "**{%u to %u}", v->content.anybounds.first,
 												   v->content.anybounds.last);
 			break;
 		case jpiType:

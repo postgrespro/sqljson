@@ -388,13 +388,27 @@ select jsonb '{"a": {"b": 1}}' @* 'lax $.**';
  1
 (3 rows)
 
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{0}';
+    ?column?     
+-----------------
+ {"a": {"b": 1}}
+(1 row)
+
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{0 to last}';
+    ?column?     
+-----------------
+ {"a": {"b": 1}}
+ {"b": 1}
+ 1
+(3 rows)
+
 select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1}';
  ?column? 
 ----------
  {"b": 1}
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1,}';
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1 to last}';
  ?column? 
 ----------
  {"b": 1}
@@ -407,13 +421,13 @@ select jsonb '{"a": {"b": 1}}' @* 'lax $.**{2}';
  1
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @* 'lax $.**{2,}';
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{2 to last}';
  ?column? 
 ----------
  1
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @* 'lax $.**{3,}';
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{3 to last}';
  ?column? 
 ----------
 (0 rows)
@@ -435,19 +449,19 @@ select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1}.b ? (@ > 0)';
  1
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @* 'lax $.**{0,}.b ? (@ > 0)';
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{0 to last}.b ? (@ > 0)';
  ?column? 
 ----------
  1
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1,}.b ? (@ > 0)';
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1 to last}.b ? (@ > 0)';
  ?column? 
 ----------
  1
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1,2}.b ? (@ > 0)';
+select jsonb '{"a": {"b": 1}}' @* 'lax $.**{1 to 2}.b ? (@ > 0)';
  ?column? 
 ----------
  1
@@ -469,25 +483,25 @@ select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1}.b ? (@ > 0)';
 ----------
 (0 rows)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{0,}.b ? (@ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{0 to last}.b ? (@ > 0)';
  ?column? 
 ----------
  1
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1,}.b ? (@ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1 to last}.b ? (@ > 0)';
  ?column? 
 ----------
  1
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1,2}.b ? (@ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{1 to 2}.b ? (@ > 0)';
  ?column? 
 ----------
  1
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{2,3}.b ? (@ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @* 'lax $.**{2 to 3}.b ? (@ > 0)';
  ?column? 
 ----------
  1
@@ -511,19 +525,19 @@ select jsonb '{"a": {"b": 1}}' @? '$.**{1}.b ? ( @ > 0)';
  t
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @? '$.**{0,}.b ? ( @ > 0)';
+select jsonb '{"a": {"b": 1}}' @? '$.**{0 to last}.b ? ( @ > 0)';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @? '$.**{1,}.b ? ( @ > 0)';
+select jsonb '{"a": {"b": 1}}' @? '$.**{1 to last}.b ? ( @ > 0)';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '{"a": {"b": 1}}' @? '$.**{1,2}.b ? ( @ > 0)';
+select jsonb '{"a": {"b": 1}}' @? '$.**{1 to 2}.b ? ( @ > 0)';
  ?column? 
 ----------
  t
@@ -547,25 +561,25 @@ select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{1}.b ? ( @ > 0)';
  f
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{0,}.b ? ( @ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{0 to last}.b ? ( @ > 0)';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{1,}.b ? ( @ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{1 to last}.b ? ( @ > 0)';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{1,2}.b ? ( @ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{1 to 2}.b ? ( @ > 0)';
  ?column? 
 ----------
  t
 (1 row)
 
-select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{2,3}.b ? ( @ > 0)';
+select jsonb '{"a": {"c": {"b": 1}}}' @? '$.**{2 to 3}.b ? ( @ > 0)';
  ?column? 
 ----------
  t

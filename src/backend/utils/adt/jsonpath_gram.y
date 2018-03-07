@@ -202,7 +202,7 @@ makeAny(int first, int last)
 {
 	JsonPathParseItem *v = makeItemType(jpiAny);
 
-	v->value.anybounds.first = (first > 0) ? first : 0;
+	v->value.anybounds.first = (first >= 0) ? first : PG_UINT32_MAX;
 	v->value.anybounds.last = (last >= 0) ? last : PG_UINT32_MAX;
 
 	return v;
@@ -272,6 +272,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 	JsonPathParseResult *result;
 	JsonPathItemType	optype;
 	bool				boolean;
+	int					integer;
 }
 
 %token	<str>		TO_P NULL_P TRUE_P FALSE_P IS_P UNKNOWN_P EXISTS_P
@@ -299,6 +300,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 
 %type	<str>		key_name
 
+%type	<integer>	any_level
 
 %left	OR_P
 %left	AND_P
@@ -416,14 +418,15 @@ array_accessor:
 	| '[' index_list ']'			{ $$ = makeIndexArray($2); }
 	;
 
+any_level:
+	INT_P							{ $$ = pg_atoi($1.val, 4, 0); }
+	| LAST_P						{ $$ = -1; }
+	;
+
 any_path:
-	ANY_P							{ $$ = makeAny(-1, -1); }
-	| ANY_P '{' INT_P '}'			{ $$ = makeAny(pg_atoi($3.val, 4, 0),
-												   pg_atoi($3.val, 4, 0)); }
-	| ANY_P '{' ',' INT_P '}'		{ $$ = makeAny(-1, pg_atoi($4.val, 4, 0)); }
-	| ANY_P '{' INT_P ',' '}'		{ $$ = makeAny(pg_atoi($3.val, 4, 0), -1); }
-	| ANY_P '{' INT_P ',' INT_P '}'	{ $$ = makeAny(pg_atoi($3.val, 4, 0),
-												   pg_atoi($5.val, 4, 0)); }
+	ANY_P							{ $$ = makeAny(0, -1); }
+	| ANY_P '{' any_level '}'		{ $$ = makeAny($3, $3); }
+	| ANY_P '{' any_level TO_P any_level '}'	{ $$ = makeAny($3, $5); }
 	;
 
 accessor_op:

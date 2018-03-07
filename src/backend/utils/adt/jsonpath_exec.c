@@ -1016,7 +1016,9 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 		if (r == WJB_VALUE || r == WJB_ELEM)
 		{
 
-			if (level >= first)
+			if (level >= first ||
+				(first == PG_UINT32_MAX && last == PG_UINT32_MAX &&
+				 v.type != jbvBinary))	/* leaves only requested */
 			{
 				/* check expression */
 				res = recursiveExecuteNext(cxt, NULL, jsp, &v, found, true);
