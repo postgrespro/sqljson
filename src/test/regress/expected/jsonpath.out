@@ -99,28 +99,28 @@ select '$.a.**{2}.b'::jsonpath;
  $."a".**{2}."b"
 (1 row)
 
-select '$.a.**{2,2}.b'::jsonpath;
+select '$.a.**{2 to 2}.b'::jsonpath;
     jsonpath     
 -----------------
  $."a".**{2}."b"
 (1 row)
 
-select '$.a.**{2,5}.b'::jsonpath;
-     jsonpath      
--------------------
- $."a".**{2,5}."b"
+select '$.a.**{2 to 5}.b'::jsonpath;
+       jsonpath       
+----------------------
+ $."a".**{2 to 5}."b"
 (1 row)
 
-select '$.a.**{,5}.b'::jsonpath;
-     jsonpath     
-------------------
- $."a".**{,5}."b"
+select '$.a.**{0 to 5}.b'::jsonpath;
+       jsonpath       
+----------------------
+ $."a".**{0 to 5}."b"
 (1 row)
 
-select '$.a.**{5,}.b'::jsonpath;
-     jsonpath     
-------------------
- $."a".**{5,}."b"
+select '$.a.**{5 to last}.b'::jsonpath;
+        jsonpath         
+-------------------------
+ $."a".**{5 to last}."b"
 (1 row)
 
 select '$+1'::jsonpath;
