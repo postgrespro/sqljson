@@ -4472,40 +4472,6 @@ ExecAggPlainTransByRef(AggState *aggstate, AggStatePerTrans pertrans,
 }
 
 /*
- * Evaluate a expression substituting specified value in its CaseTestExpr nodes.
- */
-static Datum
-ExecEvalExprPassingCaseValue(ExprState *estate, ExprContext *econtext,
-							 bool *isnull,
-							 Datum caseval_datum, bool caseval_isnull)
-{
-	Datum		res;
-	Datum		save_datum = econtext->caseValue_datum;
-	bool		save_isNull = econtext->caseValue_isNull;
-
-	econtext->caseValue_datum = caseval_datum;
-	econtext->caseValue_isNull = caseval_isnull;
-
-	PG_TRY();
-	{
-		res = ExecEvalExpr(estate, econtext, isnull);
-	}
-	PG_CATCH();
-	{
-		econtext->caseValue_datum = save_datum;
-		econtext->caseValue_isNull = save_isNull;
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	econtext->caseValue_datum = save_datum;
-	econtext->caseValue_isNull = save_isNull;
-
-	return res;
-}
-
-/*
  * Evaluate a JSON error/empty behavior result.
  */
 static Datum
@@ -4564,8 +4530,12 @@ ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
 								jexpr->returning->typmod);
 	}
 	else if (op->d.jsonexpr.result_expr)
-		res = ExecEvalExprPassingCaseValue(op->d.jsonexpr.result_expr, econtext,
-										   isNull, res, *isNull);
+	{
+		op->d.jsonexpr.res_expr->value = res;
+		op->d.jsonexpr.res_expr->isnull = *isNull;
+
+		res = ExecEvalExpr(op->d.jsonexpr.result_expr, econtext, isNull);
+	}
 	else if (coercion && coercion->via_populate)
 		res = json_populate_type(res, JSONBOID,
 								 jexpr->returning->typid,
@@ -4728,8 +4698,10 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 	{
 		bool		isnull;
 
-		item = ExecEvalExprPassingCaseValue(op->d.jsonexpr.formatted_expr,
-											econtext, &isnull, item, false);
+		op->d.jsonexpr.raw_expr->value = item;
+		op->d.jsonexpr.raw_expr->isnull = false;
+
+		item = ExecEvalExpr(op->d.jsonexpr.formatted_expr, econtext, &isnull);
 		if (isnull)
 		{
 			/* execute domain checks for NULLs */
@@ -4776,10 +4748,10 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 				}
 				else if (jcstate->estate)
 				{
-					res = ExecEvalExprPassingCaseValue(jcstate->estate,
-													   econtext,
-													   resnull,
-													   res, false);
+					op->d.jsonexpr.coercion_expr->value = res;
+					op->d.jsonexpr.coercion_expr->isnull = false;
+
+					res = ExecEvalExpr(jcstate->estate, econtext, resnull);
 				}
 				/* else no coercion */
 			}

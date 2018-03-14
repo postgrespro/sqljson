@@ -85,6 +85,40 @@ static void ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 								  bool nullcheck);
 
 
+static ExprState *
+ExecInitExprInternal(Expr *node, PlanState *parent, ParamListInfo ext_params,
+					 Datum *caseval, bool *casenull)
+{
+	ExprState  *state;
+	ExprEvalStep scratch = {0};
+
+	/* Special case: NULL expression produces a NULL ExprState pointer */
+	if (node == NULL)
+		return NULL;
+
+	/* Initialize ExprState with empty step list */
+	state = makeNode(ExprState);
+	state->expr = node;
+	state->parent = parent;
+	state->ext_params = ext_params;
+	state->innermost_caseval = caseval;
+	state->innermost_casenull = casenull;
+
+	/* Insert EEOP_*_FETCHSOME steps as needed */
+	ExecInitExprSlots(state, (Node *) node);
+
+	/* Compile the expression proper */
+	ExecInitExprRec(node, state, &state->resvalue, &state->resnull);
+
+	/* Finally, append a DONE step */
+	scratch.opcode = EEOP_DONE;
+	ExprEvalPushStep(state, &scratch);
+
+	ExecReadyExpr(state);
+
+	return state;
+}
+
 /*
  * ExecInitExpr: prepare an expression tree for execution
  *
@@ -123,32 +157,7 @@ static void ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 ExprState *
 ExecInitExpr(Expr *node, PlanState *parent)
 {
-	ExprState  *state;
-	ExprEvalStep scratch = {0};
-
-	/* Special case: NULL expression produces a NULL ExprState pointer */
-	if (node == NULL)
-		return NULL;
-
-	/* Initialize ExprState with empty step list */
-	state = makeNode(ExprState);
-	state->expr = node;
-	state->parent = parent;
-	state->ext_params = NULL;
-
-	/* Insert EEOP_*_FETCHSOME steps as needed */
-	ExecInitExprSlots(state, (Node *) node);
-
-	/* Compile the expression proper */
-	ExecInitExprRec(node, state, &state->resvalue, &state->resnull);
-
-	/* Finally, append a DONE step */
-	scratch.opcode = EEOP_DONE;
-	ExprEvalPushStep(state, &scratch);
-
-	ExecReadyExpr(state);
-
-	return state;
+	return ExecInitExprInternal(node, parent, NULL, NULL, NULL);
 }
 
 /*
@@ -160,32 +169,20 @@ ExecInitExpr(Expr *node, PlanState *parent)
 ExprState *
 ExecInitExprWithParams(Expr *node, ParamListInfo ext_params)
 {
-	ExprState  *state;
-	ExprEvalStep scratch = {0};
+	return ExecInitExprInternal(node, NULL, ext_params, NULL, NULL);
+}
 
-	/* Special case: NULL expression produces a NULL ExprState pointer */
-	if (node == NULL)
-		return NULL;
-
-	/* Initialize ExprState with empty step list */
-	state = makeNode(ExprState);
-	state->expr = node;
-	state->parent = NULL;
-	state->ext_params = ext_params;
-
-	/* Insert EEOP_*_FETCHSOME steps as needed */
-	ExecInitExprSlots(state, (Node *) node);
-
-	/* Compile the expression proper */
-	ExecInitExprRec(node, state, &state->resvalue, &state->resnull);
-
-	/* Finally, append a DONE step */
-	scratch.opcode = EEOP_DONE;
-	ExprEvalPushStep(state, &scratch);
-
-	ExecReadyExpr(state);
-
-	return state;
+/*
+ * ExecInitExprWithCaseValue: prepare an expression tree for execution
+ *
+ * This is the same as ExecInitExpr, except that a pointer to the value for
+ * CasTestExpr is passed here.
+ */
+ExprState *
+ExecInitExprWithCaseValue(Expr *node, PlanState *parent,
+						  Datum *caseval, bool *casenull)
+{
+	return ExecInitExprInternal(node, parent, NULL, caseval, casenull);
 }
 
 /*
@@ -2231,11 +2228,19 @@ ExecInitExprRec(Expr *node, ExprState *state,
 								&scratch.d.jsonexpr.pathspec->isnull);
 
 				scratch.d.jsonexpr.formatted_expr =
-					ExecInitExpr((Expr *) jexpr->formatted_expr, state->parent);
+					ExecInitExprWithCaseValue((Expr *) jexpr->formatted_expr,
+											  state->parent,
+											  &scratch.d.jsonexpr.raw_expr->value,
+											  &scratch.d.jsonexpr.raw_expr->isnull);
+
+				scratch.d.jsonexpr.res_expr =
+					palloc(sizeof(*scratch.d.jsonexpr.res_expr));
 
 				scratch.d.jsonexpr.result_expr = jexpr->result_coercion
-					? ExecInitExpr((Expr *) jexpr->result_coercion->expr,
-								   state->parent)
+					? ExecInitExprWithCaseValue((Expr *) jexpr->result_coercion->expr,
+												state->parent,
+												&scratch.d.jsonexpr.res_expr->value,
+												&scratch.d.jsonexpr.res_expr->isnull)
 					: NULL;
 
 				scratch.d.jsonexpr.default_on_empty = !jexpr->on_empty ? NULL :
@@ -2285,6 +2290,14 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				{
 					JsonCoercion **coercion;
 					struct JsonCoercionState *cstate;
+					Datum	   *caseval;
+					bool	   *casenull;
+
+					scratch.d.jsonexpr.coercion_expr =
+						palloc(sizeof(*scratch.d.jsonexpr.coercion_expr));
+
+					caseval = &scratch.d.jsonexpr.coercion_expr->value;
+					casenull = &scratch.d.jsonexpr.coercion_expr->isnull;
 
 					for (cstate = &scratch.d.jsonexpr.coercions.null,
 						 coercion = &jexpr->coercions->null;
@@ -2293,8 +2306,9 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					{
 						cstate->coercion = *coercion;
 						cstate->estate = *coercion ?
-							ExecInitExpr((Expr *)(*coercion)->expr,
-										 state->parent) : NULL;
+							ExecInitExprWithCaseValue((Expr *)(*coercion)->expr,
+													  state->parent,
+													  caseval, casenull) : NULL;
 					}
 				}
 
