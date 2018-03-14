@@ -673,6 +673,8 @@ typedef struct ExprEvalStep
 				Datum		value;
 				bool		isnull;
 			}		   *raw_expr,			/* raw context item value */
+					   *res_expr,			/* result item */
+					   *coercion_expr,		/* input for JSON item coercion */
 					   *pathspec;			/* path specification value */
 
 			ExprState  *formatted_expr;		/* formatted context item */
