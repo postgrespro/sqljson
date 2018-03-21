@@ -27,10 +27,17 @@
 typedef struct JsonPathExecContext
 {
 	List	   *vars;
-	bool		lax;
 	JsonbValue *root;				/* for $ evaluation */
 	int			innermostArraySize;	/* for LAST array index evaluation */
+	bool		laxMode;
+	bool		ignoreStructuralErrors;
 } JsonPathExecContext;
+
+/* strict/lax flags is decomposed into four [un]wrap/error flags */
+#define jspStrictAbsenseOfErrors(cxt)	(!(cxt)->laxMode)
+#define jspAutoUnwrap(cxt)				((cxt)->laxMode)
+#define jspAutoWrap(cxt)				((cxt)->laxMode)
+#define jspIgnoreStructuralErrors(cxt)	((cxt)->ignoreStructuralErrors)
 
 typedef struct JsonValueListIterator
 {
@@ -693,7 +700,7 @@ static inline JsonPathExecResult
 recursiveExecuteAndUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						  JsonbValue *jb, JsonValueList *found)
 {
-	if (cxt->lax)
+	if (jspAutoUnwrap(cxt))
 	{
 		JsonValueList seq = { 0 };
 		JsonValueListIterator it = { 0 };
@@ -785,14 +792,14 @@ executeExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 
 			if (res == jperOk)
 			{
-				if (cxt->lax)
+				if (!jspStrictAbsenseOfErrors(cxt))
 					return jperOk;
 
 				found = true;
 			}
 			else if (res == jperError)
 			{
-				if (!cxt->lax)
+				if (jspStrictAbsenseOfErrors(cxt))
 					return jperError;
 
 				error = true;
@@ -1122,7 +1129,7 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		if (whole->type != jbvString)
 		{
-			if (!cxt->lax)
+			if (jspStrictAbsenseOfErrors(cxt))
 				return jperError;
 
 			error = true;
@@ -1132,7 +1139,7 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						 initial->val.string.val,
 						 initial->val.string.len))
 		{
-			if (cxt->lax)
+			if (!jspStrictAbsenseOfErrors(cxt))
 				return jperOk;
 
 			found = true;
@@ -1189,7 +1196,7 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		if (str->type != jbvString)
 		{
-			if (!cxt->lax)
+			if (jspStrictAbsenseOfErrors(cxt))
 				return jperError;
 
 			error = true;
@@ -1198,7 +1205,7 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										str->val.string.len, cflags,
 										DEFAULT_COLLATION_OID, 0, NULL))
 		{
-			if (cxt->lax)
+			if (!jspStrictAbsenseOfErrors(cxt))
 				return jperOk;
 
 			found = true;
@@ -1370,13 +1377,13 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					if (jspHasNext(jsp) || !found)
 						pfree(v); /* free value if it was not added to found list */
 				}
-				else if (!cxt->lax)
+				else if (!jspIgnoreStructuralErrors(cxt))
 				{
 					Assert(found);
 					res = jperMakeError(ERRCODE_JSON_MEMBER_NOT_FOUND);
 				}
 			}
-			else if (!cxt->lax)
+			else if (!jspIgnoreStructuralErrors(cxt))
 			{
 				Assert(found);
 				res = jperMakeError(ERRCODE_JSON_MEMBER_NOT_FOUND);
@@ -1453,7 +1460,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					}
 				}
 			}
-			else
+			else if (!jspIgnoreStructuralErrors(cxt))
 				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
 			break;
 
@@ -1493,7 +1500,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					else
 						index_to = index_from;
 
-					if (!cxt->lax &&
+					if (!jspIgnoreStructuralErrors(cxt) &&
 						(index_from < 0 ||
 						 index_from > index_to ||
 						 index_to >= size))
@@ -1539,8 +1546,10 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				cxt->innermostArraySize = innermostArraySize;
 			}
-			else
+			else if (!jspIgnoreStructuralErrors(cxt))
+			{
 				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+			}
 			break;
 
 		case jpiLast:
@@ -1601,7 +1610,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					}
 				}
 			}
-			else if (!cxt->lax)
+			else if (!jspIgnoreStructuralErrors(cxt))
 			{
 				Assert(found);
 				res = jperMakeError(ERRCODE_JSON_OBJECT_NOT_FOUND);
@@ -1663,9 +1672,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiExists:
 			jspGetArg(jsp, &elem);
 
-			if (cxt->lax)
-				res = recursiveExecute(cxt, &elem, jb, NULL);
-			else
+			if (jspStrictAbsenseOfErrors(cxt))
 			{
 				JsonValueList vals = { 0 };
 
@@ -1677,6 +1684,10 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				if (!jperIsError(res))
 					res = JsonValueListIsEmpty(&vals) ? jperNotFound : jperOk;
+			}
+			else
+			{
+				res = recursiveExecute(cxt, &elem, jb, NULL);
 			}
 
 			res = appendBoolResult(cxt, jsp, found, res, needBool);
@@ -1721,9 +1732,10 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				if (size < 0)
 				{
-					if (!cxt->lax)
+					if (!jspAutoWrap(cxt))
 					{
-						res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+						if (!jspIgnoreStructuralErrors(cxt))
+							res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
 						break;
 					}
 
@@ -2090,7 +2102,7 @@ static inline JsonPathExecResult
 recursiveExecuteUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					   JsonbValue *jb, JsonValueList *found)
 {
-	if (cxt->lax && JsonbType(jb) == jbvArray)
+	if (jspAutoUnwrap(cxt) && JsonbType(jb) == jbvArray)
 		return recursiveExecuteUnwrapArray(cxt, jsp, jb, found);
 
 	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found, false);
@@ -2142,7 +2154,7 @@ static inline JsonPathExecResult
 recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				 JsonValueList *found)
 {
-	if (cxt->lax)
+	if (jspAutoUnwrap(cxt))
 	{
 		switch (jsp->type)
 		{
@@ -2217,11 +2229,12 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, JsonValueList *foundJso
 	jspInit(&jsp, path);
 
 	cxt.vars = vars;
-	cxt.lax = (path->header & JSONPATH_LAX) != 0;
+	cxt.laxMode = (path->header & JSONPATH_LAX) != 0;
+	cxt.ignoreStructuralErrors = cxt.laxMode;
 	cxt.root = JsonbInitBinary(&jbv, json);
 	cxt.innermostArraySize = -1;
 
-	if (!cxt.lax && !foundJson)
+	if (jspStrictAbsenseOfErrors(&cxt) && !foundJson)
 	{
 		/*
 		 * In strict mode we must get a complete list of values to check
