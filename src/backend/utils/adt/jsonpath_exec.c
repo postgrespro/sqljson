@@ -1028,7 +1028,11 @@ recursiveAny(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 				 v.type != jbvBinary))	/* leaves only requested */
 			{
 				/* check expression */
+				bool		ignoreStructuralErrors = cxt->ignoreStructuralErrors;
+
+				cxt->ignoreStructuralErrors = true;
 				res = recursiveExecuteNext(cxt, NULL, jsp, &v, found, true);
+				cxt->ignoreStructuralErrors = ignoreStructuralErrors;
 
 				if (jperIsError(res))
 					break;
@@ -1653,7 +1657,11 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				/* first try without any intermediate steps */
 				if (jsp->content.anybounds.first == 0)
 				{
+					bool		ignoreStructuralErrors = cxt->ignoreStructuralErrors;
+
+					cxt->ignoreStructuralErrors = true;
 					res = recursiveExecuteNext(cxt, jsp, &elem, jb, found, true);
+					cxt->ignoreStructuralErrors = ignoreStructuralErrors;
 
 					if (res == jperOk && !found)
 							break;
