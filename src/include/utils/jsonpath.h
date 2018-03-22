@@ -229,6 +229,14 @@ extern JsonPathParseResult* parsejsonpath(const char *str, int len);
  * Evaluation of jsonpath
  */
 
+/* Result of jsonpath predicate evaluation */
+typedef enum JsonPathBool
+{
+	jpbFalse = 0,
+	jpbTrue = 1,
+	jpbUnknown = 2
+} JsonPathBool;
+
 typedef enum JsonPathExecStatus
 {
 	jperOk = 0,
