@@ -49,9 +49,6 @@ static inline JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 										   JsonPathItem *jsp, JsonbValue *jb,
 										   JsonValueList *found);
 
-static inline JsonPathExecResult recursiveExecuteBool(JsonPathExecContext *cxt,
-										   JsonPathItem *jsp, JsonbValue *jb);
-
 static inline JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt,
 							JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 
@@ -555,7 +552,7 @@ compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2, bool *error)
 	return DatumGetInt32(DirectFunctionCall2(cmpfunc, val1, val2));
 }
 
-static inline JsonPathExecResult
+static inline JsonPathBool
 checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 {
 	bool	eq = false;
@@ -563,9 +560,9 @@ checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 	if (jb1->type != jb2->type)
 	{
 		if (jb1->type == jbvNull || jb2->type == jbvNull)
-			return not ? jperOk : jperNotFound;
+			return not ? jpbTrue : jpbFalse;
 
-		return jperError;
+		return jpbUnknown;
 	}
 
 	switch (jb1->type)
@@ -595,7 +592,7 @@ checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 									 &error) == 0;
 
 				if (error)
-					return jperError;
+					return jpbUnknown;
 
 				break;
 			}
@@ -603,16 +600,16 @@ checkEquality(JsonbValue *jb1, JsonbValue *jb2, bool not)
 		case jbvBinary:
 		case jbvObject:
 		case jbvArray:
-			return jperError;
+			return jpbUnknown;
 
 		default:
 			elog(ERROR, "Unknown jsonb value type %d", jb1->type);
 	}
 
-	return (not ^ eq) ? jperOk : jperNotFound;
+	return (not ^ eq) ? jpbTrue : jpbFalse;
 }
 
-static JsonPathExecResult
+static JsonPathBool
 makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 {
 	int			cmp;
@@ -622,11 +619,11 @@ makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 	{
 		if (jb1->type != jbvNull && jb2->type != jbvNull)
 			/* non-null items of different types are not order-comparable */
-			return jperError;
+			return jpbUnknown;
 
 		if (jb1->type != jbvNull || jb2->type != jbvNull)
 			/* comparison of nulls to non-nulls returns always false */
-			return jperNotFound;
+			return jpbFalse;
 
 		/* both values are JSON nulls */
 	}
@@ -655,11 +652,11 @@ makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 									  &error);
 
 				if (error)
-					return jperError;
+					return jpbUnknown;
 			}
 			break;
 		default:
-			return jperError;
+			return jpbUnknown;
 	}
 
 	switch (op)
@@ -684,10 +681,10 @@ makeCompare(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 			break;
 		default:
 			elog(ERROR, "Unknown operation");
-			return jperError;
+			return jpbUnknown;
 	}
 
-	return res ? jperOk : jperNotFound;
+	return res ? jpbTrue : jpbFalse;
 }
 
 static JsonbValue *
@@ -774,8 +771,8 @@ recursiveExecuteAndUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	return recursiveExecute(cxt, jsp, jb, found);
 }
 
-static JsonPathExecResult
-executeExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
+static JsonPathBool
+executeComparison(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 {
 	JsonPathExecResult res;
 	JsonPathItem elem;
@@ -789,12 +786,12 @@ executeExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 	jspGetLeftArg(jsp, &elem);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &lseq);
 	if (jperIsError(res))
-		return jperError;
+		return jpbUnknown;
 
 	jspGetRightArg(jsp, &elem);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &rseq);
 	if (jperIsError(res))
-		return jperError;
+		return jpbUnknown;
 
 	while ((lval = JsonValueListNext(&lseq, &lseqit)))
 	{
@@ -803,35 +800,39 @@ executeExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 
 		while ((rval = JsonValueListNext(&rseq, &rseqit)))
 		{
+			JsonPathBool cmp;
+
 			switch (jsp->type)
 			{
 				case jpiEqual:
-					res = checkEquality(lval, rval, false);
+					cmp = checkEquality(lval, rval, false);
 					break;
 				case jpiNotEqual:
-					res = checkEquality(lval, rval, true);
+					cmp = checkEquality(lval, rval, true);
 					break;
 				case jpiLess:
 				case jpiGreater:
 				case jpiLessOrEqual:
 				case jpiGreaterOrEqual:
-					res = makeCompare(jsp->type, lval, rval);
+					cmp = makeCompare(jsp->type, lval, rval);
 					break;
 				default:
 					elog(ERROR, "Unknown operation");
+					cmp = jpbUnknown;
+					break;
 			}
 
-			if (res == jperOk)
+			if (cmp == jpbTrue)
 			{
 				if (!jspStrictAbsenseOfErrors(cxt))
-					return jperOk;
+					return jpbTrue;
 
 				found = true;
 			}
-			else if (res == jperError)
+			else if (cmp == jpbUnknown)
 			{
 				if (jspStrictAbsenseOfErrors(cxt))
-					return jperError;
+					return jpbUnknown;
 
 				error = true;
 			}
@@ -839,12 +840,12 @@ executeExpr(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 	}
 
 	if (found) /* possible only in strict mode */
-		return jperOk;
+		return jpbTrue;
 
 	if (error) /* possible only in lax mode */
-		return jperError;
+		return jpbUnknown;
 
-	return jperNotFound;
+	return jpbFalse;
 }
 
 static JsonPathExecResult
@@ -1119,7 +1120,7 @@ getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 	return jperOk;
 }
 
-static JsonPathExecResult
+static JsonPathBool
 executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						   JsonbValue *jb)
 {
@@ -1137,10 +1138,10 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	jspGetRightArg(jsp, &elem);
 	res = recursiveExecute(cxt, &elem, jb, &rseq);
 	if (jperIsError(res))
-		return jperError;
+		return jpbUnknown;
 
 	if (JsonValueListLength(&rseq) != 1)
-		return jperError;
+		return jpbUnknown;
 
 	initial = JsonValueListHead(&rseq);
 
@@ -1148,12 +1149,12 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		initial = JsonbExtractScalar(initial->val.binary.data, &initialbuf);
 
 	if (initial->type != jbvString)
-		return jperError;
+		return jpbUnknown;
 
 	jspGetLeftArg(jsp, &elem);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &lseq);
 	if (jperIsError(res))
-		return jperError;
+		return jpbUnknown;
 
 	while ((whole = JsonValueListNext(&lseq, &lit)))
 	{
@@ -1165,7 +1166,7 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		if (whole->type != jbvString)
 		{
 			if (jspStrictAbsenseOfErrors(cxt))
-				return jperError;
+				return jpbUnknown;
 
 			error = true;
 		}
@@ -1175,22 +1176,22 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						 initial->val.string.len))
 		{
 			if (!jspStrictAbsenseOfErrors(cxt))
-				return jperOk;
+				return jpbTrue;
 
 			found = true;
 		}
 	}
 
 	if (found) /* possible only in strict mode */
-		return jperOk;
+		return jpbTrue;
 
 	if (error) /* possible only in lax mode */
-		return jperError;
+		return jpbUnknown;
 
-	return jperNotFound;
+	return jpbFalse;
 }
 
-static JsonPathExecResult
+static JsonPathBool
 executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						  JsonbValue *jb)
 {
@@ -1220,7 +1221,7 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	jspInitByBuffer(&elem, jsp->base, jsp->content.like_regex.expr);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &seq);
 	if (jperIsError(res))
-		return jperError;
+		return jpbUnknown;
 
 	while ((str = JsonValueListNext(&seq, &it)))
 	{
@@ -1232,7 +1233,7 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		if (str->type != jbvString)
 		{
 			if (jspStrictAbsenseOfErrors(cxt))
-				return jperError;
+				return jpbUnknown;
 
 			error = true;
 		}
@@ -1241,19 +1242,19 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										DEFAULT_COLLATION_OID, 0, NULL))
 		{
 			if (!jspStrictAbsenseOfErrors(cxt))
-				return jperOk;
+				return jpbTrue;
 
 			found = true;
 		}
 	}
 
 	if (found) /* possible only in strict mode */
-		return jperOk;
+		return jpbTrue;
 
 	if (error) /* possible only in lax mode */
-		return jperError;
+		return jpbUnknown;
 
-	return jperNotFound;
+	return jpbFalse;
 }
 
 /*
@@ -1287,32 +1288,138 @@ tryToParseDatetime(const char *fmt, int fmtlen, text *datetime, char *tzname,
 	return ok;
 }
 
+/*
+ * Convert boolean execution status 'res' to a boolean JSON item and execute
+ * next jsonpath.
+ */
 static inline JsonPathExecResult
 appendBoolResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
-				 JsonValueList *found, JsonPathExecResult res, bool needBool)
+				 JsonValueList *found, JsonPathBool res)
 {
 	JsonPathItem next;
 	JsonbValue	jbv;
 	bool		hasNext = jspGetNext(jsp, &next);
 
-	if (needBool)
-	{
-		Assert(!hasNext);
-		return res;
-	}
-
 	if (!found && !hasNext)
 		return jperOk;	/* found singleton boolean value */
 
-	if (jperIsError(res))
+	if (res == jpbUnknown)
+	{
 		jbv.type = jbvNull;
+	}
 	else
 	{
 		jbv.type = jbvBool;
-		jbv.val.boolean = res == jperOk;
+		jbv.val.boolean = res == jpbTrue;
 	}
 
 	return recursiveExecuteNext(cxt, jsp, &next, &jbv, found, true);
+}
+
+/* Execute boolean-valued jsonpath expression. */
+static inline JsonPathBool
+recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					 JsonbValue *jb, bool canHaveNext)
+{
+	JsonPathItem arg;
+	JsonPathBool res;
+	JsonPathBool res2;
+
+	if (!canHaveNext && jspHasNext(jsp))
+		elog(ERROR, "boolean jsonpath item can not have next item");
+
+	switch (jsp->type)
+	{
+		case jpiAnd:
+			jspGetLeftArg(jsp, &arg);
+			res = recursiveExecuteBool(cxt, &arg, jb, false);
+
+			if (res == jpbFalse)
+				return jpbFalse;
+
+			/*
+			 * SQL/JSON says that we should check second arg
+			 * in case of jperError
+			 */
+
+			jspGetRightArg(jsp, &arg);
+			res2 = recursiveExecuteBool(cxt, &arg, jb, false);
+
+			return res2 == jpbTrue ? res : res2;
+
+		case jpiOr:
+			jspGetLeftArg(jsp, &arg);
+			res = recursiveExecuteBool(cxt, &arg, jb, false);
+
+			if (res == jpbTrue)
+				return jpbTrue;
+
+			jspGetRightArg(jsp, &arg);
+			res2 = recursiveExecuteBool(cxt, &arg, jb, false);
+
+			return res2 == jpbFalse ? res : res2;
+
+		case jpiNot:
+			jspGetArg(jsp, &arg);
+
+			res = recursiveExecuteBool(cxt, &arg, jb, false);
+
+			if (res == jpbUnknown)
+				return jpbUnknown;
+
+			return res == jpbTrue ? jpbFalse : jpbTrue;
+
+		case jpiIsUnknown:
+			jspGetArg(jsp, &arg);
+			res = recursiveExecuteBool(cxt, &arg, jb, false);
+			return res == jpbUnknown ? jpbTrue : jpbFalse;
+
+		case jpiEqual:
+		case jpiNotEqual:
+		case jpiLess:
+		case jpiGreater:
+		case jpiLessOrEqual:
+		case jpiGreaterOrEqual:
+			return executeComparison(cxt, jsp, jb);
+
+		case jpiStartsWith:
+			return executeStartsWithPredicate(cxt, jsp, jb);
+
+		case jpiLikeRegex:
+			return executeLikeRegexPredicate(cxt, jsp, jb);
+
+		case jpiExists:
+			jspGetArg(jsp, &arg);
+
+			if (jspStrictAbsenseOfErrors(cxt))
+			{
+				/*
+				 * In strict mode we must get a complete list of values
+				 * to check that there are no errors at all.
+				 */
+				JsonValueList vals = { 0 };
+				JsonPathExecResult res =
+					recursiveExecute(cxt, &arg, jb, &vals);
+
+				if (jperIsError(res))
+					return jpbUnknown;
+
+				return JsonValueListIsEmpty(&vals) ? jpbFalse : jpbTrue;
+			}
+			else
+			{
+				JsonPathExecResult res = recursiveExecute(cxt, &arg, jb, NULL);
+
+				if (jperIsError(res))
+					return jpbUnknown;
+
+				return res == jperOk ? jpbTrue : jpbFalse;
+			}
+
+		default:
+			elog(ERROR, "invalid boolean jsonpath item type: %d", jsp->type);
+			return jpbUnknown;
+	}
 }
 
 /*
@@ -1327,7 +1434,7 @@ appendBoolResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
  */
 static JsonPathExecResult
 recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
-						 JsonbValue *jb, JsonValueList *found, bool needBool)
+						 JsonbValue *jb, JsonValueList *found)
 {
 	JsonPathItem		elem;
 	JsonPathExecResult	res = jperNotFound;
@@ -1335,61 +1442,29 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 	check_stack_depth();
 
-	switch(jsp->type) {
+	switch (jsp->type)
+	{
+		/* all boolean item types: */
 		case jpiAnd:
-			jspGetLeftArg(jsp, &elem);
-			res = recursiveExecuteBool(cxt, &elem, jb);
-			if (res != jperNotFound)
-			{
-				JsonPathExecResult res2;
-
-				/*
-				 * SQL/JSON says that we should check second arg
-				 * in case of jperError
-				 */
-
-				jspGetRightArg(jsp, &elem);
-				res2 = recursiveExecuteBool(cxt, &elem, jb);
-
-				res = (res2 == jperOk) ? res : res2;
-			}
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
 		case jpiOr:
-			jspGetLeftArg(jsp, &elem);
-			res = recursiveExecuteBool(cxt, &elem, jb);
-			if (res != jperOk)
-			{
-				JsonPathExecResult res2;
-
-				jspGetRightArg(jsp, &elem);
-				res2 = recursiveExecuteBool(cxt, &elem, jb);
-
-				res = (res2 == jperNotFound) ? res : res2;
-			}
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
 		case jpiNot:
-			jspGetArg(jsp, &elem);
-			switch ((res = recursiveExecuteBool(cxt, &elem, jb)))
-			{
-				case jperOk:
-					res = jperNotFound;
-					break;
-				case jperNotFound:
-					res = jperOk;
-					break;
-				default:
-					break;
-			}
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
 		case jpiIsUnknown:
-			jspGetArg(jsp, &elem);
-			res = recursiveExecuteBool(cxt, &elem, jb);
-			res = jperIsError(res) ? jperOk : jperNotFound;
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
+		case jpiEqual:
+		case jpiNotEqual:
+		case jpiLess:
+		case jpiGreater:
+		case jpiLessOrEqual:
+		case jpiGreaterOrEqual:
+		case jpiExists:
+		case jpiStartsWith:
+		case jpiLikeRegex:
+			{
+				JsonPathBool st = recursiveExecuteBool(cxt, jsp, jb, true);
+
+				res = appendBoolResult(cxt, jsp, found, st);
+				break;
+			}
+
 		case jpiKey:
 			if (JsonbType(jb) == jbvObject)
 			{
@@ -1650,15 +1725,6 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				res = jperMakeError(ERRCODE_JSON_OBJECT_NOT_FOUND);
 			}
 			break;
-		case jpiEqual:
-		case jpiNotEqual:
-		case jpiLess:
-		case jpiGreater:
-		case jpiLessOrEqual:
-		case jpiGreaterOrEqual:
-			res = executeExpr(cxt, jsp, jb);
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
 		case jpiAdd:
 		case jpiSub:
 		case jpiMul:
@@ -1671,13 +1737,17 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			res = executeUnaryArithmExpr(cxt, jsp, jb, found);
 			break;
 		case jpiFilter:
-			jspGetArg(jsp, &elem);
-			res = recursiveExecuteBool(cxt, &elem, jb);
-			if (res != jperOk)
-				res = jperNotFound;
-			else
-				res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
-			break;
+			{
+				JsonPathBool st;
+
+				jspGetArg(jsp, &elem);
+				st = recursiveExecuteBool(cxt, &elem, jb, false);
+				if (st != jpbTrue)
+					res = jperNotFound;
+				else
+					res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
+				break;
+			}
 		case jpiAny:
 			{
 				JsonbValue jbvbuf;
@@ -1707,29 +1777,6 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 									   jsp->content.anybounds.last);
 				break;
 			}
-		case jpiExists:
-			jspGetArg(jsp, &elem);
-
-			if (jspStrictAbsenseOfErrors(cxt))
-			{
-				JsonValueList vals = { 0 };
-
-				/*
-				 * In strict mode we must get a complete list of values
-				 * to check that there are no errors at all.
-				 */
-				res = recursiveExecute(cxt, &elem, jb, &vals);
-
-				if (!jperIsError(res))
-					res = JsonValueListIsEmpty(&vals) ? jperNotFound : jperOk;
-			}
-			else
-			{
-				res = recursiveExecute(cxt, &elem, jb, NULL);
-			}
-
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
 		case jpiNull:
 		case jpiBool:
 		case jpiNumeric:
@@ -1923,7 +1970,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 						jspGetRightArg(jsp, &elem);
 						tzres = recursiveExecuteNoUnwrap(cxt, &elem, jb,
-														 &tzlist, false);
+														 &tzlist);
 
 						if (jperIsError(tzres))
 							return tzres;
@@ -2076,14 +2123,6 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				}
 			}
 			break;
-		case jpiStartsWith:
-			res = executeStartsWithPredicate(cxt, jsp, jb);
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
-		case jpiLikeRegex:
-			res = executeLikeRegexPredicate(cxt, jsp, jb);
-			res = appendBoolResult(cxt, jsp, found, res, needBool);
-			break;
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", jsp->type);
 	}
@@ -2104,7 +2143,7 @@ recursiveExecuteUnwrapArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		for (; elem < last; elem++)
 		{
-			res = recursiveExecuteNoUnwrap(cxt, jsp, elem, found, false);
+			res = recursiveExecuteNoUnwrap(cxt, jsp, elem, found);
 
 			if (jperIsError(res))
 				break;
@@ -2124,7 +2163,7 @@ recursiveExecuteUnwrapArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		{
 			if (tok == WJB_ELEM)
 			{
-				res = recursiveExecuteNoUnwrap(cxt, jsp, &v, found, false);
+				res = recursiveExecuteNoUnwrap(cxt, jsp, &v, found);
 				if (jperIsError(res))
 					break;
 				if (res == jperOk && !found)
@@ -2143,7 +2182,7 @@ recursiveExecuteUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	if (jspAutoUnwrap(cxt) && JsonbType(jb) == jbvArray)
 		return recursiveExecuteUnwrapArray(cxt, jsp, jb, found);
 
-	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found, false);
+	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found);
 }
 
 /*
@@ -2219,40 +2258,9 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 		}
 	}
 
-	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found, false);
+	return recursiveExecuteNoUnwrap(cxt, jsp, jb, found);
 }
 
-static inline JsonPathExecResult
-recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
-					 JsonbValue *jb)
-{
-	if (jspHasNext(jsp))
-		elog(ERROR, "boolean jsonpath item can not have next item");
-
-	switch (jsp->type)
-	{
-		case jpiAnd:
-		case jpiOr:
-		case jpiNot:
-		case jpiIsUnknown:
-		case jpiEqual:
-		case jpiNotEqual:
-		case jpiGreater:
-		case jpiGreaterOrEqual:
-		case jpiLess:
-		case jpiLessOrEqual:
-		case jpiExists:
-		case jpiStartsWith:
-		case jpiLikeRegex:
-			break;
-
-		default:
-			elog(ERROR, "invalid boolean jsonpath item type: %d", jsp->type);
-			break;
-	}
-
-	return recursiveExecuteNoUnwrap(cxt, jsp, jb, NULL, true);
-}
 
 /*
  * Public interface to jsonpath executor
