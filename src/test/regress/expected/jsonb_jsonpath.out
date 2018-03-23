@@ -807,7 +807,7 @@ select jsonb '[1,2,0,3]' @* '$[*] ? ((2 / @ > 0) is unknown)';
 (1 row)
 
 select jsonb '0' @* '1 / $';
-ERROR:  Unknown SQL/JSON error
+ERROR:  division by zero
 -- unwrapping of operator arguments in lax mode
 select jsonb '{"a": [2]}' @* 'lax $.a * 3';
  ?column? 

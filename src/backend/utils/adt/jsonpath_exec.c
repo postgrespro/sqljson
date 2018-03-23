@@ -23,6 +23,10 @@
 #include "utils/jsonpath.h"
 #include "utils/varlena.h"
 
+/* Special pseudo-ErrorData with zero sqlerrcode for existence queries. */
+ErrorData jperNotFound[1];
+
+
 typedef struct JsonPathExecContext
 {
 	List	   *vars;
@@ -786,12 +790,12 @@ executeComparison(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb)
 	jspGetLeftArg(jsp, &elem);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &lseq);
 	if (jperIsError(res))
-		return jpbUnknown;
+		return jperReplace(res, jpbUnknown);
 
 	jspGetRightArg(jsp, &elem);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &rseq);
 	if (jperIsError(res))
-		return jpbUnknown;
+		return jperReplace(res, jpbUnknown);
 
 	while ((lval = JsonValueListNext(&lseq, &lseqit)))
 	{
@@ -937,14 +941,16 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	PG_CATCH();
 	{
 		int			errcode = geterrcode();
+		ErrorData  *edata;
 
 		if (ERRCODE_TO_CATEGORY(errcode) != ERRCODE_DATA_EXCEPTION)
 			PG_RE_THROW();
 
-		FlushErrorState();
 		MemoryContextSwitchTo(mcxt);
+		edata = CopyErrorData();
+		FlushErrorState();
 
-		return jperMakeError(errcode);
+		return jperMakeErrorData(edata);
 	}
 	PG_END_TRY();
 
@@ -971,7 +977,7 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	jper = recursiveExecuteAndUnwrap(cxt, &elem, jb, &seq);
 
 	if (jperIsError(jper))
-		return jperMakeError(ERRCODE_JSON_NUMBER_NOT_FOUND);
+		return jperReplace(jper, jperMakeError(ERRCODE_JSON_NUMBER_NOT_FOUND));
 
 	jper = jperNotFound;
 
@@ -1138,7 +1144,7 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	jspGetRightArg(jsp, &elem);
 	res = recursiveExecute(cxt, &elem, jb, &rseq);
 	if (jperIsError(res))
-		return jpbUnknown;
+		return jperReplace(res, jpbUnknown);
 
 	if (JsonValueListLength(&rseq) != 1)
 		return jpbUnknown;
@@ -1154,7 +1160,7 @@ executeStartsWithPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	jspGetLeftArg(jsp, &elem);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &lseq);
 	if (jperIsError(res))
-		return jpbUnknown;
+		return jperReplace(res, jpbUnknown);
 
 	while ((whole = JsonValueListNext(&lseq, &lit)))
 	{
@@ -1221,7 +1227,7 @@ executeLikeRegexPredicate(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	jspInitByBuffer(&elem, jsp->base, jsp->content.like_regex.expr);
 	res = recursiveExecuteAndUnwrap(cxt, &elem, jb, &seq);
 	if (jperIsError(res))
-		return jpbUnknown;
+		return jperReplace(res, jpbUnknown);
 
 	while ((str = JsonValueListNext(&seq, &it)))
 	{
@@ -1402,7 +1408,7 @@ recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					recursiveExecute(cxt, &arg, jb, &vals);
 
 				if (jperIsError(res))
-					return jpbUnknown;
+					return jperReplace(res, jpbUnknown);
 
 				return JsonValueListIsEmpty(&vals) ? jpbFalse : jpbTrue;
 			}
@@ -1411,7 +1417,7 @@ recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				JsonPathExecResult res = recursiveExecute(cxt, &arg, jb, NULL);
 
 				if (jperIsError(res))
-					return jpbUnknown;
+					return jperReplace(res, jpbUnknown);
 
 				return res == jperOk ? jpbTrue : jpbFalse;
 			}
@@ -2381,59 +2387,65 @@ makePassingVars(Jsonb *jb)
 static void
 throwJsonPathError(JsonPathExecResult res)
 {
+	int			err;
 	if (!jperIsError(res))
 		return;
 
-	switch (jperGetError(res))
+	if (jperIsErrorData(res))
+		ThrowErrorData(jperGetErrorData(res));
+
+	err = jperGetError(res);
+
+	switch (err)
 	{
 		case ERRCODE_JSON_ARRAY_NOT_FOUND:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("SQL/JSON array not found")));
 			break;
 		case ERRCODE_JSON_OBJECT_NOT_FOUND:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("SQL/JSON object not found")));
 			break;
 		case ERRCODE_JSON_MEMBER_NOT_FOUND:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("SQL/JSON member not found")));
 			break;
 		case ERRCODE_JSON_NUMBER_NOT_FOUND:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("SQL/JSON number not found")));
 			break;
 		case ERRCODE_JSON_SCALAR_REQUIRED:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("SQL/JSON scalar required")));
 			break;
 		case ERRCODE_SINGLETON_JSON_ITEM_REQUIRED:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("Singleton SQL/JSON item required")));
 			break;
 		case ERRCODE_NON_NUMERIC_JSON_ITEM:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("Non-numeric SQL/JSON item")));
 			break;
 		case ERRCODE_INVALID_JSON_SUBSCRIPT:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("Invalid SQL/JSON subscript")));
 			break;
 		case ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("Invalid argument for SQL/JSON datetime function")));
 			break;
 		default:
 			ereport(ERROR,
-					(errcode(jperGetError(res)),
+					(errcode(err),
 					 errmsg("Unknown SQL/JSON error")));
 			break;
 	}
@@ -2456,7 +2468,10 @@ jsonb_jsonpath_exists(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(jp, 1);
 
 	if (jperIsError(res))
+	{
+		jperFree(res);
 		PG_RETURN_NULL();
+	}
 
 	PG_RETURN_BOOL(res == jperOk);
 }
