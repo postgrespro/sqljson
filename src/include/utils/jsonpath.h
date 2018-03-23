@@ -237,21 +237,32 @@ typedef enum JsonPathBool
 	jpbUnknown = 2
 } JsonPathBool;
 
-typedef enum JsonPathExecStatus
+/* Result of jsonpath evaluation */
+typedef ErrorData *JsonPathExecResult;
+
+/* Special pseudo-ErrorData with zero sqlerrcode for existence queries. */
+extern ErrorData jperNotFound[1];
+
+#define jperOk						NULL
+#define jperIsError(jper)			((jper) && (jper)->sqlerrcode)
+#define jperIsErrorData(jper)		((jper) && (jper)->elevel > 0)
+#define jperGetError(jper)			((jper)->sqlerrcode)
+#define jperMakeErrorData(edata)	(edata)
+#define jperGetErrorData(jper)		(jper)
+#define jperFree(jper)				((jper) && (jper)->sqlerrcode ? \
+	(jper)->elevel > 0 ? FreeErrorData(jper) : pfree(jper) : (void) 0)
+#define jperReplace(jper1, jper2) (jperFree(jper1), (jper2))
+
+/* Returns special SQL/JSON ErrorData with zero elevel */
+static inline JsonPathExecResult
+jperMakeError(int sqlerrcode)
 {
-	jperOk = 0,
-	jperError,
-	jperFatalError,
-	jperNotFound
-} JsonPathExecStatus;
+	ErrorData  *edata = palloc0(sizeof(*edata));
 
-typedef uint64 JsonPathExecResult;
+	edata->sqlerrcode = sqlerrcode;
 
-#define jperStatus(jper)	((JsonPathExecStatus)(uint32)(jper))
-#define jperIsError(jper)	(jperStatus(jper) == jperError)
-#define jperGetError(jper)	((uint32)((jper) >> 32))
-#define jperMakeError(err)	(((uint64)(err) << 32) | jperError)
-#define jperFree(jper)		((void) 0)
+	return edata;
+}
 
 typedef Datum (*JsonPathVariable_cb)(void *, bool *);
 
