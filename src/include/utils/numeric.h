@@ -61,4 +61,13 @@ int32		numeric_maximum_size(int32 typmod);
 extern char *numeric_out_sci(Numeric num, int scale);
 extern char *numeric_normalize(Numeric num);
 
+/* Functions for safe handling of numeric errors without PG_TRY/PG_CATCH */
+extern Numeric numeric_add_internal(Numeric n1, Numeric n2, ErrorData **edata);
+extern Numeric numeric_sub_internal(Numeric n1, Numeric n2, ErrorData **edata);
+extern Numeric numeric_mul_internal(Numeric n1, Numeric n2, ErrorData **edata);
+extern Numeric numeric_div_internal(Numeric n1, Numeric n2, ErrorData **edata);
+extern Numeric numeric_mod_internal(Numeric n1, Numeric n2, ErrorData **edata);
+extern Numeric float8_numeric_internal(float8 val, ErrorData **edata);
+extern float8 numeric_float8_internal(Numeric num, ErrorData **edata);
+
 #endif							/* _PG_NUMERIC_H_ */

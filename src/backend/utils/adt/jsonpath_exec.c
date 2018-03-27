@@ -19,6 +19,7 @@
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/float.h"
 #include "utils/formatting.h"
 #include "utils/json.h"
 #include "utils/jsonpath.h"
@@ -918,7 +919,6 @@ static JsonPathExecResult
 executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						JsonbValue *jb, JsonValueList *found)
 {
-	MemoryContext mcxt = CurrentMemoryContext;
 	JsonPathExecResult jper;
 	JsonPathItem elem;
 	JsonValueList lseq = { 0 };
@@ -927,11 +927,10 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonbValue *rval;
 	JsonbValue	lvalbuf;
 	JsonbValue	rvalbuf;
-	PGFunction	func;
-	Datum		ldatum;
-	Datum		rdatum;
-	Datum		res;
+	Numeric	  (*func)(Numeric, Numeric, ErrorData **);
+	Numeric		res;
 	bool		hasNext;
+	ErrorData  *edata;
 
 	jspGetLeftArg(jsp, &elem);
 
@@ -970,25 +969,22 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	if (!found && !hasNext)
 		return jperOk;
 
-	ldatum = NumericGetDatum(lval->val.numeric);
-	rdatum = NumericGetDatum(rval->val.numeric);
-
 	switch (jsp->type)
 	{
 		case jpiAdd:
-			func = numeric_add;
+			func = numeric_add_internal;
 			break;
 		case jpiSub:
-			func = numeric_sub;
+			func = numeric_sub_internal;
 			break;
 		case jpiMul:
-			func = numeric_mul;
+			func = numeric_mul_internal;
 			break;
 		case jpiDiv:
-			func = numeric_div;
+			func = numeric_div_internal;
 			break;
 		case jpiMod:
-			func = numeric_mod;
+			func = numeric_mod_internal;
 			break;
 		default:
 			elog(ERROR, "unknown jsonpath arithmetic operation %d", jsp->type);
@@ -996,29 +992,15 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			break;
 	}
 
-	PG_TRY();
-	{
-		res = DirectFunctionCall2(func, ldatum, rdatum);
-	}
-	PG_CATCH();
-	{
-		int			errcode = geterrcode();
-		ErrorData  *edata;
+	edata = NULL;
+	res = func(lval->val.numeric, rval->val.numeric, &edata);
 
-		if (ERRCODE_TO_CATEGORY(errcode) != ERRCODE_DATA_EXCEPTION)
-			PG_RE_THROW();
-
-		MemoryContextSwitchTo(mcxt);
-		edata = CopyErrorData();
-		FlushErrorState();
-
+	if (edata)
 		return jperMakeErrorData(edata);
-	}
-	PG_END_TRY();
 
 	lval = palloc(sizeof(*lval));
 	lval->type = jbvNumeric;
-	lval->val.numeric = DatumGetNumeric(res);
+	lval->val.numeric = res;
 
 	return recursiveExecuteNext(cxt, jsp, &elem, lval, found, false);
 }
@@ -2033,53 +2015,53 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiDouble:
 			{
 				JsonbValue jbv;
-				MemoryContext mcxt = CurrentMemoryContext;
+				ErrorData  *edata = NULL;
 
 				if (JsonbType(jb) == jbvScalar)
 					jb = JsonbExtractScalar(jb->val.binary.data, &jbv);
 
-				PG_TRY();
+				if (jb->type == jbvNumeric)
 				{
-					if (jb->type == jbvNumeric)
-					{
-						/* only check success of numeric to double cast */
-						DirectFunctionCall1(numeric_float8,
-											NumericGetDatum(jb->val.numeric));
-						res = jperOk;
-					}
-					else if (jb->type == jbvString)
-					{
-						/* cast string as double */
-						char	   *str = pnstrdup(jb->val.string.val,
-												   jb->val.string.len);
-						Datum		val = DirectFunctionCall1(
-											float8in, CStringGetDatum(str));
-						pfree(str);
+					/* only check success of numeric to double cast */
+					(void) numeric_float8_internal(jb->val.numeric, &edata);
+				}
+				else if (jb->type == jbvString)
+				{
+					/* cast string as double */
+					char	   *str = pnstrdup(jb->val.string.val,
+											   jb->val.string.len);
+					double		val;
 
+					val = float8in_internal_safe(str, NULL, "double precision",
+												 str, &edata);
+					pfree(str);
+
+					if (!edata)
+					{
 						jb = &jbv;
 						jb->type = jbvNumeric;
-						jb->val.numeric = DatumGetNumeric(DirectFunctionCall1(
-														float8_numeric, val));
-						res = jperOk;
-
+						jb->val.numeric = float8_numeric_internal(val, &edata);
 					}
-					else
-						res = jperMakeError(ERRCODE_NON_NUMERIC_JSON_ITEM);
 				}
-				PG_CATCH();
+				else
 				{
-					if (ERRCODE_TO_CATEGORY(geterrcode()) !=
-														ERRCODE_DATA_EXCEPTION)
-						PG_RE_THROW();
+					res = jperMakeError(ERRCODE_NON_NUMERIC_JSON_ITEM);
+					break;
+				}
 
-					FlushErrorState();
-					MemoryContextSwitchTo(mcxt);
+				if (edata)
+				{
+					if (ERRCODE_TO_CATEGORY(edata->sqlerrcode) !=
+						ERRCODE_DATA_EXCEPTION)
+						ThrowErrorData(edata);
+
+					FreeErrorData(edata);
 					res = jperMakeError(ERRCODE_NON_NUMERIC_JSON_ITEM);
 				}
-				PG_END_TRY();
-
-				if (res == jperOk)
+				else
+				{
 					res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
+				}
 			}
 			break;
 		case jpiDatetime:
