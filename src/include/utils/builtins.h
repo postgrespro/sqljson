@@ -58,8 +58,11 @@ extern float get_float4_infinity(void);
 extern double get_float8_nan(void);
 extern float get_float4_nan(void);
 extern int	is_infinite(double val);
-extern double float8in_internal(char *num, char **endptr_p,
-				  const char *type_name, const char *orig_string);
+extern double float8in_internal_safe(char *num, char **endptr_p,
+				  const char *type_name, const char *orig_string,
+				  ErrorData **edata);
+#define float8in_internal(num, endptr_p, type_name, orig_string) \
+		float8in_internal_safe(num, endptr_p, type_name, orig_string, NULL)
 extern char *float8out_internal(double num);
 extern int	float4_cmp_internal(float4 a, float4 b);
 extern int	float8_cmp_internal(float8 a, float8 b);

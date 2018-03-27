@@ -465,14 +465,15 @@ static void free_var(NumericVar *var);
 static void zero_var(NumericVar *var);
 
 static const char *set_var_from_str(const char *str, const char *cp,
-				 NumericVar *dest);
+				 NumericVar *dest, ErrorData **edata);
 static void set_var_from_num(Numeric value, NumericVar *dest);
 static void init_var_from_num(Numeric num, NumericVar *dest);
 static void set_var_from_var(const NumericVar *value, NumericVar *dest);
 static char *get_str_from_var(const NumericVar *var);
 static char *get_str_from_var_sci(const NumericVar *var, int rscale);
 
-static Numeric make_result(const NumericVar *var);
+static inline Numeric make_result(const NumericVar *var);
+static Numeric make_result_safe(const NumericVar *var, ErrorData **edata);
 
 static void apply_typmod(NumericVar *var, int32 typmod);
 
@@ -509,12 +510,12 @@ static void mul_var(const NumericVar *var1, const NumericVar *var2,
 		int rscale);
 static void div_var(const NumericVar *var1, const NumericVar *var2,
 		NumericVar *result,
-		int rscale, bool round);
+		int rscale, bool round, ErrorData **edata);
 static void div_var_fast(const NumericVar *var1, const NumericVar *var2,
 			 NumericVar *result, int rscale, bool round);
 static int	select_div_scale(const NumericVar *var1, const NumericVar *var2);
 static void mod_var(const NumericVar *var1, const NumericVar *var2,
-		NumericVar *result);
+		NumericVar *result, ErrorData **edata);
 static void ceil_var(const NumericVar *var, NumericVar *result);
 static void floor_var(const NumericVar *var, NumericVar *result);
 
@@ -615,7 +616,7 @@ numeric_in(PG_FUNCTION_ARGS)
 
 		init_var(&value);
 
-		cp = set_var_from_str(str, cp, &value);
+		cp = set_var_from_str(str, cp, &value, NULL);
 
 		/*
 		 * We duplicate a few lines of code here because we would like to
@@ -1578,14 +1579,14 @@ compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 		sub_var(&operand_var, &bound1_var, &operand_var);
 		sub_var(&bound2_var, &bound1_var, &bound2_var);
 		div_var(&operand_var, &bound2_var, result_var,
-				select_div_scale(&operand_var, &bound2_var), true);
+				select_div_scale(&operand_var, &bound2_var), true, NULL);
 	}
 	else
 	{
 		sub_var(&bound1_var, &operand_var, &operand_var);
 		sub_var(&bound1_var, &bound2_var, &bound1_var);
 		div_var(&operand_var, &bound1_var, result_var,
-				select_div_scale(&operand_var, &bound1_var), true);
+				select_div_scale(&operand_var, &bound1_var), true, NULL);
 	}
 
 	mul_var(result_var, count_var, result_var,
@@ -2385,6 +2386,35 @@ hash_numeric_extended(PG_FUNCTION_ARGS)
  * ----------------------------------------------------------------------
  */
 
+Numeric
+numeric_add_internal(Numeric num1, Numeric num2, ErrorData **edata)
+{
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
+	Numeric		res;
+
+	/*
+	 * Handle NaN
+	 */
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		return make_result_safe(&const_nan, edata);
+
+	/*
+	 * Unpack the values, let add_var() compute the result and return it.
+	 */
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
+
+	init_var(&result);
+	add_var(&arg1, &arg2, &result);
+
+	res = make_result_safe(&result, edata);
+
+	free_var(&result);
+
+	return res;
+}
 
 /*
  * numeric_add() -
@@ -2396,6 +2426,14 @@ numeric_add(PG_FUNCTION_ARGS)
 {
 	Numeric		num1 = PG_GETARG_NUMERIC(0);
 	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		res = numeric_add_internal(num1, num2, NULL);
+
+	PG_RETURN_NUMERIC(res);
+}
+
+Numeric
+numeric_sub_internal(Numeric num1, Numeric num2, ErrorData **edata)
+{
 	NumericVar	arg1;
 	NumericVar	arg2;
 	NumericVar	result;
@@ -2405,24 +2443,23 @@ numeric_add(PG_FUNCTION_ARGS)
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
+		return make_result_safe(&const_nan, edata);
 
 	/*
-	 * Unpack the values, let add_var() compute the result and return it.
+	 * Unpack the values, let sub_var() compute the result and return it.
 	 */
 	init_var_from_num(num1, &arg1);
 	init_var_from_num(num2, &arg2);
 
 	init_var(&result);
-	add_var(&arg1, &arg2, &result);
+	sub_var(&arg1, &arg2, &result);
 
-	res = make_result(&result);
+	res = make_result_safe(&result, edata);
 
 	free_var(&result);
 
-	PG_RETURN_NUMERIC(res);
+	return res;
 }
-
 
 /*
  * numeric_sub() -
@@ -2434,44 +2471,14 @@ numeric_sub(PG_FUNCTION_ARGS)
 {
 	Numeric		num1 = PG_GETARG_NUMERIC(0);
 	Numeric		num2 = PG_GETARG_NUMERIC(1);
-	NumericVar	arg1;
-	NumericVar	arg2;
-	NumericVar	result;
-	Numeric		res;
-
-	/*
-	 * Handle NaN
-	 */
-	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
-
-	/*
-	 * Unpack the values, let sub_var() compute the result and return it.
-	 */
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
-
-	init_var(&result);
-	sub_var(&arg1, &arg2, &result);
-
-	res = make_result(&result);
-
-	free_var(&result);
+	Numeric		res = numeric_sub_internal(num1, num2, NULL);
 
 	PG_RETURN_NUMERIC(res);
 }
 
-
-/*
- * numeric_mul() -
- *
- *	Calculate the product of two numerics
- */
-Datum
-numeric_mul(PG_FUNCTION_ARGS)
+Numeric
+numeric_mul_internal(Numeric num1, Numeric num2, ErrorData **edata)
 {
-	Numeric		num1 = PG_GETARG_NUMERIC(0);
-	Numeric		num2 = PG_GETARG_NUMERIC(1);
 	NumericVar	arg1;
 	NumericVar	arg2;
 	NumericVar	result;
@@ -2481,7 +2488,7 @@ numeric_mul(PG_FUNCTION_ARGS)
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
+		return make_result_safe(&const_nan, edata);
 
 	/*
 	 * Unpack the values, let mul_var() compute the result and return it.
@@ -2496,24 +2503,31 @@ numeric_mul(PG_FUNCTION_ARGS)
 	init_var(&result);
 	mul_var(&arg1, &arg2, &result, arg1.dscale + arg2.dscale);
 
-	res = make_result(&result);
+	res = make_result_safe(&result, edata);
 
 	free_var(&result);
+
+	return res;
+}
+
+/*
+ * numeric_mul() -
+ *
+ *	Calculate the product of two numerics
+ */
+Datum
+numeric_mul(PG_FUNCTION_ARGS)
+{
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		res = numeric_mul_internal(num1, num2, NULL);
 
 	PG_RETURN_NUMERIC(res);
 }
 
-
-/*
- * numeric_div() -
- *
- *	Divide one numeric into another
- */
-Datum
-numeric_div(PG_FUNCTION_ARGS)
+Numeric
+numeric_div_internal(Numeric num1, Numeric num2, ErrorData **edata)
 {
-	Numeric		num1 = PG_GETARG_NUMERIC(0);
-	Numeric		num2 = PG_GETARG_NUMERIC(1);
 	NumericVar	arg1;
 	NumericVar	arg2;
 	NumericVar	result;
@@ -2524,7 +2538,7 @@ numeric_div(PG_FUNCTION_ARGS)
 	 * Handle NaN
 	 */
 	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
+		return make_result_safe(&const_nan, edata);
 
 	/*
 	 * Unpack the arguments
@@ -2542,11 +2556,29 @@ numeric_div(PG_FUNCTION_ARGS)
 	/*
 	 * Do the divide and return the result
 	 */
-	div_var(&arg1, &arg2, &result, rscale, true);
+	div_var(&arg1, &arg2, &result, rscale, true, edata);
 
-	res = make_result(&result);
+	if (edata && *edata)
+		res = NULL;	/* error occured */
+	else
+		res = make_result_safe(&result, edata);
 
 	free_var(&result);
+
+	return res;
+}
+
+/*
+ * numeric_div() -
+ *
+ *	Divide one numeric into another
+ */
+Datum
+numeric_div(PG_FUNCTION_ARGS)
+{
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		res = numeric_div_internal(num1, num2, NULL);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -2584,7 +2616,7 @@ numeric_div_trunc(PG_FUNCTION_ARGS)
 	/*
 	 * Do the divide and return the result
 	 */
-	div_var(&arg1, &arg2, &result, 0, false);
+	div_var(&arg1, &arg2, &result, 0, false, NULL);
 
 	res = make_result(&result);
 
@@ -2593,6 +2625,30 @@ numeric_div_trunc(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(res);
 }
 
+Numeric
+numeric_mod_internal(Numeric num1, Numeric num2, ErrorData **edata)
+{
+	Numeric		res;
+	NumericVar	arg1;
+	NumericVar	arg2;
+	NumericVar	result;
+
+	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
+		return make_result_safe(&const_nan, edata);
+
+	init_var_from_num(num1, &arg1);
+	init_var_from_num(num2, &arg2);
+
+	init_var(&result);
+
+	mod_var(&arg1, &arg2, &result, edata);
+
+	res = make_result_safe(&result, edata);
+
+	free_var(&result);
+
+	return res;
+}
 
 /*
  * numeric_mod() -
@@ -2604,24 +2660,7 @@ numeric_mod(PG_FUNCTION_ARGS)
 {
 	Numeric		num1 = PG_GETARG_NUMERIC(0);
 	Numeric		num2 = PG_GETARG_NUMERIC(1);
-	Numeric		res;
-	NumericVar	arg1;
-	NumericVar	arg2;
-	NumericVar	result;
-
-	if (NUMERIC_IS_NAN(num1) || NUMERIC_IS_NAN(num2))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
-
-	init_var_from_num(num1, &arg1);
-	init_var_from_num(num2, &arg2);
-
-	init_var(&result);
-
-	mod_var(&arg1, &arg2, &result);
-
-	res = make_result(&result);
-
-	free_var(&result);
+	Numeric		res = numeric_mod_internal(num1, num2, NULL);
 
 	PG_RETURN_NUMERIC(res);
 }
@@ -3226,55 +3265,73 @@ numeric_int2(PG_FUNCTION_ARGS)
 }
 
 
-Datum
-float8_numeric(PG_FUNCTION_ARGS)
+Numeric
+float8_numeric_internal(float8 val, ErrorData **edata)
 {
-	float8		val = PG_GETARG_FLOAT8(0);
 	Numeric		res;
 	NumericVar	result;
 	char		buf[DBL_DIG + 100];
 
 	if (isnan(val))
-		PG_RETURN_NUMERIC(make_result(&const_nan));
+		return make_result_safe(&const_nan, edata);
 
 	if (isinf(val))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot convert infinity to numeric")));
+	{
+		ereport_safe(edata, ERROR,
+					 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					  errmsg("cannot convert infinity to numeric")));
+		return NULL;
+	}
 
 	snprintf(buf, sizeof(buf), "%.*g", DBL_DIG, val);
 
 	init_var(&result);
 
 	/* Assume we need not worry about leading/trailing spaces */
-	(void) set_var_from_str(buf, buf, &result);
+	(void) set_var_from_str(buf, buf, &result, edata);
 
-	res = make_result(&result);
+	res = make_result_safe(&result, edata);
 
 	free_var(&result);
+
+	return res;
+}
+
+Datum
+float8_numeric(PG_FUNCTION_ARGS)
+{
+	float8		val = PG_GETARG_FLOAT8(0);
+	Numeric		res = float8_numeric_internal(val, NULL);
 
 	PG_RETURN_NUMERIC(res);
 }
 
+float8
+numeric_float8_internal(Numeric num, ErrorData **edata)
+{
+	char	   *tmp;
+	float8		result;
+
+	if (NUMERIC_IS_NAN(num))
+		return get_float8_nan();
+
+	tmp = DatumGetCString(DirectFunctionCall1(numeric_out,
+											  NumericGetDatum(num)));
+
+	result = float8in_internal_safe(tmp, NULL, "double precison", tmp, edata);
+
+	pfree(tmp);
+
+	return result;
+}
 
 Datum
 numeric_float8(PG_FUNCTION_ARGS)
 {
 	Numeric		num = PG_GETARG_NUMERIC(0);
-	char	   *tmp;
-	Datum		result;
+	float8		result = numeric_float8_internal(num, NULL);
 
-	if (NUMERIC_IS_NAN(num))
-		PG_RETURN_FLOAT8(get_float8_nan());
-
-	tmp = DatumGetCString(DirectFunctionCall1(numeric_out,
-											  NumericGetDatum(num)));
-
-	result = DirectFunctionCall1(float8in, CStringGetDatum(tmp));
-
-	pfree(tmp);
-
-	PG_RETURN_DATUM(result);
+	PG_RETURN_FLOAT8(result);
 }
 
 
@@ -3318,7 +3375,7 @@ float4_numeric(PG_FUNCTION_ARGS)
 	init_var(&result);
 
 	/* Assume we need not worry about leading/trailing spaces */
-	(void) set_var_from_str(buf, buf, &result);
+	(void) set_var_from_str(buf, buf, &result, NULL);
 
 	res = make_result(&result);
 
@@ -4893,7 +4950,7 @@ numeric_stddev_internal(NumericAggState *state,
 		else
 			mul_var(&vN, &vN, &vNminus1, 0);	/* N * N */
 		rscale = select_div_scale(&vsumX2, &vNminus1);
-		div_var(&vsumX2, &vNminus1, &vsumX, rscale, true);	/* variance */
+		div_var(&vsumX2, &vNminus1, &vsumX, rscale, true, NULL);	/* variance */
 		if (!variance)
 			sqrt_var(&vsumX, &vsumX, rscale);	/* stddev */
 
@@ -5619,7 +5676,8 @@ zero_var(NumericVar *var)
  * reports.  (Typically cp would be the same except advanced over spaces.)
  */
 static const char *
-set_var_from_str(const char *str, const char *cp, NumericVar *dest)
+set_var_from_str(const char *str, const char *cp, NumericVar *dest,
+				 ErrorData **edata)
 {
 	bool		have_dp = false;
 	int			i;
@@ -5657,10 +5715,13 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 	}
 
 	if (!isdigit((unsigned char) *cp))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for type %s: \"%s\"",
-						"numeric", str)));
+	{
+		ereport_safe(edata, ERROR,
+					 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					  errmsg("invalid input syntax for type %s: \"%s\"",
+							 "numeric", str)));
+		return NULL;
+	}
 
 	decdigits = (unsigned char *) palloc(strlen(cp) + DEC_DIGITS * 2);
 
@@ -5681,10 +5742,13 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 		else if (*cp == '.')
 		{
 			if (have_dp)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("invalid input syntax for type %s: \"%s\"",
-								"numeric", str)));
+			{
+				ereport_safe(edata, ERROR,
+							 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+							  errmsg("invalid input syntax for type %s: \"%s\"",
+									 "numeric", str)));
+				return NULL;
+			}
 			have_dp = true;
 			cp++;
 		}
@@ -5705,10 +5769,14 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 		cp++;
 		exponent = strtol(cp, &endptr, 10);
 		if (endptr == cp)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					 errmsg("invalid input syntax for type %s: \"%s\"",
-							"numeric", str)));
+		{
+			ereport_safe(edata, ERROR,
+						 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						  errmsg("invalid input syntax for type %s: \"%s\"",
+								 "numeric", str)));
+			return NULL;
+		}
+
 		cp = endptr;
 
 		/*
@@ -5720,9 +5788,13 @@ set_var_from_str(const char *str, const char *cp, NumericVar *dest)
 		 * for consistency use the same ereport errcode/text as make_result().
 		 */
 		if (exponent >= INT_MAX / 2 || exponent <= -(INT_MAX / 2))
-			ereport(ERROR,
-					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					 errmsg("value overflows numeric format")));
+		{
+			ereport_safe(edata, ERROR,
+						 (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						  errmsg("value overflows numeric format")));
+			return NULL;
+		}
+
 		dweight += (int) exponent;
 		dscale -= (int) exponent;
 		if (dscale < 0)
@@ -6064,7 +6136,7 @@ get_str_from_var_sci(const NumericVar *var, int rscale)
 	init_var(&significand);
 
 	power_var_int(&const_ten, exponent, &denominator, denom_scale);
-	div_var(var, &denominator, &significand, rscale, true);
+	div_var(var, &denominator, &significand, rscale, true, NULL);
 	sig_out = get_str_from_var(&significand);
 
 	free_var(&denominator);
@@ -6086,15 +6158,14 @@ get_str_from_var_sci(const NumericVar *var, int rscale)
 	return str;
 }
 
-
 /*
- * make_result() -
+ * make_result_safe() -
  *
  *	Create the packed db numeric format in palloc()'d memory from
  *	a variable.
  */
 static Numeric
-make_result(const NumericVar *var)
+make_result_safe(const NumericVar *var, ErrorData **edata)
 {
 	Numeric		result;
 	NumericDigit *digits = var->digits;
@@ -6165,14 +6236,22 @@ make_result(const NumericVar *var)
 	/* Check for overflow of int16 fields */
 	if (NUMERIC_WEIGHT(result) != weight ||
 		NUMERIC_DSCALE(result) != var->dscale)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("value overflows numeric format")));
+	{
+		ereport_safe(edata, ERROR,
+					 (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					  errmsg("value overflows numeric format")));
+		return NULL;
+	}
 
 	dump_numeric("make_result()", result);
 	return result;
 }
 
+static inline Numeric
+make_result(const NumericVar *var)
+{
+	return make_result_safe(var, NULL);
+}
 
 /*
  * apply_typmod() -
@@ -7050,7 +7129,7 @@ mul_var(const NumericVar *var1, const NumericVar *var2, NumericVar *result,
  */
 static void
 div_var(const NumericVar *var1, const NumericVar *var2, NumericVar *result,
-		int rscale, bool round)
+		int rscale, bool round, ErrorData **edata)
 {
 	int			div_ndigits;
 	int			res_ndigits;
@@ -7075,9 +7154,12 @@ div_var(const NumericVar *var1, const NumericVar *var2, NumericVar *result,
 	 * unnormalized divisor.
 	 */
 	if (var2ndigits == 0 || var2->digits[0] == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_DIVISION_BY_ZERO),
-				 errmsg("division by zero")));
+	{
+		ereport_safe(edata, ERROR,
+					 (errcode(ERRCODE_DIVISION_BY_ZERO),
+					  errmsg("division by zero")));
+		return;
+	}
 
 	/*
 	 * Now result zero check
@@ -7698,7 +7780,8 @@ select_div_scale(const NumericVar *var1, const NumericVar *var2)
  *	Calculate the modulo of two numerics at variable level
  */
 static void
-mod_var(const NumericVar *var1, const NumericVar *var2, NumericVar *result)
+mod_var(const NumericVar *var1, const NumericVar *var2, NumericVar *result,
+		ErrorData **edata)
 {
 	NumericVar	tmp;
 
@@ -7710,7 +7793,10 @@ mod_var(const NumericVar *var1, const NumericVar *var2, NumericVar *result)
 	 * div_var can be persuaded to give us trunc(x/y) directly.
 	 * ----------
 	 */
-	div_var(var1, var2, &tmp, 0, false);
+	div_var(var1, var2, &tmp, 0, false, edata);
+
+	if (edata && *edata)
+		return;	/* error occured */
 
 	mul_var(var2, &tmp, &tmp, var2->dscale);
 
@@ -8363,7 +8449,7 @@ power_var_int(const NumericVar *base, int exp, NumericVar *result, int rscale)
 			round_var(result, rscale);
 			return;
 		case -1:
-			div_var(&const_one, base, result, rscale, true);
+			div_var(&const_one, base, result, rscale, true, NULL);
 			return;
 		case 2:
 			mul_var(base, base, result, rscale);

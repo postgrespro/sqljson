@@ -420,7 +420,7 @@ float8in(PG_FUNCTION_ARGS)
 }
 
 /*
- * float8in_internal - guts of float8in()
+ * float8in_internal_safe - guts of float8in()
  *
  * This is exposed for use by functions that want a reasonably
  * platform-independent way of inputting doubles.  The behavior is
@@ -438,8 +438,8 @@ float8in(PG_FUNCTION_ARGS)
  * unreasonable amount of extra casting both here and in callers, so we don't.
  */
 double
-float8in_internal(char *num, char **endptr_p,
-				  const char *type_name, const char *orig_string)
+float8in_internal_safe(char *num, char **endptr_p, const char *type_name,
+					   const char *orig_string, ErrorData **edata)
 {
 	double		val;
 	char	   *endptr;
@@ -453,10 +453,13 @@ float8in_internal(char *num, char **endptr_p,
 	 * strtod() on different platforms.
 	 */
 	if (*num == '\0')
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for type %s: \"%s\"",
-						type_name, orig_string)));
+	{
+		ereport_safe(edata, ERROR,
+					 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					  errmsg("invalid input syntax for type %s: \"%s\"",
+							 type_name, orig_string)));
+		return 0;
+	}
 
 	errno = 0;
 	val = strtod(num, &endptr);
@@ -529,17 +532,21 @@ float8in_internal(char *num, char **endptr_p,
 				char	   *errnumber = pstrdup(num);
 
 				errnumber[endptr - num] = '\0';
-				ereport(ERROR,
-						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-						 errmsg("\"%s\" is out of range for type double precision",
-								errnumber)));
+				ereport_safe(edata, ERROR,
+							 (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							  errmsg("\"%s\" is out of range for type double precision",
+									 errnumber)));
+				return 0;
 			}
 		}
 		else
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					 errmsg("invalid input syntax for type %s: \"%s\"",
-							type_name, orig_string)));
+		{
+			ereport_safe(edata, ERROR,
+						 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						  errmsg("invalid input syntax for type %s: \"%s\"",
+								 type_name, orig_string)));
+			return 0;
+		}
 	}
 #ifdef HAVE_BUGGY_SOLARIS_STRTOD
 	else
@@ -562,10 +569,13 @@ float8in_internal(char *num, char **endptr_p,
 	if (endptr_p)
 		*endptr_p = endptr;
 	else if (*endptr != '\0')
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for type %s: \"%s\"",
-						type_name, orig_string)));
+	{
+		ereport_safe(edata, ERROR,
+					 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					  errmsg("invalid input syntax for type %s: \"%s\"",
+							 type_name, orig_string)));
+		return 0;
+	}
 
 	return val;
 }

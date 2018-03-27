@@ -124,6 +124,25 @@
 
 #define TEXTDOMAIN NULL
 
+/*
+ * ereport_safe() -- special macro for copying error info into the specified
+ * ErrorData **edata (if it is non-NULL) instead of throwing it.  This is
+ * intended for handling of errors of categories like ERRCODE_DATA_EXCEPTION
+ * without PG_TRY/PG_CATCH, but not for errors like ERRCODE_OUT_OF_MEMORY.
+ */
+#define ereport_safe(edata, elevel, rest) \
+	do { \
+		if (edata) { \
+			if (errstart(elevel, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN)) { \
+				(void)(rest); \
+				*(edata) = CopyErrorData(); \
+				FlushErrorState(); \
+			} \
+		} else { \
+			ereport(elevel, rest); \
+		} \
+	} while (0)
+
 extern bool errstart(int elevel, const char *filename, int lineno,
 		 const char *funcname, const char *domain);
 extern void errfinish(int dummy,...);
