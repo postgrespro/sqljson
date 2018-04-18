@@ -32,6 +32,7 @@ static void addchar(bool init, char s);
 static int checkSpecialVal(void); /* examine scanstring for the special value */
 
 static void parseUnicode(char *s, int l);
+static void parseHexChars(char *s, int l);
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf
@@ -62,12 +63,16 @@ fprintf_to_ereport(const char *fmt, const char *msg)
 %x xQUOTED
 %x xNONQUOTED
 %x xVARQUOTED
+%x xSINGLEQUOTED
 %x xCOMMENT
 
 special		 [\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/]
-any			[^\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\" \t\n\r\f]
+any			[^\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\"\' \t\n\r\f]
 blank		[ \t\n\r\f]
-unicode		\\u[0-9A-Fa-f]{4}
+hex_dig		[0-9A-Fa-f]
+unicode		\\u({hex_dig}{4}|\{{hex_dig}{1,6}\})
+hex_char	\\x{hex_dig}{2}
+
 
 %%
 
@@ -152,6 +157,11 @@ unicode		\\u[0-9A-Fa-f]{4}
 									BEGIN xQUOTED;
 								}
 
+<INITIAL>\'						{
+									addchar(true, '\0');
+									BEGIN xSINGLEQUOTED;
+								}
+
 <INITIAL>\\						{
 									yyless(0);
 									addchar(true, '\0');
@@ -174,7 +184,7 @@ unicode		\\u[0-9A-Fa-f]{4}
 									BEGIN xCOMMENT;
 								}
 
-<xNONQUOTED>({special}|\")		{
+<xNONQUOTED>({special}|\"|\')	{
 									yylval->str = scanstring;
 									yyless(0);
 									BEGIN INITIAL;
@@ -187,40 +197,55 @@ unicode		\\u[0-9A-Fa-f]{4}
 									return checkSpecialVal();
 								}
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\[\"\\]	{ addchar(false, yytext[1]); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\[\"\'\\]	{ addchar(false, yytext[1]); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\b			{ addchar(false, '\b'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\b	{ addchar(false, '\b'); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\f			{ addchar(false, '\f'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\f	{ addchar(false, '\f'); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\n			{ addchar(false, '\n'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\n	{ addchar(false, '\n'); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\r			{ addchar(false, '\r'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\r	{ addchar(false, '\r'); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\t			{ addchar(false, '\t'); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\t	{ addchar(false, '\t'); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>{unicode}+	{ parseUnicode(yytext, yyleng); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\v	{ addchar(false, '\v'); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\u			{ yyerror(NULL, "Unicode sequence is invalid"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>{unicode}+		{ parseUnicode(yytext, yyleng); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\.			{ yyerror(NULL, "Escape sequence is invalid"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>{hex_char}+	{ parseHexChars(yytext, yyleng); }
 
-<xNONQUOTED,xQUOTED,xVARQUOTED>\\			{ yyerror(NULL, "Unexpected end after backslash"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\x	{ yyerror(NULL, "Hex character sequence is invalid"); }
 
-<xQUOTED,xVARQUOTED><<EOF>>					{ yyerror(NULL, "Unexpected end of quoted string"); }
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\u	{ yyerror(NULL, "Unicode sequence is invalid"); }
+
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\.	{ yyerror(NULL, "Escape sequence is invalid"); }
+
+<xNONQUOTED,xQUOTED,xVARQUOTED,xSINGLEQUOTED>\\		{ yyerror(NULL, "Unexpected end after backslash"); }
+
+<xQUOTED,xVARQUOTED,xSINGLEQUOTED><<EOF>>			{ yyerror(NULL, "Unexpected end of quoted string"); }
 
 <xQUOTED>\"						{
 									yylval->str = scanstring;
 									BEGIN INITIAL;
 									return STRING_P;
 								}
-<xVARQUOTED>\"						{
+
+<xVARQUOTED>\"					{
 									yylval->str = scanstring;
 									BEGIN INITIAL;
 									return VARIABLE_P;
 								}
 
+<xSINGLEQUOTED>\'				{
+									yylval->str = scanstring;
+									BEGIN INITIAL;
+									return STRING_P;
+								}
+
 <xQUOTED,xVARQUOTED>[^\\\"]+	{ addstring(false, yytext, yyleng); }
+
+<xSINGLEQUOTED>[^\\\']+			{ addstring(false, yytext, yyleng); }
 
 <INITIAL><<EOF>>				{ yyterminate(); }
 
@@ -436,6 +461,85 @@ hexval(char c)
 	return 0; /* not reached */
 }
 
+static void
+addUnicodeChar(int ch)
+{
+	/*
+	 * For UTF8, replace the escape sequence by the actual
+	 * utf8 character in lex->strval. Do this also for other
+	 * encodings if the escape designates an ASCII character,
+	 * otherwise raise an error.
+	 */
+
+	if (ch == 0)
+	{
+		/* We can't allow this, since our TEXT type doesn't */
+		ereport(ERROR,
+				(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
+				 errmsg("unsupported Unicode escape sequence"),
+				  errdetail("\\u0000 cannot be converted to text.")));
+	}
+	else if (GetDatabaseEncoding() == PG_UTF8)
+	{
+		char utf8str[5];
+		int utf8len;
+
+		unicode_to_utf8(ch, (unsigned char *) utf8str);
+		utf8len = pg_utf_mblen((unsigned char *) utf8str);
+		addstring(false, utf8str, utf8len);
+	}
+	else if (ch <= 0x007f)
+	{
+		/*
+		 * This is the only way to designate things like a
+		 * form feed character in JSON, so it's useful in all
+		 * encodings.
+		 */
+		addchar(false, (char) ch);
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for type jsonpath"),
+				 errdetail("Unicode escape values cannot be used for code point values above 007F when the server encoding is not UTF8.")));
+	}
+}
+
+static void
+addUnicode(int ch, int *hi_surrogate)
+{
+	if (ch >= 0xd800 && ch <= 0xdbff)
+	{
+		if (*hi_surrogate != -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid input syntax for type jsonpath"),
+					 errdetail("Unicode high surrogate must not follow a high surrogate.")));
+		*hi_surrogate = (ch & 0x3ff) << 10;
+		return;
+	}
+	else if (ch >= 0xdc00 && ch <= 0xdfff)
+	{
+		if (*hi_surrogate == -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid input syntax for type jsonpath"),
+					 errdetail("Unicode low surrogate must follow a high surrogate.")));
+		ch = 0x10000 + *hi_surrogate + (ch & 0x3ff);
+		*hi_surrogate = -1;
+	}
+	else if (*hi_surrogate != -1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for type jsonpath"),
+				 errdetail("Unicode low surrogate must follow a high surrogate.")));
+	}
+
+	addUnicodeChar(ch);
+}
+
 /*
  * parseUnicode was adopted from json_lex_string() in
  * src/backend/utils/adt/json.c
@@ -443,88 +547,50 @@ hexval(char c)
 static void
 parseUnicode(char *s, int l)
 {
-	int i, j;
-	int ch = 0;
-	int hi_surrogate = -1;
+	int			i;
+	int			hi_surrogate = -1;
 
-	Assert(l % 6 /* \uXXXX */ == 0);
-
-	for(i = 0; i < l / 6; i++)
+	for (i = 2; i < l; i += 2)	/* skip '\u' */
 	{
-		ch = 0;
+		int			ch = 0;
+		int			j;
 
-		for(j=0; j<4; j++)
-			ch = (ch << 4) | hexval(s[ i*6 + 2 + j]);
-
-		if (ch >= 0xd800 && ch <= 0xdbff)
+		if (s[i] == '{')	/* parse '\u{XX...}' */
 		{
-			if (hi_surrogate != -1)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("invalid input syntax for type jsonpath"),
-						 errdetail("Unicode high surrogate must not follow a high surrogate.")));
-			hi_surrogate = (ch & 0x3ff) << 10;
-			continue;
+			while (s[++i] != '}' && i < l)
+				ch = (ch << 4) | hexval(s[i]);
+			i++;	/* ski p '}' */
 		}
-		else if (ch >= 0xdc00 && ch <= 0xdfff)
+		else		/* parse '\uXXXX' */
 		{
-			if (hi_surrogate == -1)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						 errmsg("invalid input syntax for type jsonpath"),
-						 errdetail("Unicode low surrogate must follow a high surrogate.")));
-			ch = 0x10000 + hi_surrogate + (ch & 0x3ff);
-			hi_surrogate = -1;
+			for (j = 0; j < 4 && i < l; j++)
+				ch = (ch << 4) | hexval(s[i++]);
 		}
 
-		if (hi_surrogate != -1)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					 errmsg("invalid input syntax for type jsonpath"),
-					 errdetail("Unicode low surrogate must follow a high surrogate.")));
+		addUnicode(ch, &hi_surrogate);
+	}
 
-		/*
-		 * For UTF8, replace the escape sequence by the actual
-		 * utf8 character in lex->strval. Do this also for other
-		 * encodings if the escape designates an ASCII character,
-		 * otherwise raise an error.
-		 */
+	if (hi_surrogate != -1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for type jsonpath"),
+				 errdetail("Unicode low surrogate must follow a high surrogate.")));
+	}
+}
 
-		if (ch == 0)
-		{
-			/* We can't allow this, since our TEXT type doesn't */
-			ereport(ERROR,
-					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-					 errmsg("unsupported Unicode escape sequence"),
-					  errdetail("\\u0000 cannot be converted to text.")));
-		}
-		else if (GetDatabaseEncoding() == PG_UTF8)
-		{
-			char utf8str[5];
-			int utf8len;
+static void
+parseHexChars(char *s, int l)
+{
+	int i;
 
-			unicode_to_utf8(ch, (unsigned char *) utf8str);
-			utf8len = pg_utf_mblen((unsigned char *) utf8str);
-			addstring(false, utf8str, utf8len);
-		}
-		else if (ch <= 0x007f)
-		{
-			/*
-			 * This is the only way to designate things like a
-			 * form feed character in JSON, so it's useful in all
-			 * encodings.
-			 */
-			addchar(false, (char) ch);
-		}
-		else
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					 errmsg("invalid input syntax for type jsonpath"),
-					 errdetail("Unicode escape values cannot be used for code point values above 007F when the server encoding is not UTF8.")));
-		}
+	Assert(l % 4 /* \xXX */ == 0);
 
-		hi_surrogate = -1;
+	for (i = 0; i < l / 4; i++)
+	{
+		int			ch = (hexval(s[i * 4 + 2]) << 4) | hexval(s[i * 4 + 3]);
+
+		addUnicodeChar(ch);
 	}
 }
 

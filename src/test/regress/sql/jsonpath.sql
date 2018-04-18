@@ -26,6 +26,12 @@ select '$-1'::jsonpath;
 select '$--+1'::jsonpath;
 select '$.a/+-1'::jsonpath;
 
+select '"\b\f\r\n\t\v\"\''\\"'::jsonpath;
+select '''\b\f\r\n\t\v\"\''\\'''::jsonpath;
+select '"\x50\u0067\u{53}\u{051}\u{00004C}"'::jsonpath;
+select '''\x50\u0067\u{53}\u{051}\u{00004C}'''::jsonpath;
+select '$.foo\x50\u0067\u{53}\u{051}\u{00004C}\t\"bar'::jsonpath;
+
 select '$.g ? ($.a == 1)'::jsonpath;
 select '$.g ? (@ == 1)'::jsonpath;
 select '$.g ? (.a == 1)'::jsonpath;
