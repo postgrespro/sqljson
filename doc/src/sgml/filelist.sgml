@@ -18,6 +18,7 @@
 <!ENTITY ddl        SYSTEM "ddl.sgml">
 <!ENTITY dml        SYSTEM "dml.sgml">
 <!ENTITY func       SYSTEM "func.sgml">
+<!ENTITY func-sqljson       SYSTEM "func-sqljson.sgml">
 <!ENTITY indices    SYSTEM "indices.sgml">
 <!ENTITY json       SYSTEM "json.sgml">
 <!ENTITY mvcc       SYSTEM "mvcc.sgml">

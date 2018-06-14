@@ -149,6 +149,12 @@
       </row>
 
       <row>
+       <entry><type>jsonpath</type></entry>
+       <entry></entry>
+       <entry>binary JSON path</entry>
+      </row>
+
+      <row>
        <entry><type>line</type></entry>
        <entry></entry>
        <entry>infinite line on a plane</entry>
