@@ -902,8 +902,8 @@ INSERT INTO my_films VALUES (
        "director" : "Alfred Hitchcock" } ] },
    { "kind" : "thriller", "films" : [
      { "title" : "Vertigo",
-       "director" : "Hitchcock" } ] },
-   { "films" : [
+       "director" : "Alfred Hitchcock" } ] },
+   { "kind" : "drama", "films" : [
      { "title" : "Yojimbo",
        "director" : "Akira Kurosawa" } ] }
   ] }');
@@ -1339,7 +1339,7 @@ SELECT
 FROM my_films;
  json_query
 ------------
- ["comedy", "horror", "thriller"]
+ ["comedy", "horror", "thriller", "drama"]
 (1 row)
 </screen>
 
@@ -1402,7 +1402,7 @@ SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES);
     <refsynopsisdiv>
 <synopsis>
 JSON_TABLE (
- <replaceable class="parameter">json_api_common_syntax</replaceable> [ AS <replaceable>json_path_name</replaceable> ]
+ <replaceable class="parameter">json_api_common_syntax</replaceable> [ AS <replaceable>path_name</replaceable> ]
  COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> [, ...] )
  [ PLAN ( <replaceable class="parameter">json_table_plan</replaceable> ) |
    PLAN DEFAULT ( { INNER | OUTER } [ , { CROSS | UNION } ]
@@ -1412,30 +1412,29 @@ JSON_TABLE (
 <phrase>
 where <replaceable class="parameter">json_table_column</replaceable> is:
 </phrase>
-  { <replaceable>name</replaceable> <replaceable>type</replaceable> [ PATH <replaceable>json_path_specification</replaceable> ]
-          [ { ERROR | NULL | DEFAULT expression } ON EMPTY ]
-          [ { ERROR | NULL | DEFAULT expression } ON ERROR ]
-    | <replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
-          [ PATH <replaceable>json_path_specification</replaceable> ]
-          [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } }
-            [ ARRAY ] WRAPPER ]
-          [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
-          [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON EMPTY ]
-          [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON ERROR ]
-    | NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>path_name</replaceable> ]
-          COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )
-    | <replaceable>name</replaceable> FOR ORDINALITY }
+    <replaceable>name</replaceable> <replaceable>type</replaceable> [ PATH <replaceable>json_path_specification</replaceable> ]
+        [ { ERROR | NULL | DEFAULT expression } ON EMPTY ]
+        [ { ERROR | NULL | DEFAULT expression } ON ERROR ]
+  | <replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
+        [ PATH <replaceable>json_path_specification</replaceable> ]
+        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } }
+          [ ARRAY ] WRAPPER ]
+        [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
+        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON EMPTY ]
+        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON ERROR ]
+  | NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>path_name</replaceable> ]
+        COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )
+  | <replaceable>name</replaceable> FOR ORDINALITY
 <phrase>
 <replaceable>json_table_plan</replaceable> is:
 </phrase>
-    <replaceable>path_name</replaceable> { OUTER | INNER | CROSS | UNION }
-  { <replaceable>path_name</replaceable> | ( <replaceable>nested_plan</replaceable> ) }
+    <replaceable>path_name</replaceable> [ { OUTER | INNER } <replaceable>json_table_plan_primary</replaceable> ]
+  | <replaceable>json_table_plan_primary</replaceable> { UNION <replaceable>json_table_plan_primary</replaceable> } [...]
+  | <replaceable>json_table_plan_primary</replaceable> { CROSS <replaceable>json_table_plan_primary</replaceable> } [...]
 <phrase>
-<replaceable>nested_plan</replaceable> is:
+<replaceable>json_table_plan_primary</replaceable> is:
 </phrase>
-    <replaceable>path_name</replaceable> { OUTER | INNER } { <replaceable>path_name</replaceable> | ( <replaceable>nested_plan</replaceable> ) }
-  | { <replaceable>path_name</replaceable> | ( <replaceable>nested_plan</replaceable> ) } 
-    { { UNION | CROSS } { <replaceable>path_name</replaceable> | ( <replaceable>nested_plan</replaceable> ) } }[...]
+    <replaceable>path_name</replaceable> | ( <replaceable>json_table_plan</replaceable> )
 
 </synopsis>
     </refsynopsisdiv>
@@ -1453,9 +1452,9 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
      <para>
       Taking JSON data as input, <function>JSON_TABLE</function> uses
-      a path expression to extract a part of the provided input that
+      a path expression to extract a part of the provided data that
       will be used as a <firstterm>row pattern</firstterm> for the
-      contructed view. Each SQL/JSON item at the top level of the row pattern serves
+      constructed view. Each SQL/JSON item at the top level of the row pattern serves
       as the source for a separate row in the constructed relational view.
      </para>
 
@@ -1467,15 +1466,19 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
       the row pattern, extracts a JSON item, and returns it as a
       separate SQL value for the specified column. If the required value
       is stored in a nested level of the row pattern, it can be extracted
-      using the <literal>NESTED PATH</literal> subclause.
+      using the <literal>NESTED PATH</literal> subclause. Joining the
+      columns returned by <literal>NESTED PATH</literal> can add multiple
+      new rows to the constructed view. Such rows are called
+      <firstterm>child rows</firstterm>, as opposed to the <firstterm>parent row</firstterm>
+      that generates them.
      </para>
 
      <para>
       The rows produced by <function>JSON_TABLE</function> are laterally
       joined to the row that generated them, so you do not have to explicitly join
-      the constructed view with the original table. You can specify
-      how to handle empty rows returned from the nested levels of
-      the row pattern using the <literal>PLAN</literal> clause.
+      the constructed view with the original table holding <acronym>JSON</acronym>
+      data. Optionally, you can specify how to join the columns returned
+      by <literal>NESTED PATH</literal> using the <literal>PLAN</literal> clause.
      </para>
 
     </refsect1>
@@ -1502,18 +1505,16 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
    <varlistentry>
     <term>
-     <literal>COLUMNS( { <replaceable class="parameter">json_table_column</replaceable> } [, ...] )</literal> 
+     <literal>COLUMNS( { <replaceable class="parameter">json_table_column</replaceable> } [, ...] )</literal>
     </term>
     <listitem>
 
     <para>
      The <literal>COLUMNS</literal> clause defining the schema of the
-     constructed table. In this clause, you must specify all the columns
-     to be filled with SQL/JSON items returned by <function>JSON_TABLE</function>.
-     You must provide the name and type for each column. Only scalar
-     types are supported.
+     constructed view. In this clause, you must specify all the columns
+     to be filled with SQL/JSON items. Only scalar column types are supported.
      The <replaceable class="parameter">json_table_column</replaceable>
-     expression can use one of the following syntax options:
+     expression has the following syntax variants:
     </para>
 
   <variablelist>
@@ -1601,14 +1602,13 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      so you can go down multiple nested levels by specifying several
      <literal>NESTED PATH</literal> subclauses within each other.
      It allows to unnest the hierarchy of JSON objects and arrays
-     in a single function invocation rather than chaining several <function>JSON_TABLE</function>
-     expressions in an SQL statement.
+     in a single function invocation rather than chaining several
+     <function>JSON_TABLE</function> expressions in an SQL statement.
     </para>
 
     <para>
      You can use the <literal>PLAN</literal> clause to define how
-     to handle empty rows when joining the columns returned by
-     <replaceable>NESTED PATH</replaceable> clauses.
+     to join the columns returned by <replaceable>NESTED PATH</replaceable> clauses.
     </para>
     </listitem>
    </varlistentry>
@@ -1622,7 +1622,8 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     <para>
      Adds an ordinality column that provides sequential row numbering.
      You can have only one ordinality column per table. Row numbering
-     is 1-based.
+     is 1-based. For child rows that result from the <literal>NESTED PATH</literal>
+     clauses, the parent row number is repeated.
     </para>
     </listitem>
    </varlistentry>
@@ -1641,28 +1642,31 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      The optional <replaceable>json_path_name</replaceable> serves as an
      identifier of the provided <replaceable>json_path_specification</replaceable>.
      The path name must be unique and cannot coincide with column names.
-     You must specify the path name when using the <literal>PLAN</literal>
-     clause.
+     When using the <literal>PLAN</literal> clause, you must specify the names
+     for all the paths, including the row pattern. Each path name can appear in
+     the <literal>PLAN</literal> clause only once.
     </para>
     </listitem>
    </varlistentry>
 
    <varlistentry>
     <term>
-     <literal>PLAN <replaceable class="parameter">json_table_plan</replaceable></literal>
+     <literal>PLAN ( <replaceable class="parameter">json_table_plan</replaceable> )</literal>
     </term>
     <listitem>
 
     <para>
-     Defines how to handle empty rows when joining the columns
-     returned by <replaceable>NESTED PATH</replaceable> clauses.
+     Defines how to join the data returned by <replaceable>NESTED PATH</replaceable>
+     clauses to the constructed view.
     </para>
     <para>
-     In relation to the columns returned directly from the row expression
-     or by the <literal>NESTED PATH</literal> clause of a higher level, nested columns
-     are considered to be <firstterm>child</firstterm> columns.
-     Each <literal>NESTED PATH</literal> clause can include
-     several columns, which are called <firstterm>sibling</firstterm> columns.
+     Each <literal>NESTED PATH</literal> clause can generate one or more
+     columns, which are considered to be <firstterm>siblings</firstterm>
+     to each other. In relation to the columns returned directly from the row
+     expression or by the <literal>NESTED PATH</literal> clause of a
+     higher level, these columns are <firstterm>child</firstterm> columns.
+     Sibling columns are always joined first. Once they are processed,
+     the resulting rows are joined to the parent row.
     </para>
     <para>
      To join columns with parent/child relationship, you can use:
@@ -1675,9 +1679,9 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     <listitem>
 
     <para>
-     Use <literal>INNER JOIN</literal>, so that the output includes
-     only those rows that have the corresponding values in both
-     columns.
+     Use <literal>INNER JOIN</literal>, so that the parent row
+     is omitted from the output if it does not have any child rows
+     after joining the data returned by <literal>NESTED PATH</literal>.
     </para>
     </listitem>
    </varlistentry>
@@ -1689,10 +1693,11 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     <listitem>
 
     <para>
-     Use <literal>LEFT OUTER JOIN</literal>, so that all rows of the
-     left-hand column must be included into the output at least once, while the rows of the right-hand
-     column are only included if they have a match in the left column. If the corresponding
-     value is missing from the right column, the NULL value is inserted into the right column.
+     Use <literal>LEFT OUTER JOIN</literal>, so that the parent row
+     is always included into the output even if it does not have any child rows
+     after joining the data returned by <literal>NESTED PATH</literal>, with NULL values
+     inserted into the child columns if the corresponding
+     values are missing.
     </para>
     <para>
      This is the default option for joining columns with parent/child relationship.
@@ -1713,10 +1718,9 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     <listitem>
 
     <para>
-     Use <literal>FULL OUTER JOIN</literal>, so that all rows of the
-     left-hand and the right-hand columns are included into the output, with
-     NULL values inserted into either of the columns if the corresponding value
-     is missing.
+     Use <literal>FULL OUTER JOIN ON FALSE</literal>, so that both parent and child
+     rows are included into the output, with NULL values inserted
+     into both child and parrent columns for all missing values.
     </para>
     <para>
      This is the default option for joining sibling columns.
@@ -1745,11 +1749,17 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
    <varlistentry>
     <term>
-     <literal>PLAN DEFAULT</literal>
+     <literal>PLAN DEFAULT ( <replaceable>option</replaceable> [, ... ] )</literal>
     </term>
     <listitem>
      <para>
-      Redefines the default behavior for all columns at once.
+      Overrides the default joining plans. The <literal>INNER</literal> and
+      <literal>OUTER</literal> options define the joining plan for parent/child
+      columns, while <literal>UNION</literal> and <literal>CROSS</literal>
+      affect the sibling columns. You can override the default plans for all columns at once.
+      Even though the path names are not incuded into the <literal>PLAN DEFAULT</literal>
+      clause, they must be provided for all the paths to conform to
+      the SQL/JSON standard.
      </para>
     </listitem>
    </varlistentry>
@@ -1779,8 +1789,36 @@ SELECT jt.* FROM
  1  | comedy   | The Dinner Game  | Francis Veber
  2  | horror   | Psycho           | Alfred Hitchcock
  3  | thriller | Vertigo          | Hitchcock
- 4  | (null)   | Yojimbo          | Akira Kurosawa
+ 4  | drama    | Yojimbo          | Akira Kurosawa
  (5 rows)
+</screen>
+     </para>
+
+     <para>
+      Find a director that has done films in two different genres:
+<screen>
+SELECT
+  director1 AS director, title1, kind1, title2, kind2
+FROM
+  my_films,
+  JSON_TABLE ( js, '$.favorites' AS favs COLUMNS (
+    NESTED PATH '$[*]' AS films1 COLUMNS (
+      kind1 text PATH '$.kind',
+      NESTED PATH '$.films[*]' AS film1 COLUMNS (
+        title1 text PATH '$.title',
+        director1 text PATH '$.director')
+    ),
+    NESTED PATH '$[*]' AS films2 COLUMNS (
+      kind2 text PATH '$.kind',
+      NESTED PATH '$.films[*]' AS film2 COLUMNS (
+        title2 text PATH '$.title',
+        director2 text PATH '$.director'
+      )
+    )
+   )
+   PLAN (favs OUTER ((films1 INNER film1) CROSS (films2 INNER film2)))
+  ) AS jt
+ WHERE kind1 > kind2 AND director1 = director2;
 </screen>
      </para>
     </refsect1>
