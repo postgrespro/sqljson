@@ -46,7 +46,7 @@ SELECT JSON_VALUE(jsonb '123', '$');
 SELECT JSON_VALUE(jsonb '123', '$' RETURNING int) + 234;
 SELECT JSON_VALUE(jsonb '123', '$' RETURNING text);
 /* jsonb bytea ??? */
-SELECT JSON_VALUE(jsonb '123', '$' RETURNING bytea);
+SELECT JSON_VALUE(jsonb '123', '$' RETURNING bytea ERROR ON ERROR);
 
 SELECT JSON_VALUE(jsonb '1.23', '$');
 SELECT JSON_VALUE(jsonb '1.23', '$' RETURNING int);

@@ -190,12 +190,8 @@ SELECT JSON_VALUE(jsonb '123', '$' RETURNING text);
 (1 row)
 
 /* jsonb bytea ??? */
-SELECT JSON_VALUE(jsonb '123', '$' RETURNING bytea);
- json_value 
-------------
- \x313233
-(1 row)
-
+SELECT JSON_VALUE(jsonb '123', '$' RETURNING bytea ERROR ON ERROR);
+ERROR:  SQL/JSON item cannot be cast to target type
 SELECT JSON_VALUE(jsonb '1.23', '$');
  json_value 
 ------------
