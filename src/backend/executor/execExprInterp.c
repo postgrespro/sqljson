@@ -4412,26 +4412,44 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 													 op->d.jsonexpr.args);
 				struct JsonCoercionState *jcstate;
 
-				if (!jbv)
+				if (!jbv)	/* NULL or empty */
 					break;
+
+				Assert(!empty);
 
 				*resnull = false;
 
+				/* coerce item datum to the output type */
+				if (jexpr->returning.typid == JSONOID ||
+					jexpr->returning.typid == JSONBOID)
+				{
+					/* Use result coercion from json[b] to the output type */
+					res = JsonbPGetDatum(JsonItemToJsonb(jbv));
+					break;
+				}
+
+				/* Use coercion from SQL/JSON item type to the output type */
 				res = ExecPrepareJsonItemCoercion(jbv,
 										&op->d.jsonexpr.jsexpr->returning,
 										&op->d.jsonexpr.coercions,
 										&jcstate);
 
-				/* coerce item datum to the output type */
-				if ((jcstate->coercion &&
+				if (jcstate->coercion &&
 					(jcstate->coercion->via_io ||
-					 jcstate->coercion->via_populate)) || /* ignored for scalars jsons */
-					jexpr->returning.typid == JSONOID ||
-					jexpr->returning.typid == JSONBOID)
+					 jcstate->coercion->via_populate))
 				{
-					/* use coercion via I/O from json[b] to the output type */
-					res = JsonbPGetDatum(JsonItemToJsonb(jbv));
-					res = ExecEvalJsonExprCoercion(op, econtext, res, resnull);
+					/*
+					 * Coercion via I/O means here that the cast to the target
+					 * type simply does not exist.
+					 */
+					ereport(ERROR,
+							/*
+							 * XXX Standard says about a separate error code
+							 * ERRCODE_JSON_ITEM_CANNOT_BE_CAST_TO_TARGET_TYPE
+							 * but does not define its number.
+							 */
+							(errcode(ERRCODE_JSON_SCALAR_REQUIRED),
+							 errmsg("SQL/JSON item cannot be cast to target type")));
 				}
 				else if (jcstate->estate)
 				{
@@ -4441,17 +4459,16 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 					res = ExecEvalExpr(jcstate->estate, econtext, resnull);
 				}
 				/* else no coercion */
+
+				return res;
 			}
-			break;
 
 		case IS_JSON_EXISTS:
-			res = BoolGetDatum(JsonbPathExists(item, path, op->d.jsonexpr.args));
 			*resnull = false;
-			break;
+			return BoolGetDatum(JsonbPathExists(item, path, op->d.jsonexpr.args));
 
 		default:
-			elog(ERROR, "unrecognized SQL/JSON expression op %d",
-				 jexpr->op);
+			elog(ERROR, "unrecognized SQL/JSON expression op %d", jexpr->op);
 			return (Datum) 0;
 	}
 
@@ -4465,15 +4482,13 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 		/* execute ON EMPTY behavior */
 		res = ExecEvalJsonBehavior(econtext, &jexpr->on_empty,
 								   op->d.jsonexpr.default_on_empty, resnull);
+
+		/* result is already coerced in DEFAULT behavior case */
+		if (jexpr->on_empty.btype == JSON_BEHAVIOR_DEFAULT)
+			return res;
 	}
 
-	if (jexpr->op != IS_JSON_EXISTS &&
-		(!empty ? jexpr->op != IS_JSON_VALUE :
-		 /* result is already coerced in DEFAULT behavior case */
-		 jexpr->on_empty.btype != JSON_BEHAVIOR_DEFAULT))
-		res = ExecEvalJsonExprCoercion(op, econtext, res, resnull);
-
-	return res;
+	return ExecEvalJsonExprCoercion(op, econtext, res, resnull);
 }
 
 bool
