@@ -24,8 +24,9 @@
   </itemizedlist>
 
   <para>
-    To learn more about the SQL/JSON standard, see <xref linkend="sqltr17"/>.
-    For details on JSON types supported in <productname>PostgreSQL</productname>, see <xref linkend="datatype-json"/>.
+    To learn more about the SQL/JSON standard, see <xref linkend="sqltr-19075-6"/>.
+    For details on JSON types supported in <productname>PostgreSQL</productname>,
+    see <xref linkend="datatype-json"/>.
   </para>
 
  <sect2 id="functions-sqljson">
@@ -1064,15 +1065,13 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
     </term>
     <listitem>
      <para>
-       The output clause that specifies the data type of the returned value.
-       Out of the box, <productname>PostgreSQL</productname>
-       supports the following types: <literal>json</literal>, <literal>jsonb</literal>,
-       <literal>bytea</literal>, and character string types (<literal>text</literal>, <literal>char</literal>,
-       <literal>varchar</literal>, and <literal>nchar</literal>).
-       The extracted value must be a single <acronym>SQL/JSON</acronym> scalar item
-       and have a cast to the specified type. Otherwise, an error occurs.
+       The output clause that specifies the SQL data type the extracted value
+       will be represented as. The extracted value must be a single
+       <acronym>SQL/JSON</acronym> scalar item and have a cast to the
+       specified type. Otherwise, an error occurs.
        By default, <function>JSON_VALUE</function> returns a string
-       of the <literal>text</literal> type.
+       of the <literal>text</literal> type. For details, see
+       <xref linkend="sqljson-output-clause"/>.
      </para>
      </listitem>
    </varlistentry>
@@ -1112,11 +1111,10 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
      <title>Examples</title>
 
      <para>
-      Extract an SQL/JSON value and return it as an SQL
-      scalar of the specified type. Note that
-      <command>JSON_VALUE</command> can only return a
-      single scalar, and the returned value must have a
-      cast to the specified return type:
+      Extract an SQL/JSON value and return it as an SQL scalar
+      of the specified type. Note that <command>JSON_VALUE</command>
+      can only return a single scalar, and the extracted value must have
+      a cast to the specified return type:
      </para>
 
 <screen>
@@ -1226,7 +1224,12 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
     </term>
     <listitem>
      <para>
-       The output clause that specifies the data type of the returned value.
+       The output clause that specifies the SQL data type the extracted
+       SQL/JSON object or array will be represented as. By default,
+       <function>JSON_QUERY</function> returns a string of the
+       <literal>json</literal> type, unless the context item is explicitly
+       converted to another type. In this case, the return type corresponds
+       to the type of the context item.
        For details, see <xref linkend="sqljson-output-clause"/>.
      </para>
      </listitem>
@@ -2032,19 +2035,127 @@ FROM
     <listitem>
      <para>
        The output clause that specifies the return type of the generated
-       <acronym>JSON</acronym> object. Out of the box, <productname>PostgreSQL</productname>
-       supports the following types: <type>json</type>, <type>jsonb</type>,
-       <type>bytea</type>, and character string types (<type>text</type>, <type>char</type>,
-       <type>varchar</type>, and <type>nchar</type>).
-       To use other types, you must create the <literal>CAST</literal> from <type>json</type> for this type.
-       By default, the <type>json</type> type is returned.
+       <acronym>SQL/JSON</acronym> item.
      </para>
+
      <para>
-       The optional <literal>FORMAT</literal> clause is provided to conform to the SQL/JSON standard.
+       The <literal>RETURNING</literal> clause is common for both constructor
+       and query SQL/JSON functions. All functions rely on type casts
+       available in <productname>PostgreSQL</productname>, but have some
+       implementation specifics that determines which types can be used
+       by a particular function. Type casts supported by
+       <productname>PostgreSQL</productname> out of the box are listed
+       in <xref linkend="functions-jsonb-type-casts"/>.
+     </para>
+
+     <para>
+       Constructor functions support <type>json</type>, <type>jsonb</type>,
+       <type>bytea</type>, and any other types that have a cast from
+       the SQL type of the constructed item. By default,
+       the constructed item is represented as <type>json</type>.
+     </para>
+
+     <para>
+       For the <literal>JSON_VALUE</literal> function, you can use
+       <type>json</type>, <type>jsonb</type>, or any other type that has
+       a cast from the SQL type that corresponds to the SQL/JSON type of the
+       extracted value. The output to <type>json</type> and <type>jsonb</type>
+       types will always work regardless of the type of the extracted value,
+       since SQL/JSON items are converted directly to <type>json</type> or
+       <type>jsonb</type> without casting. With other types, the result
+       depends on the combination of the type of the extracted value
+       and the specified return type: if no cast is found, an error occurs.
+       By default, the <acronym>SQL/JSON</acronym> item returned by
+       <literal>JSON_VALUE</literal> is represented as <type>text</type>.
+     </para>
+
+     <para>
+       With the <literal>JSON_QUERY</literal> function, you can use any
+       return types. The implementation details are as follows:
+     <itemizedlist>
+      <listitem>
+       <para>
+        For SQL/JSON items of a scalar SQL type, a cast from <type>json</type>
+        or <type>jsonb</type> is searched, depending on the type of the context
+        item. If no cast is found, an input/output function is used for
+        conversion. As an exception, if you use the <type>bytea</type> return
+        type, the extracted SQL/JSON item is converted to the return type as
+        follows: <literal>convert_to(json[b]::text, 'UTF8')</literal>.
+        If <literal>JSON_QUERY</literal> extracts an SQL/JSON string,
+        which is not wrapped using the <literal>WRAPPER</literal> clause,
+        and the <literal>OMIT QUOTES</literal> clause is specified, the string
+        contents is converted to the return type using the input/output
+        function that corresponds to this return type.
+       </para>
+      </listitem>
+      <listitem>
+       <para>
+        For SQL/JSON items of non-scalar SQL types (arrays, records, and
+        domains), the <function>json[b]_populate_record()</function> function
+        is used for conversion to the specified return type. This is a
+        <productname>PostgreSQL</productname> extension of the SQL/JSON standard.
+       </para>
+      </listitem>
+     </itemizedlist>
+       By default, <function>JSON_QUERY</function> returns a string of the
+       <literal>json</literal> type, unless the context item is is explicitly
+       converted to another type. In this case, the return type corresponds
+       to the type of the context item.
+     </para>
+
+  <table id="functions-jsonb-type-casts">
+     <title>Type Casts Supported by <productname>PostgreSQL</productname></title>
+     <tgroup cols="2">
+      <thead>
+       <row>
+        <entry>SQL/JSON type</entry>
+        <entry>SQL Type</entry>
+       </row>
+      </thead>
+      <tbody>
+       <row>
+        <entry><type>string</type></entry>
+        <entry><type>text</type></entry>
+       </row>
+       <row>
+        <entry><type>number</type></entry>
+        <entry><type>numeric</type></entry>
+       </row>
+       <row>
+        <entry><type>boolean</type></entry>
+        <entry><type>boolean</type></entry>
+       </row>
+       <row>
+        <entry><type>date</type></entry>
+        <entry><type>date</type></entry>
+       </row>
+       <row>
+        <entry><type>time</type></entry>
+        <entry><type>time</type></entry>
+       </row>
+       <row>
+        <entry><type>time with tz</type></entry>
+        <entry><type>timetz</type></entry>
+       </row>
+       <row>
+        <entry><type>timestamp</type></entry>
+        <entry><type>timestamp</type></entry>
+       </row>
+       <row>
+        <entry><type>timestamp with tz</type></entry>
+        <entry><type>timestamptz</type></entry>
+       </row>
+      </tbody>
+     </tgroup>
+  </table>
+
+     <para>
+       The optional <literal>FORMAT</literal> clause is provided
+       to conform to the SQL/JSON standard and can only take the
+       <literal>json</literal> value as an argument.
+       <productname>PostgreSQL</productname> currently supports
+       only the UTF8 encoding.
       </para>
-     <para>
-       The output clause is common for both constructor and query SQL/JSON functions.
-     </para>
      </listitem>
    </varlistentry>
     </variablelist>
@@ -2067,10 +2178,10 @@ FROM
   <para>
     The SQL/JSON query functions pass the provided path expression to
     the <firstterm>path engine</firstterm> for evaluation.
-    The path expression is evaluated from left to right.
-    You can use parentheses to change the order of operations.
-    If the evaluation is successful, an SQL/JSON sequence is produced.
-    The evaluation result is returned to the SQL/JSON query function
+    The path expression is evaluated from left to right, but
+    you can use parentheses to change the order of operations.
+    If the evaluation is successful, an SQL/JSON sequence is produced,
+    and the evaluation result is returned to the SQL/JSON query function
     that completes the specified computation. If the query result
     must be JSON text, you have to use the <command>WITH WRAPPER</command> clause
     or enclose the path expression in square brackets to ensure
@@ -2078,7 +2189,7 @@ FROM
   </para>
 
   <para>
-    A typical path expression has the following structure:
+    A path expression has the following structure:
   </para>
 
   <programlisting>
@@ -2508,7 +2619,7 @@ FROM
        </row>
        <row>
         <entry><literal>like_regex</literal></entry>
-        <entry>Tests pattern matching with regular expressions</entry>
+        <entry>Tests pattern matching with POSIX regular expressions</entry>
         <entry><literal>["abc", "abd", "aBdC", "abdacb", "babc"]</literal></entry>
         <entry><literal>$[*] ? (@ like_regex "^ab.*c" flag "i")</literal></entry>
         <entry><literal>"abc", "aBdC", "abdacb"</literal></entry>
@@ -3545,4 +3656,3 @@ FROM
  </sect2>
 
 </sect1>
-
