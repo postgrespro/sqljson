@@ -1581,17 +1581,23 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					}
 				}
 			}
+			else if (jspAutoWrap(cxt))
+				res = recursiveExecuteNext(cxt, jsp, NULL, jb, found, true);
 			else if (!jspIgnoreStructuralErrors(cxt))
 				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
 			break;
 
 		case jpiIndexArray:
-			if (JsonbType(jb) == jbvArray)
+			if (JsonbType(jb) == jbvArray || jspAutoWrap(cxt))
 			{
 				int			innermostArraySize = cxt->innermostArraySize;
 				int			i;
 				int			size = JsonbArraySize(jb);
 				bool		binary = jb->type == jbvBinary;
+				bool		singleton = size < 0;
+
+				if (singleton)
+					size = 1;
 
 				cxt->innermostArraySize = size; /* for LAST evaluation */
 
@@ -1640,16 +1646,32 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 					for (index = index_from; index <= index_to; index++)
 					{
-						JsonbValue *v = binary ?
-							getIthJsonbValueFromContainer(jb->val.binary.data,
-														  (uint32) index) :
-							&jb->val.array.elems[index];
+						JsonbValue *v;
+						bool		copy;
 
-						if (v == NULL)
-							continue;
+						if (singleton)
+						{
+							v = jb;
+							copy = true;
+						}
+						else if (binary)
+						{
+							v = getIthJsonbValueFromContainer(jb->val.binary.data,
+															  (uint32) index);
+
+							if (v == NULL)
+								continue;
+
+							copy = false;
+						}
+						else
+						{
+							v = &jb->val.array.elems[index];
+							copy = true;
+						}
 
 						res = recursiveExecuteNext(cxt, jsp, &elem, v, found,
-												   !binary);
+												   copy);
 
 						if (jperIsError(res))
 							break;
@@ -2284,11 +2306,6 @@ recursiveExecute(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbValue *jb,
 			case jpiDatetime:
 			case jpiKeyValue:
 				return recursiveExecuteUnwrap(cxt, jsp, jb, found);
-
-			case jpiAnyArray:
-			case jpiIndexArray:
-				jb = wrapItem(jb);
-				break;
 
 			default:
 				break;
