@@ -1060,29 +1060,29 @@ select jsonb '{}' @* '$.keyvalue()';
 (0 rows)
 
 select jsonb '{"a": 1, "b": [1, 2], "c": {"a": "bbb"}}' @* '$.keyvalue()';
-              ?column?               
--------------------------------------
- {"key": "a", "value": 1}
- {"key": "b", "value": [1, 2]}
- {"key": "c", "value": {"a": "bbb"}}
+                   ?column?                   
+----------------------------------------------
+ {"id": 0, "key": "a", "value": 1}
+ {"id": 0, "key": "b", "value": [1, 2]}
+ {"id": 0, "key": "c", "value": {"a": "bbb"}}
 (3 rows)
 
 select jsonb '[{"a": 1, "b": [1, 2]}, {"c": {"a": "bbb"}}]' @* '$[*].keyvalue()';
-              ?column?               
--------------------------------------
- {"key": "a", "value": 1}
- {"key": "b", "value": [1, 2]}
- {"key": "c", "value": {"a": "bbb"}}
+                   ?column?                    
+-----------------------------------------------
+ {"id": 12, "key": "a", "value": 1}
+ {"id": 12, "key": "b", "value": [1, 2]}
+ {"id": 72, "key": "c", "value": {"a": "bbb"}}
 (3 rows)
 
 select jsonb '[{"a": 1, "b": [1, 2]}, {"c": {"a": "bbb"}}]' @* 'strict $.keyvalue()';
 ERROR:  SQL/JSON object not found
 select jsonb '[{"a": 1, "b": [1, 2]}, {"c": {"a": "bbb"}}]' @* 'lax $.keyvalue()';
-              ?column?               
--------------------------------------
- {"key": "a", "value": 1}
- {"key": "b", "value": [1, 2]}
- {"key": "c", "value": {"a": "bbb"}}
+                   ?column?                    
+-----------------------------------------------
+ {"id": 12, "key": "a", "value": 1}
+ {"id": 12, "key": "b", "value": [1, 2]}
+ {"id": 72, "key": "c", "value": {"a": "bbb"}}
 (3 rows)
 
 select jsonb 'null' @* '$.double()';

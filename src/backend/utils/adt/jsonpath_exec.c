@@ -27,11 +27,18 @@
 /* Special pseudo-ErrorData with zero sqlerrcode for existence queries. */
 ErrorData jperNotFound[1];
 
+typedef struct JsonBaseObjectInfo
+{
+	JsonbContainer *jbc;
+	int			id;
+} JsonBaseObjectInfo;
 
 typedef struct JsonPathExecContext
 {
 	List	   *vars;
 	JsonbValue *root;				/* for $ evaluation */
+	JsonBaseObjectInfo baseObject;	/* for .keyvalue().id evaluation */
+	int			generatedObjectId;
 	int			innermostArraySize;	/* for LAST array index evaluation */
 	bool		laxMode;
 	bool		ignoreStructuralErrors;
@@ -155,7 +162,7 @@ JsonbWrapInBinary(JsonbValue *jbv, JsonbValue *out)
 /*
  * Find value of jsonpath variable in a list of passing params
  */
-static void
+static int
 computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 {
 	ListCell   *cell;
@@ -164,6 +171,7 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 	Datum		computedValue;
 	char	   *varName;
 	int			varNameLength;
+	int			varId = 1;
 
 	Assert(variable->type == jpiVariable);
 	varName = jspGetString(variable, &varNameLength);
@@ -177,6 +185,7 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 			break;
 
 		var = NULL;
+		varId++;
 	}
 
 	if (var == NULL)
@@ -190,7 +199,7 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 	if (isNull)
 	{
 		value->type = jbvNull;
-		return;
+		return varId;
 	}
 
 	switch (var->typid)
@@ -264,12 +273,14 @@ computeJsonPathVariable(JsonPathItem *variable, List *vars, JsonbValue *value)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("only bool, numeric and text types could be casted to supported jsonpath types")));
 	}
+
+	return varId;
 }
 
 /*
  * Convert jsonpath's scalar or variable node to actual jsonb value
  */
-static void
+static int
 computeJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item, JsonbValue *value)
 {
 	switch(item->type)
@@ -290,11 +301,12 @@ computeJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item, JsonbValue *va
 			value->val.string.val = jspGetString(item, &value->val.string.len);
 			break;
 		case jpiVariable:
-			computeJsonPathVariable(item, cxt->vars, value);
-			break;
+			return computeJsonPathVariable(item, cxt->vars, value);
 		default:
 			elog(ERROR, "Wrong type");
 	}
+
+	return 0;
 }
 
 
@@ -1397,6 +1409,44 @@ recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	}
 }
 
+static inline JsonPathExecResult
+recursiveExecuteBase(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					 JsonbValue *jbv, JsonValueList *found)
+{
+	JsonbValue *v;
+	JsonbValue	vbuf;
+	bool		copy = true;
+
+	if (JsonbType(jbv) == jbvScalar)
+	{
+		if (jspHasNext(jsp))
+			v = &vbuf;
+		else
+		{
+			v = palloc(sizeof(*v));
+			copy = false;
+		}
+
+		JsonbExtractScalar(jbv->val.binary.data, v);
+	}
+	else
+		v = jbv;
+
+	return recursiveExecuteNext(cxt, jsp, NULL, v, found, copy);
+}
+
+static inline JsonBaseObjectInfo
+setBaseObject(JsonPathExecContext *cxt, JsonbValue *jbv, int32 id)
+{
+	JsonBaseObjectInfo baseObject = cxt->baseObject;
+
+	cxt->baseObject.jbc = jbv->type != jbvBinary ? NULL :
+		(JsonbContainer *) jbv->val.binary.data;
+	cxt->baseObject.id = id;
+
+	return baseObject;
+}
+
 /*
  * Main executor function: walks on jsonpath structure and tries to find
  * correspoding parts of jsonb. Note, jsonb and jsonpath values should be
@@ -1414,6 +1464,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonPathItem		elem;
 	JsonPathExecResult	res = jperNotFound;
 	bool				hasNext;
+	JsonBaseObjectInfo	baseObject;
 
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
@@ -1474,33 +1525,18 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				res = jperMakeError(ERRCODE_JSON_MEMBER_NOT_FOUND);
 			}
 			break;
+
 		case jpiRoot:
 			jb = cxt->root;
-			/* fall through */
+			baseObject = setBaseObject(cxt, jb, 0);
+			res = recursiveExecuteBase(cxt, jsp, jb, found);
+			cxt->baseObject = baseObject;
+			break;
+
 		case jpiCurrent:
-			{
-				JsonbValue *v;
-				JsonbValue	vbuf;
-				bool		copy = true;
+			res = recursiveExecuteBase(cxt, jsp, jb, found);
+			break;
 
-				if (JsonbType(jb) == jbvScalar)
-				{
-					if (jspHasNext(jsp))
-						v = &vbuf;
-					else
-					{
-						v = palloc(sizeof(*v));
-						copy = false;
-					}
-
-					JsonbExtractScalar(jb->val.binary.data, v);
-				}
-				else
-					v = jb;
-
-				res = recursiveExecuteNext(cxt, jsp, NULL, v, found, copy);
-				break;
-			}
 		case jpiAnyArray:
 			if (JsonbType(jb) == jbvArray)
 			{
@@ -1762,6 +1798,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				JsonbValue	vbuf;
 				JsonbValue *v;
 				bool		hasNext = jspGetNext(jsp, &elem);
+				int			id;
 
 				if (!hasNext && !found)
 				{
@@ -1771,9 +1808,11 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				v = hasNext ? &vbuf : palloc(sizeof(*v));
 
-				computeJsonPathItem(cxt, jsp, v);
+				id = computeJsonPathItem(cxt, jsp, v);
 
+				baseObject = setBaseObject(cxt, v, id);
 				res = recursiveExecuteNext(cxt, jsp, &elem, v, found, hasNext);
+				cxt->baseObject = baseObject;
 			}
 			break;
 		case jpiType:
@@ -2026,11 +2065,14 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				JsonbValue	bin;
 				JsonbValue	key;
 				JsonbValue	val;
+				JsonbValue	idval;
 				JsonbValue	obj;
 				JsonbValue	keystr;
 				JsonbValue	valstr;
+				JsonbValue	idstr;
 				JsonbIterator *it;
 				JsonbParseState *ps = NULL;
+				int64		id;
 
 				hasNext = jspGetNext(jsp, &elem);
 
@@ -2053,8 +2095,20 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				valstr.val.string.val = "value";
 				valstr.val.string.len = 5;
 
+				idstr.type = jbvString;
+				idstr.val.string.val = "id";
+				idstr.val.string.len = 2;
+
 				if (jb->type == jbvObject)
 					jb = JsonbWrapInBinary(jb, &bin);
+
+				id = jb->type != jbvBinary ? 0 :
+					(int64)((char *) jb->val.binary.data -
+							  (char *) cxt->baseObject.jbc);
+				id += (int64) cxt->baseObject.id * INT64CONST(10000000000);
+
+				idval.type = jbvNumeric;
+				idval.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric, Int64GetDatum(id)));
 
 				it = JsonbIteratorInit(jb->val.binary.data);
 
@@ -2078,9 +2132,11 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						pushJsonbValue(&ps, WJB_KEY, &keystr);
 						pushJsonbValue(&ps, WJB_VALUE, &key);
 
-
 						pushJsonbValue(&ps, WJB_KEY, &valstr);
 						pushJsonbValue(&ps, WJB_VALUE, &val);
+
+						pushJsonbValue(&ps, WJB_KEY, &idstr);
+						pushJsonbValue(&ps, WJB_VALUE, &idval);
 
 						keyval = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
 
@@ -2088,7 +2144,12 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 						JsonbInitBinary(&obj, jsonb);
 
+						baseObject = setBaseObject(cxt, &obj,
+												   cxt->generatedObjectId++);
+
 						res = recursiveExecuteNext(cxt, jsp, &elem, &obj, found, true);
+
+						cxt->baseObject = baseObject;
 
 						if (jperIsError(res))
 							break;
@@ -2254,6 +2315,9 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, JsonValueList *foundJso
 	cxt.laxMode = (path->header & JSONPATH_LAX) != 0;
 	cxt.ignoreStructuralErrors = cxt.laxMode;
 	cxt.root = JsonbInitBinary(&jbv, json);
+	cxt.baseObject.jbc = NULL;
+	cxt.baseObject.id = 0;
+	cxt.generatedObjectId = list_length(vars) + 1;
 	cxt.innermostArraySize = -1;
 
 	if (jspStrictAbsenseOfErrors(&cxt) && !foundJson)
