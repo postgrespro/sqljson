@@ -194,6 +194,13 @@ hex_fail	\\x{hex_dig}{0,1}
 									BEGIN xvq;
 								}
 
+\@[0-9]+						{
+									addstring(true, yytext, yyleng);
+									addchar(false, '\0');
+									yylval->str = scanstring;
+									return CURRENT_P;
+								}
+
 {special}						{ return *yytext; }
 
 {blank}+						{ /* ignore */ }

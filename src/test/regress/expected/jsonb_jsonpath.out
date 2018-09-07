@@ -2614,3 +2614,38 @@ select jsonb_path_query('null', '{"a": 1}["b"]');
 ------------------
 (0 rows)
 
+-- extension: outer item reference (@N)
+select jsonb_path_query('[2,4,1,5,3]', '$[*] ? (!exists($[*] ? (@ < @1)))');
+ jsonb_path_query 
+------------------
+ 1
+(1 row)
+
+select jsonb_path_query('[2,4,1,5,3]', '$[*] ? (!exists($[*] ? (@ > @1)))');
+ jsonb_path_query 
+------------------
+ 5
+(1 row)
+
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ < @1[1]) > 2)');
+ jsonb_path_query 
+------------------
+ [2, 4, 1, 5, 3]
+(1 row)
+
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ < @1[1]) > 3)');
+ jsonb_path_query 
+------------------
+(0 rows)
+
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ ? (@ ? (@ < @3[1]) > @2[0]) > @1[0]) > 2)');
+ jsonb_path_query 
+------------------
+ [2, 4, 1, 5, 3]
+(1 row)
+
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ ? (@ ? (@ < @3[2]) > @2[0]) > @1[0]) > 2)');
+ jsonb_path_query 
+------------------
+(0 rows)
+

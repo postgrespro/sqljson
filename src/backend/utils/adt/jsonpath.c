@@ -358,6 +358,16 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiAnyArray:
 		case jpiAnyKey:
 			break;
+		case jpiCurrentN:
+			if (item->value.current.level < 0 ||
+				item->value.current.level >= nestingLevel)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("invalid outer item reference in jsonpath @")));
+
+			appendBinaryStringInfo(buf, (char *) &item->value.current.level,
+								   sizeof(item->value.current.level));
+			break;
 		case jpiCurrent:
 			if (nestingLevel <= 0)
 				ereport(ERROR,
@@ -672,6 +682,10 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			Assert(!inKey);
 			appendStringInfoChar(buf, '@');
 			break;
+		case jpiCurrentN:
+			Assert(!inKey);
+			appendStringInfo(buf, "@%d", v->content.current.level);
+			break;
 		case jpiRoot:
 			Assert(!inKey);
 			appendStringInfoChar(buf, '$');
@@ -979,6 +993,9 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiKeyValue:
 		case jpiLast:
 			break;
+		case jpiCurrentN:
+			read_int32(v->content.current.level, base, pos);
+			break;
 		case jpiKey:
 		case jpiString:
 		case jpiVariable:
@@ -1075,6 +1092,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiIndexArray ||
 			   v->type == jpiFilter ||
 			   v->type == jpiCurrent ||
+			   v->type == jpiCurrentN ||
 			   v->type == jpiExists ||
 			   v->type == jpiRoot ||
 			   v->type == jpiVariable ||

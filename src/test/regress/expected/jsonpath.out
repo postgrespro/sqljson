@@ -1054,3 +1054,31 @@ select '(1.).e3'::jsonpath;
 ERROR:  syntax error, unexpected ')' at or near ")" of jsonpath input
 LINE 1: select '(1.).e3'::jsonpath;
                ^
+select '@1'::jsonpath;
+ERROR:  invalid outer item reference in jsonpath @
+LINE 1: select '@1'::jsonpath;
+               ^
+select '@-1'::jsonpath;
+ERROR:  @ is not allowed in root expressions
+LINE 1: select '@-1'::jsonpath;
+               ^
+select '$ ? (@0 > 1)'::jsonpath;
+ jsonpath  
+-----------
+ $?(@ > 1)
+(1 row)
+
+select '$ ? (@1 > 1)'::jsonpath;
+ERROR:  invalid outer item reference in jsonpath @
+LINE 1: select '$ ? (@1 > 1)'::jsonpath;
+               ^
+select '$.a ? (@.b ? (@1 > @) > 5)'::jsonpath;
+          jsonpath          
+----------------------------
+ $."a"?(@."b"?(@1 > @) > 5)
+(1 row)
+
+select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
+ERROR:  invalid outer item reference in jsonpath @
+LINE 1: select '$.a ? (@.b ? (@2 > @) > 5)'::jsonpath;
+               ^

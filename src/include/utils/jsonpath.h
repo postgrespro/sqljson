@@ -73,6 +73,7 @@ typedef enum JsonPathItemType
 	jpiAny,						/* .** */
 	jpiKey,						/* .key */
 	jpiCurrent,					/* @ */
+	jpiCurrentN,				/* @N */
 	jpiRoot,					/* $ */
 	jpiVariable,				/* $variable */
 	jpiFilter,					/* ? (predicate) */
@@ -171,6 +172,11 @@ typedef struct JsonPathItem
 
 		struct
 		{
+			int32		level;
+		}			current;
+
+		struct
+		{
 			char	   *data;	/* for bool, numeric and string/key */
 			int32		datalen;	/* filled only for string/key */
 		}			value;
@@ -261,6 +267,10 @@ struct JsonPathParseItem
 		struct {
 			List   *fields;
 		} object;
+
+		struct {
+			int		level;
+		} current;
 
 		/* scalars */
 		Numeric numeric;

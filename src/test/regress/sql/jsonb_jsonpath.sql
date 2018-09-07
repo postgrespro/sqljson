@@ -590,3 +590,11 @@ select jsonb_path_query('{"a": 1, "b": 2}', 'lax $["b", "c", "b", "a", 0 to 3]')
 
 select jsonb_path_query('null', '{"a": 1}["a"]');
 select jsonb_path_query('null', '{"a": 1}["b"]');
+
+-- extension: outer item reference (@N)
+select jsonb_path_query('[2,4,1,5,3]', '$[*] ? (!exists($[*] ? (@ < @1)))');
+select jsonb_path_query('[2,4,1,5,3]', '$[*] ? (!exists($[*] ? (@ > @1)))');
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ < @1[1]) > 2)');
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ < @1[1]) > 3)');
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ ? (@ ? (@ < @3[1]) > @2[0]) > @1[0]) > 2)');
+select jsonb_path_query('[2,4,1,5,3]', 'strict $ ? (@[*] ? (@ ? (@ ? (@ < @3[2]) > @2[0]) > @1[0]) > 2)');

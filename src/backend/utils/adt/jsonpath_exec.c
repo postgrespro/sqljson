@@ -120,6 +120,7 @@ typedef struct JsonBaseObjectInfo
  */
 typedef struct JsonItemStackEntry
 {
+	JsonBaseObjectInfo base;
 	JsonItem   *item;
 	struct JsonItemStackEntry *parent;
 } JsonItemStackEntry;
@@ -443,8 +444,8 @@ static int compareDatetime(Datum val1, Oid typid1, int tz1,
 				Datum val2, Oid typid2, int tz2,
 				bool *error);
 
-static void pushJsonItem(JsonItemStack *stack,
-			 JsonItemStackEntry *entry, JsonItem *item);
+static void pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry,
+			 JsonItem *item, JsonBaseObjectInfo *base);
 static void popJsonItem(JsonItemStack *stack);
 
 static JsonTableJoinState *JsonTableInitPlanState(JsonTableContext *cxt,
@@ -884,7 +885,7 @@ executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
 	cxt.throwErrors = throwErrors;
 	cxt.isJsonb = isJsonb;
 
-	pushJsonItem(&cxt.stack, &root, cxt.root);
+	pushJsonItem(&cxt.stack, &root, cxt.root, &cxt.baseObject);
 
 	if (jspStrictAbsenseOfErrors(&cxt) && !result)
 	{
@@ -1014,6 +1015,27 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			res = executeNextItem(cxt, jsp, NULL, cxt->stack->item,
 								  found, true);
 			break;
+
+		case jpiCurrentN:
+			{
+				JsonItemStackEntry *current = cxt->stack;
+				int			i;
+
+				for (i = 0; i < jsp->content.current.level; i++)
+				{
+					current = current->parent;
+
+					if (!current)
+						elog(ERROR, "invalid jsonpath current item reference");
+				}
+
+				baseObject = cxt->baseObject;
+				cxt->baseObject = current->base;
+				jb = current->item;
+				res = executeNextItem(cxt, jsp, NULL, jb, found, true);
+				cxt->baseObject = baseObject;
+				break;
+			}
 
 		case jpiAnyArray:
 			if (JsonbType(jb) == jbvArray)
@@ -2175,7 +2197,7 @@ executeNestedBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonItemStackEntry current;
 	JsonPathBool res;
 
-	pushJsonItem(&cxt->stack, &current, jb);
+	pushJsonItem(&cxt->stack, &current, jb, &cxt->baseObject);
 	res = executeBoolItem(cxt, jsp, jb, false);
 	popJsonItem(&cxt->stack);
 
@@ -3712,9 +3734,11 @@ wrapItemsInArray(const JsonValueList *items, bool isJsonb)
 }
 
 static void
-pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry, JsonItem *item)
+pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry, JsonItem *item,
+			 JsonBaseObjectInfo *base)
 {
 	entry->item = item;
+	entry->base = *base;
 	entry->parent = *stack;
 	*stack = entry;
 }
