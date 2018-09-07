@@ -33,10 +33,19 @@ typedef struct JsonBaseObjectInfo
 	int			id;
 } JsonBaseObjectInfo;
 
+typedef struct JsonItemStackEntry
+{
+	JsonbValue *item;
+	struct JsonItemStackEntry *parent;
+} JsonItemStackEntry;
+
+typedef JsonItemStackEntry *JsonItemStack;
+
 typedef struct JsonPathExecContext
 {
 	List	   *vars;
 	JsonbValue *root;				/* for $ evaluation */
+	JsonItemStack stack;			/* for @N evaluation */
 	JsonBaseObjectInfo baseObject;	/* for .keyvalue().id evaluation */
 	int			generatedObjectId;
 	int			innermostArraySize;	/* for LAST array index evaluation */
@@ -60,6 +69,10 @@ typedef struct JsonValueListIterator
 static inline JsonPathExecResult recursiveExecute(JsonPathExecContext *cxt,
 										   JsonPathItem *jsp, JsonbValue *jb,
 										   JsonValueList *found);
+
+static inline JsonPathExecResult recursiveExecuteNested(JsonPathExecContext *cxt,
+											JsonPathItem *jsp, JsonbValue *jb,
+											JsonValueList *found);
 
 static inline JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt,
 							JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
@@ -155,6 +168,20 @@ JsonbWrapInBinary(JsonbValue *jbv, JsonbValue *out)
 		out = palloc(sizeof(*out));
 
 	return JsonbInitBinary(out, jb);
+}
+
+static inline void
+pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry, JsonbValue *item)
+{
+	entry->item = item;
+	entry->parent = *stack;
+	*stack = entry;
+}
+
+static inline void
+popJsonItem(JsonItemStack *stack)
+{
+	*stack = (*stack)->parent;
 }
 
 /********************Execute functions for JsonPath***************************/
@@ -1410,6 +1437,34 @@ recursiveExecuteBool(JsonPathExecContext *cxt, JsonPathItem *jsp,
 }
 
 static inline JsonPathExecResult
+recursiveExecuteNested(JsonPathExecContext *cxt, JsonPathItem *jsp,
+					   JsonbValue *jb, JsonValueList *found)
+{
+	JsonItemStackEntry current;
+	JsonPathExecResult res;
+
+	pushJsonItem(&cxt->stack, &current, jb);
+	res = recursiveExecute(cxt, jsp, jb, found);
+	popJsonItem(&cxt->stack);
+
+	return res;
+}
+
+static inline JsonPathBool
+recursiveExecuteBoolNested(JsonPathExecContext *cxt, JsonPathItem *jsp,
+						   JsonbValue *jb)
+{
+	JsonItemStackEntry current;
+	JsonPathBool res;
+
+	pushJsonItem(&cxt->stack, &current, jb);
+	res = recursiveExecuteBool(cxt, jsp, jb, false);
+	popJsonItem(&cxt->stack);
+
+	return res;
+}
+
+static inline JsonPathExecResult
 recursiveExecuteBase(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					 JsonbValue *jbv, JsonValueList *found)
 {
@@ -1534,7 +1589,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			break;
 
 		case jpiCurrent:
-			res = recursiveExecuteBase(cxt, jsp, jb, found);
+			res = recursiveExecuteBase(cxt, jsp, cxt->stack->item, found);
 			break;
 
 		case jpiAnyArray:
@@ -1775,7 +1830,7 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				JsonPathBool st;
 
 				jspGetArg(jsp, &elem);
-				st = recursiveExecuteBool(cxt, &elem, jb, false);
+				st = recursiveExecuteBoolNested(cxt, &elem, jb);
 				if (st != jpbTrue)
 					res = jperNotFound;
 				else
@@ -2325,6 +2380,7 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, JsonValueList *foundJso
 	JsonPathExecContext cxt;
 	JsonPathItem	jsp;
 	JsonbValue		jbv;
+	JsonItemStackEntry root;
 
 	jspInit(&jsp, path);
 
@@ -2332,10 +2388,13 @@ executeJsonPath(JsonPath *path, List *vars, Jsonb *json, JsonValueList *foundJso
 	cxt.laxMode = (path->header & JSONPATH_LAX) != 0;
 	cxt.ignoreStructuralErrors = cxt.laxMode;
 	cxt.root = JsonbInitBinary(&jbv, json);
+	cxt.stack = NULL;
 	cxt.baseObject.jbc = NULL;
 	cxt.baseObject.id = 0;
 	cxt.generatedObjectId = list_length(vars) + 1;
 	cxt.innermostArraySize = -1;
+
+	pushJsonItem(&cxt.stack, &root, cxt.root);
 
 	if (jspStrictAbsenseOfErrors(&cxt) && !foundJson)
 	{

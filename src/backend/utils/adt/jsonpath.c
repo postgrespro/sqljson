@@ -25,12 +25,13 @@
  */
 static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
-						 bool allowCurrent, bool insideArraySubscript)
+						 int nestingLevel, bool insideArraySubscript)
 {
 	/* position from begining of jsonpath data */
 	int32		pos = buf->len - JSONPATH_HDRSZ;
 	int32		chld;
 	int32		next;
+	int			argNestingLevel = 0;
 
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
@@ -94,12 +95,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 				chld = !item->value.args.left ? pos :
 					flattenJsonPathParseItem(buf, item->value.args.left,
-											 allowCurrent,
+											 nestingLevel + argNestingLevel,
 											 insideArraySubscript);
 				*(int32*)(buf->data + left) = chld - pos;
 				chld = !item->value.args.right ? pos :
 					flattenJsonPathParseItem(buf, item->value.args.right,
-											 allowCurrent,
+											 nestingLevel + argNestingLevel,
 											 insideArraySubscript);
 				*(int32*)(buf->data + right) = chld - pos;
 			}
@@ -122,12 +123,14 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				appendStringInfoChar(buf, '\0');
 
 				chld = flattenJsonPathParseItem(buf, item->value.like_regex.expr,
-												allowCurrent,
+												nestingLevel,
 												insideArraySubscript);
 				*(int32 *)(buf->data + offs) = chld - pos;
 			}
 			break;
 		case jpiFilter:
+			argNestingLevel++;
+			/* fall through */
 		case jpiIsUnknown:
 		case jpiNot:
 		case jpiPlus:
@@ -140,8 +143,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 				appendBinaryStringInfo(buf, (char*)&arg /* fake value */, sizeof(arg));
 
 				chld = flattenJsonPathParseItem(buf, item->value.arg,
-												item->type == jpiFilter ||
-												allowCurrent,
+												nestingLevel + argNestingLevel,
 												insideArraySubscript);
 				*(int32*)(buf->data + arg) = chld - pos;
 			}
@@ -154,7 +156,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiAnyKey:
 			break;
 		case jpiCurrent:
-			if (!allowCurrent)
+			if (nestingLevel <= 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("@ is not allowed in root expressions")));
@@ -184,12 +186,12 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32		frompos =
 						flattenJsonPathParseItem(buf,
 												item->value.array.elems[i].from,
-												true, true) - pos;
+												nestingLevel, true) - pos;
 
 					if (item->value.array.elems[i].to)
 						topos = flattenJsonPathParseItem(buf,
 												item->value.array.elems[i].to,
-												true, true) - pos;
+												nestingLevel, true) - pos;
 					else
 						topos = 0;
 
@@ -222,7 +224,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 
 	if (item->next)
 	{
-		chld = flattenJsonPathParseItem(buf, item->next, allowCurrent,
+		chld = flattenJsonPathParseItem(buf, item->next, nestingLevel,
 										insideArraySubscript) - pos;
 		*(int32 *)(buf->data + next) = chld;
 	}
@@ -249,7 +251,7 @@ jsonpath_in(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for jsonpath: \"%s\"", in)));
 
-	flattenJsonPathParseItem(&buf, jsonpath->expr, false, false);
+	flattenJsonPathParseItem(&buf, jsonpath->expr, 0, false);
 
 	res = (JsonPath*)buf.data;
 	SET_VARSIZE(res, buf.len);

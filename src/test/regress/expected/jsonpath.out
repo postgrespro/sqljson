@@ -303,10 +303,10 @@ select '$.a[1,2, 3 to 16]'::jsonpath;
  $."a"[1,2,3 to 16]
 (1 row)
 
-select '$.a[$a + 1, ($b[*]) to -(@[0] * 2)]'::jsonpath;
+select '$.a[$a + 1, ($b[*]) to -($[0] * 2)]'::jsonpath;
                 jsonpath                
 ----------------------------------------
- $."a"[$"a" + 1,$"b"[*] to -(@[0] * 2)]
+ $."a"[$"a" + 1,$"b"[*] to -($[0] * 2)]
 (1 row)
 
 select '$.a[$.a.size() - 3]'::jsonpath;
@@ -341,10 +341,10 @@ select '$[last]'::jsonpath;
  $[last]
 (1 row)
 
-select '$[@ ? (last > 0)]'::jsonpath;
-    jsonpath     
------------------
- $[@?(last > 0)]
+select '$[$[0] ? (last > 0)]'::jsonpath;
+      jsonpath      
+--------------------
+ $[$[0]?(last > 0)]
 (1 row)
 
 select 'null.type()'::jsonpath;

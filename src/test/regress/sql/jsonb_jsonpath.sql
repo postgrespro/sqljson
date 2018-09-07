@@ -39,7 +39,7 @@ select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[1].a';
 select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[2].a';
 select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0,1].a';
 select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0 to 10].a';
-select jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$[2.5 - 1 to @.size() - 2]';
+select jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$[2.5 - 1 to $.size() - 2]';
 select jsonb '1' @* 'lax $[0]';
 select jsonb '1' @* 'lax $[*]';
 select jsonb '[1]' @* 'lax $[0]';
