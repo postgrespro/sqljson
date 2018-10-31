@@ -39,49 +39,49 @@ typedef struct
  * All node's type of jsonpath expression
  */
 typedef enum JsonPathItemType {
-		jpiNull = jbvNull,
-		jpiString = jbvString,
-		jpiNumeric = jbvNumeric,
-		jpiBool = jbvBool,
-		jpiAnd,
-		jpiOr,
-		jpiNot,
-		jpiIsUnknown,
-		jpiEqual,
-		jpiNotEqual,
-		jpiLess,
-		jpiGreater,
-		jpiLessOrEqual,
-		jpiGreaterOrEqual,
-		jpiAdd,
-		jpiSub,
-		jpiMul,
-		jpiDiv,
-		jpiMod,
-		jpiPlus,
-		jpiMinus,
-		jpiAnyArray,
-		jpiAnyKey,
-		jpiIndexArray,
-		jpiAny,
-		jpiKey,
-		jpiCurrent,
-		jpiRoot,
-		jpiVariable,
-		jpiFilter,
-		jpiExists,
-		jpiType,
-		jpiSize,
-		jpiAbs,
-		jpiFloor,
-		jpiCeiling,
-		jpiDouble,
-		jpiDatetime,
-		jpiKeyValue,
-		jpiSubscript,
-		jpiLast,
-		jpiStartsWith,
-		jpiLikeRegex,
+		jpiNull = jbvNull,			/* NULL literal */
+		jpiString = jbvString,		/* string literal */
+		jpiNumeric = jbvNumeric,	/* numeric literal */
+		jpiBool = jbvBool,			/* boolean literal: TRUE or FALSE */
+		jpiAnd,				/* predicate && predicate */
+		jpiOr,				/* predicate || predicate */
+		jpiNot,				/* ! predicate */
+		jpiIsUnknown,		/* (predicate) IS UNKNOWN */
+		jpiEqual,			/* expr == expr */
+		jpiNotEqual,		/* expr != expr */
+		jpiLess,			/* expr < expr */
+		jpiGreater,			/* expr > expr */
+		jpiLessOrEqual,		/* expr <= expr */
+		jpiGreaterOrEqual,	/* expr >= expr */
+		jpiAdd,				/* expr + expr */
+		jpiSub,				/* expr - expr */
+		jpiMul,				/* expr * expr */
+		jpiDiv,				/* expr / expr */
+		jpiMod,				/* expr % expr */
+		jpiPlus,			/* + expr */
+		jpiMinus,			/* - expr */
+		jpiAnyArray,		/* [*] */
+		jpiAnyKey,			/* .* */
+		jpiIndexArray,		/* [subscript, ...] */
+		jpiAny,				/* .** */
+		jpiKey,				/* .key */
+		jpiCurrent,			/* @ */
+		jpiRoot,			/* $ */
+		jpiVariable,		/* $variable */
+		jpiFilter,			/* ? (predicate) */
+		jpiExists,			/* EXISTS (expr) predicate */
+		jpiType,			/* .type() item method */
+		jpiSize,			/* .size() item method */
+		jpiAbs,				/* .abs() item method */
+		jpiFloor,			/* .floor() item method */
+		jpiCeiling,			/* .ceiling() item method */
+		jpiDouble,			/* .double() item method */
+		jpiDatetime,		/* .datetime() item method */
+		jpiKeyValue,		/* .keyvalue() item method */
+		jpiSubscript,		/* array subscript: 'expr' or 'expr TO expr' */
+		jpiLast,			/* LAST array subscript */
+		jpiStartsWith,		/* STARTS WITH predicate */
+		jpiLikeRegex,		/* LIKE_REGEX predicate */
 } JsonPathItemType;
 
 /* XQuery regex mode flags for LIKE_REGEX predicate */
