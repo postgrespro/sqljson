@@ -2924,9 +2924,11 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 			{
 				TableFunc  *tablefunc = (TableFunc *) node;
 
+				APP_JUMB(tablefunc->functype);
 				JumbleExpr(jstate, tablefunc->docexpr);
 				JumbleExpr(jstate, tablefunc->rowexpr);
 				JumbleExpr(jstate, (Node *) tablefunc->colexprs);
+				JumbleExpr(jstate, (Node *) tablefunc->colvalexprs);
 			}
 			break;
 		case T_TableSampleClause:

@@ -1297,6 +1297,7 @@ _copyTableFunc(const TableFunc *from)
 {
 	TableFunc  *newnode = makeNode(TableFunc);
 
+	COPY_SCALAR_FIELD(functype);
 	COPY_NODE_FIELD(ns_uris);
 	COPY_NODE_FIELD(ns_names);
 	COPY_NODE_FIELD(docexpr);
@@ -1307,7 +1308,9 @@ _copyTableFunc(const TableFunc *from)
 	COPY_NODE_FIELD(colcollations);
 	COPY_NODE_FIELD(colexprs);
 	COPY_NODE_FIELD(coldefexprs);
+	COPY_NODE_FIELD(colvalexprs);
 	COPY_BITMAPSET_FIELD(notnulls);
+	COPY_NODE_FIELD(plan);
 	COPY_SCALAR_FIELD(ordinalitycol);
 	COPY_LOCATION_FIELD(location);
 
@@ -2510,6 +2513,99 @@ _copyJsonArgument(const JsonArgument *from)
 
 	COPY_NODE_FIELD(val);
 	COPY_STRING_FIELD(name);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonTable
+ */
+static JsonTable *
+_copyJsonTable(const JsonTable *from)
+{
+	JsonTable *newnode = makeNode(JsonTable);
+
+	COPY_NODE_FIELD(common);
+	COPY_NODE_FIELD(columns);
+	COPY_NODE_FIELD(plan);
+	COPY_NODE_FIELD(on_error);
+	COPY_NODE_FIELD(alias);
+	COPY_SCALAR_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonTableColumn
+ */
+static JsonTableColumn *
+_copyJsonTableColumn(const JsonTableColumn *from)
+{
+	JsonTableColumn *newnode = makeNode(JsonTableColumn);
+
+	COPY_SCALAR_FIELD(coltype);
+	COPY_STRING_FIELD(name);
+	COPY_NODE_FIELD(typeName);
+	COPY_STRING_FIELD(pathspec);
+	COPY_STRING_FIELD(pathname);
+	COPY_SCALAR_FIELD(format);
+	COPY_SCALAR_FIELD(wrapper);
+	COPY_SCALAR_FIELD(omit_quotes);
+	COPY_NODE_FIELD(columns);
+	COPY_NODE_FIELD(on_empty);
+	COPY_NODE_FIELD(on_error);
+	COPY_SCALAR_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonTablePlan
+ */
+static JsonTablePlan *
+_copyJsonTablePlan(const JsonTablePlan *from)
+{
+	JsonTablePlan *newnode = makeNode(JsonTablePlan);
+
+	COPY_SCALAR_FIELD(plan_type);
+	COPY_SCALAR_FIELD(join_type);
+	COPY_STRING_FIELD(pathname);
+	COPY_NODE_FIELD(plan1);
+	COPY_NODE_FIELD(plan2);
+	COPY_SCALAR_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonTableParentNode
+ */
+static JsonTableParentNode *
+_copyJsonTableParentNode(const JsonTableParentNode *from)
+{
+	JsonTableParentNode *newnode = makeNode(JsonTableParentNode);
+
+	COPY_NODE_FIELD(path);
+	COPY_STRING_FIELD(name);
+	COPY_NODE_FIELD(child);
+	COPY_SCALAR_FIELD(outerJoin);
+	COPY_SCALAR_FIELD(colMin);
+	COPY_SCALAR_FIELD(colMax);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonTableSiblingNode
+ */
+static JsonTableSiblingNode *
+_copyJsonTableSiblingNode(const JsonTableSiblingNode *from)
+{
+	JsonTableSiblingNode *newnode = makeNode(JsonTableSiblingNode);
+
+	COPY_NODE_FIELD(larg);
+	COPY_NODE_FIELD(rarg);
+	COPY_SCALAR_FIELD(cross);
 
 	return newnode;
 }
@@ -5458,6 +5554,21 @@ copyObjectImpl(const void *from)
 			break;
 		case T_JsonItemCoercions:
 			retval = _copyJsonItemCoercions(from);
+			break;
+		case T_JsonTable:
+			retval = _copyJsonTable(from);
+			break;
+		case T_JsonTableColumn:
+			retval = _copyJsonTableColumn(from);
+			break;
+		case T_JsonTablePlan:
+			retval = _copyJsonTablePlan(from);
+			break;
+		case T_JsonTableParentNode:
+			retval = _copyJsonTableParentNode(from);
+			break;
+		case T_JsonTableSiblingNode:
+			retval = _copyJsonTableSiblingNode(from);
 			break;
 
 			/*

@@ -15,9 +15,10 @@
 #define JSONPATH_H
 
 #include "fmgr.h"
-#include "utils/jsonb.h"
+#include "executor/tablefunc.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
+#include "utils/jsonb.h"
 
 typedef struct
 {
@@ -310,6 +311,7 @@ typedef struct JsonPathVariableEvalContext
 	JsonPathVariable var;
 	struct ExprContext *econtext;
 	struct ExprState  *estate;
+	MemoryContext mcxt;		/* memory context for cached value */
 	Datum		value;
 	bool		isnull;
 	bool		evaluated;
@@ -339,5 +341,7 @@ extern Datum JsonPathQuery(Datum json, JsonPath *jp, JsonWrapper wrapper,
 			  bool *empty, List *vars);
 
 extern Datum EvalJsonPathVar(void *cxt, bool *isnull);
+
+extern const TableFuncRoutine JsonbTableRoutine;
 
 #endif

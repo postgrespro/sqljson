@@ -2193,6 +2193,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					var->var.cb_arg = var;
 					var->estate = ExecInitExpr(argexpr, state->parent);
 					var->econtext = NULL;
+					var->mcxt = NULL;
 					var->evaluated = false;
 					var->value = (Datum) 0;
 					var->isnull = true;

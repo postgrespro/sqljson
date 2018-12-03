@@ -95,6 +95,7 @@
 #define JsonbPathExists		JsonPathExists
 #define JsonbPathQuery		JsonPathQuery
 #define JsonbPathValue		JsonPathValue
+#define JsonbTableRoutine	JsonTableRoutine
 
 static inline JsonbValue *
 JsonbInitBinary(JsonbValue *jbv, Json *jb)

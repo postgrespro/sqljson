@@ -4174,6 +4174,7 @@ ExecEvalJsonBehavior(ExprContext *econtext, JsonBehavior *behavior,
 
 		case JSON_BEHAVIOR_NULL:
 		case JSON_BEHAVIOR_UNKNOWN:
+		case JSON_BEHAVIOR_EMPTY:
 			*is_null = true;
 			return (Datum) 0;
 
@@ -4239,8 +4240,14 @@ EvalJsonPathVar(void *cxt, bool *isnull)
 
 	if (!ecxt->evaluated)
 	{
+		MemoryContext oldcxt = ecxt->mcxt ?
+			MemoryContextSwitchTo(ecxt->mcxt) : NULL;
+
 		ecxt->value = ExecEvalExpr(ecxt->estate, ecxt->econtext, &ecxt->isnull);
 		ecxt->evaluated = true;
+
+		if (oldcxt)
+			MemoryContextSwitchTo(oldcxt);
 	}
 
 	*isnull = ecxt->isnull;
@@ -4446,6 +4453,10 @@ ExecEvalJsonExpr(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 			*resnull = false;
 			return BoolGetDatum((isjsonb ? JsonbPathExists : JsonPathExists)
 				(item, path, op->d.jsonexpr.args));
+
+		case IS_JSON_TABLE:
+			*resnull = false;
+			return item;
 
 		default:
 			elog(ERROR, "unrecognized SQL/JSON expression op %d", jexpr->op);

@@ -4417,7 +4417,7 @@ transformJsonExprCommon(ParseState *pstate, JsonFuncExpr *func)
 	Node	   *pathspec;
 	JsonFormatType format;
 
-	if (func->common->pathname)
+	if (func->common->pathname && func->op != IS_JSON_TABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("JSON_TABLE path name is not allowed here"),
@@ -4463,14 +4463,13 @@ transformJsonExprCommon(ParseState *pstate, JsonFuncExpr *func)
 	transformJsonPassingArgs(pstate, format, func->common->passing,
 							 &jsexpr->passing);
 
-	if (func->op != IS_JSON_EXISTS)
+	if (func->op != IS_JSON_EXISTS && func->op != IS_JSON_TABLE)
 		jsexpr->on_empty = transformJsonBehavior(pstate, func->on_empty,
 												 JSON_BEHAVIOR_NULL);
 
 	jsexpr->on_error = transformJsonBehavior(pstate, func->on_error,
-											 func->op == IS_JSON_EXISTS ?
-											 JSON_BEHAVIOR_FALSE :
-											 JSON_BEHAVIOR_NULL);
+		func->op == IS_JSON_EXISTS ? JSON_BEHAVIOR_FALSE :
+		func->op == IS_JSON_TABLE ? JSON_BEHAVIOR_EMPTY : JSON_BEHAVIOR_NULL);
 
 	return jsexpr;
 }
@@ -4722,6 +4721,21 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 			jsexpr->returning.format.location = -1;
 			jsexpr->returning.typid = BOOLOID;
 			jsexpr->returning.typmod = -1;
+
+			break;
+
+		case IS_JSON_TABLE:
+			jsexpr->returning.format.type = JS_FORMAT_DEFAULT;
+			jsexpr->returning.format.encoding = JS_ENC_DEFAULT;
+			jsexpr->returning.format.location = -1;
+			jsexpr->returning.typid = exprType(contextItemExpr);
+			jsexpr->returning.typmod = -1;
+
+			if (jsexpr->returning.typid != JSONBOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("JSON_TABLE() is not yet implemented for json type"),
+						 parser_errposition(pstate, func->location)));
 
 			break;
 	}
