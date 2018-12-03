@@ -19,6 +19,14 @@ select jsonb '[1]' @? '$[0.5]';
 select jsonb '[1]' @? '$[0.9]';
 select jsonb '[1]' @? '$[1.2]';
 select jsonb '[1]' @? 'strict $[1.2]';
+select jsonb '[1]' @* 'strict $[1.2]';
+select jsonb '{}' @* 'strict $[0.3]';
+select jsonb '{}' @? 'lax $[0.3]';
+select jsonb '{}' @* 'strict $[1.2]';
+select jsonb '{}' @? 'lax $[1.2]';
+select jsonb '{}' @* 'strict $[-2 to 3]';
+select jsonb '{}' @? 'lax $[-2 to 3]';
+
 select jsonb '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
 select jsonb '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >= @.b[*])';
 select jsonb '{"a": [1,2,3], "b": [3,4,"5"]}' @? '$ ? (@.a[*] >= @.b[*])';
@@ -42,12 +50,14 @@ select jsonb '[12, {"a": 13}, {"b": 14}]' @* 'lax $[0 to 10].a';
 select jsonb '[12, {"a": 13}, {"b": 14}, "ccc", true]' @* '$[2.5 - 1 to $.size() - 2]';
 select jsonb '1' @* 'lax $[0]';
 select jsonb '1' @* 'lax $[*]';
+select jsonb '{}' @* 'lax $[0]';
 select jsonb '[1]' @* 'lax $[0]';
 select jsonb '[1]' @* 'lax $[*]';
 select jsonb '[1,2,3]' @* 'lax $[*]';
 select jsonb '[]' @* '$[last]';
 select jsonb '[]' @* 'strict $[last]';
 select jsonb '[1]' @* '$[last]';
+select jsonb '{}' @* 'lax $[last]';
 select jsonb '[1,2,3]' @* '$[last]';
 select jsonb '[1,2,3]' @* '$[last - 1]';
 select jsonb '[1,2,3]' @* '$[last ? (@.type() == "number")]';
@@ -240,11 +250,15 @@ select jsonb '[null, 1, "abc", "abd", "aBdC", "abdacb", "babc"]' @* 'lax $[*] ? 
 
 select jsonb 'null' @* '$.datetime()';
 select jsonb 'true' @* '$.datetime()';
-select jsonb '1' @* '$.datetime()';
 select jsonb '[]' @* '$.datetime()';
 select jsonb '[]' @* 'strict $.datetime()';
 select jsonb '{}' @* '$.datetime()';
 select jsonb '""' @* '$.datetime()';
+
+-- Standard extension: UNIX epoch to timestamptz
+select jsonb '0' @* '$.datetime()';
+select jsonb '0' @* '$.datetime().type()';
+select jsonb '1490216035.5' @* '$.datetime()';
 
 select jsonb '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy")';
 select jsonb '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy").type()';
@@ -373,13 +387,55 @@ set time zone default;
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*]';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ == 1)';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ > 10)';
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '[$[*].a]';
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a ? (@ > 1)';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*] ? (@.a > 2)';
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 1';
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 2';
+
+-- extension: path sequences
+select jsonb '[1,2,3,4,5]' @* '10, 20, $[*], 30';
+select jsonb '[1,2,3,4,5]' @* 'lax    10, 20, $[*].a, 30';
+select jsonb '[1,2,3,4,5]' @* 'strict 10, 20, $[*].a, 30';
+select jsonb '[1,2,3,4,5]' @* '-(10, 20, $[1 to 3], 30)';
+select jsonb '[1,2,3,4,5]' @* 'lax (10, 20.5, $[1 to 3], "30").double()';
+select jsonb '[1,2,3,4,5]' @* '$[(0, $[*], 5) ? (@ == 3)]';
+select jsonb '[1,2,3,4,5]' @* '$[(0, $[*], 3) ? (@ == 3)]';
+
+-- extension: array constructors
+select jsonb '[1, 2, 3]' @* '[]';
+select jsonb '[1, 2, 3]' @* '[1, 2, $[*], 4, 5]';
+select jsonb '[1, 2, 3]' @* '[1, 2, $[*], 4, 5][*]';
+select jsonb '[1, 2, 3]' @* '[(1, (2, $[*])), (4, 5)]';
+select jsonb '[1, 2, 3]' @* '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]';
+select jsonb '[1, 2, 3]' @* 'strict [1, 2, $[*].a, 4, 5]';
+select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '[$[*][*] ? (@ > 3)]';
+
+-- extension: object constructors
+select jsonb '[1, 2, 3]' @* '{}';
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}';
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}.*';
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}[*]';
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": ($[*], 4, 5)}';
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}';
+
+-- extension: object subscripting
+select jsonb '{"a": 1}' @? '$["a"]';
+select jsonb '{"a": 1}' @? '$["b"]';
+select jsonb '{"a": 1}' @? 'strict $["b"]';
+select jsonb '{"a": 1}' @? '$["b", "a"]';
+
+select jsonb '{"a": 1}' @* '$["a"]';
+select jsonb '{"a": 1}' @* 'strict $["b"]';
+select jsonb '{"a": 1}' @* 'lax $["b"]';
+select jsonb '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
+
+select jsonb 'null' @* '{"a": 1}["a"]';
+select jsonb 'null' @* '{"a": 1}["b"]';

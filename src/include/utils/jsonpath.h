@@ -84,6 +84,10 @@ typedef enum JsonPathItemType {
 		jpiLast,			/* LAST array subscript */
 		jpiStartsWith,		/* STARTS WITH predicate */
 		jpiLikeRegex,		/* LIKE_REGEX predicate */
+		jpiSequence,		/* sequence constructor: 'expr, ...' */
+		jpiArray,			/* array constructor: '[expr, ...]' */
+		jpiObject,			/* object constructor: '{ key : value, ... }' */
+		jpiObjectField,		/* element of object constructor: 'key : value' */
 } JsonPathItemType;
 
 /* XQuery regex mode flags for LIKE_REGEX predicate */
@@ -138,6 +142,19 @@ typedef struct JsonPathItem {
 		} anybounds;
 
 		struct {
+			int32	nelems;
+			int32  *elems;
+		} sequence;
+
+		struct {
+			int32	nfields;
+			struct {
+				int32	key;
+				int32	val;
+			}	   *fields;
+		} object;
+
+		struct {
 			char		*data;  /* for bool, numeric and string/key */
 			int32		datalen; /* filled only for string/key */
 		} value;
@@ -164,6 +181,9 @@ extern bool		jspGetBool(JsonPathItem *v);
 extern char * jspGetString(JsonPathItem *v, int32 *len);
 extern bool jspGetArraySubscript(JsonPathItem *v, JsonPathItem *from,
 								 JsonPathItem *to, int i);
+extern void jspGetSequenceElement(JsonPathItem *v, int i, JsonPathItem *elem);
+extern void jspGetObjectField(JsonPathItem *v, int i,
+							  JsonPathItem *key, JsonPathItem *val);
 
 /*
  * Parsing
@@ -208,6 +228,14 @@ struct JsonPathParseItem {
 			uint32	patternlen;
 			uint32	flags;
 		} like_regex;
+
+		struct {
+			List   *elems;
+		} sequence;
+
+		struct {
+			List   *fields;
+		} object;
 
 		/* scalars */
 		Numeric		numeric;

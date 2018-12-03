@@ -255,6 +255,11 @@ select json '[]' @* 'strict $.datetime()';
 select json '{}' @* '$.datetime()';
 select json '""' @* '$.datetime()';
 
+-- Standard extension: UNIX epoch to timestamptz
+select json '0' @* '$.datetime()';
+select json '0' @* '$.datetime().type()';
+select json '1490216035.5' @* '$.datetime()';
+
 select json '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy")';
 select json '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy").type()';
 select json '"10-03-2017 12:34"' @* '$.datetime("dd-mm-yyyy")';
@@ -367,13 +372,55 @@ set time zone default;
 
 SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*]';
 SELECT json '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
+SELECT json '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
 
 SELECT json '[{"a": 1}, {"a": 2}]' @# '$[*].a';
 SELECT json '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ == 1)';
 SELECT json '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ > 10)';
+SELECT json '[{"a": 1}, {"a": 2}]' @# '[$[*].a]';
 
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*] ? (@.a > 1)';
 SELECT json '[{"a": 1}, {"a": 2}]' @? '$[*].a ? (@ > 2)';
 
 SELECT json '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 1';
 SELECT json '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 2';
+
+-- extension: path sequences
+select json '[1,2,3,4,5]' @* '10, 20, $[*], 30';
+select json '[1,2,3,4,5]' @* 'lax    10, 20, $[*].a, 30';
+select json '[1,2,3,4,5]' @* 'strict 10, 20, $[*].a, 30';
+select json '[1,2,3,4,5]' @* '-(10, 20, $[1 to 3], 30)';
+select json '[1,2,3,4,5]' @* 'lax (10, 20.5, $[1 to 3], "30").double()';
+select json '[1,2,3,4,5]' @* '$[(0, $[*], 5) ? (@ == 3)]';
+select json '[1,2,3,4,5]' @* '$[(0, $[*], 3) ? (@ == 3)]';
+
+-- extension: array constructors
+select json '[1, 2, 3]' @* '[]';
+select json '[1, 2, 3]' @* '[1, 2, $[*], 4, 5]';
+select json '[1, 2, 3]' @* '[1, 2, $[*], 4, 5][*]';
+select json '[1, 2, 3]' @* '[(1, (2, $[*])), (4, 5)]';
+select json '[1, 2, 3]' @* '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]';
+select json '[1, 2, 3]' @* 'strict [1, 2, $[*].a, 4, 5]';
+select json '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '[$[*][*] ? (@ > 3)]';
+
+-- extension: object constructors
+select json '[1, 2, 3]' @* '{}';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}.*';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}[*]';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": ($[*], 4, 5)}';
+select json '[1, 2, 3]' @* '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}';
+
+-- extension: object subscripting
+select json '{"a": 1}' @? '$["a"]';
+select json '{"a": 1}' @? '$["b"]';
+select json '{"a": 1}' @? 'strict $["b"]';
+select json '{"a": 1}' @? '$["b", "a"]';
+
+select json '{"a": 1}' @* '$["a"]';
+select json '{"a": 1}' @* 'strict $["b"]';
+select json '{"a": 1}' @* 'lax $["b"]';
+select json '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
+
+select json 'null' @* '{"a": 1}["a"]';
+select json 'null' @* '{"a": 1}["b"]';

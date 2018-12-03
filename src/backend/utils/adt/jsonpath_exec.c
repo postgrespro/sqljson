@@ -84,6 +84,8 @@ static inline JsonPathExecResult recursiveExecuteNested(JsonPathExecContext *cxt
 static inline JsonPathExecResult recursiveExecuteUnwrap(JsonPathExecContext *cxt,
 							JsonPathItem *jsp, JsonbValue *jb, JsonValueList *found);
 
+static inline JsonbValue *wrapItem(JsonbValue *jbv);
+
 static inline JsonbValue *wrapItemsInArray(const JsonValueList *items);
 
 
@@ -1686,7 +1688,116 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			break;
 
 		case jpiIndexArray:
-			if (JsonbType(jb) == jbvArray || jspAutoWrap(cxt))
+			if (JsonbType(jb) == jbvObject)
+			{
+				int			innermostArraySize = cxt->innermostArraySize;
+				int			i;
+				JsonbValue	bin;
+
+				if (jb->type != jbvBinary)
+					jb = JsonbWrapInBinary(jb, &bin);
+
+				cxt->innermostArraySize = 1;
+
+				for (i = 0; i < jsp->content.array.nelems; i++)
+				{
+					JsonPathItem from;
+					JsonPathItem to;
+					JsonbValue *key;
+					JsonbValue	tmp;
+					JsonValueList keys = { 0 };
+					bool		range = jspGetArraySubscript(jsp, &from, &to, i);
+
+					if (range)
+					{
+						int		index_from;
+						int		index_to;
+
+						if (!jspAutoWrap(cxt))
+							return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+						res = getArrayIndex(cxt, &from, jb, &index_from);
+						if (jperIsError(res))
+							return res;
+
+						res = getArrayIndex(cxt, &to, jb, &index_to);
+						if (jperIsError(res))
+							return res;
+
+						res = jperNotFound;
+
+						if (index_from <= 0 && index_to >= 0)
+						{
+							res = recursiveExecuteNext(cxt, jsp, NULL, jb,
+													   found, true);
+							if (jperIsError(res))
+								return res;
+						}
+
+						if (res == jperOk && !found)
+							break;
+
+						continue;
+					}
+
+					res = recursiveExecute(cxt, &from, jb, &keys);
+
+					if (jperIsError(res))
+						return res;
+
+					if (JsonValueListLength(&keys) != 1)
+						return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+					key = JsonValueListHead(&keys);
+
+					if (JsonbType(key) == jbvScalar)
+						key = JsonbExtractScalar(key->val.binary.data, &tmp);
+
+					res = jperNotFound;
+
+					if (key->type == jbvNumeric && jspAutoWrap(cxt))
+					{
+						int			index = DatumGetInt32(
+								DirectFunctionCall1(numeric_int4,
+									DirectFunctionCall2(numeric_trunc,
+											NumericGetDatum(key->val.numeric),
+											Int32GetDatum(0))));
+
+						if (!index)
+						{
+							res = recursiveExecuteNext(cxt, jsp, NULL, jb,
+													   found, true);
+							if (jperIsError(res))
+								return res;
+						}
+						else if (!jspIgnoreStructuralErrors(cxt))
+							return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+					}
+					else if (key->type == jbvString)
+					{
+						key = findJsonbValueFromContainer(jb->val.binary.data,
+														  JB_FOBJECT, key);
+
+						if (key)
+						{
+							res = recursiveExecuteNext(cxt, jsp, NULL, key,
+													   found, false);
+							if (jperIsError(res))
+								return res;
+						}
+						else if (!jspIgnoreStructuralErrors(cxt))
+							return jperMakeError(ERRCODE_JSON_MEMBER_NOT_FOUND);
+					}
+					else if (!jspIgnoreStructuralErrors(cxt))
+						return jperMakeError(ERRCODE_INVALID_JSON_SUBSCRIPT);
+
+					if (res == jperOk && !found)
+						break;
+				}
+
+				cxt->innermostArraySize = innermostArraySize;
+			}
+			else if (JsonbType(jb) == jbvArray || jspAutoWrap(cxt))
 			{
 				int			innermostArraySize = cxt->innermostArraySize;
 				int			i;
@@ -1787,9 +1898,13 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				cxt->innermostArraySize = innermostArraySize;
 			}
-			else if (!jspIgnoreStructuralErrors(cxt))
+			else
 			{
-				res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
+				if (jspAutoWrap(cxt))
+					res = recursiveExecuteNoUnwrap(cxt, jsp, wrapItem(jb),
+												   found);
+				else if (!jspIgnoreStructuralErrors(cxt))
+					res = jperMakeError(ERRCODE_JSON_ARRAY_NOT_FOUND);
 			}
 			break;
 
@@ -2067,7 +2182,6 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			{
 				JsonbValue	jbvbuf;
 				Datum		value;
-				text	   *datetime;
 				Oid			typid;
 				int32		typmod = -1;
 				int			tz;
@@ -2078,99 +2192,130 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				res = jperMakeError(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
 
-				if (jb->type != jbvString)
-					break;
-
-				datetime = cstring_to_text_with_len(jb->val.string.val,
-													jb->val.string.len);
-
-				if (jsp->content.args.left)
+				if (jb->type == jbvNumeric && !jsp->content.args.left)
 				{
-					text	   *template;
-					char	   *template_str;
-					int			template_len;
-					char	   *tzname = NULL;
+					/* Standard extension: unix epoch to timestamptz */
+					MemoryContext mcxt = CurrentMemoryContext;
 
-					jspGetLeftArg(jsp, &elem);
-
-					if (elem.type != jpiString)
-						elog(ERROR, "invalid jsonpath item type for .datetime() argument");
-
-					template_str = jspGetString(&elem, &template_len);
-
-					if (jsp->content.args.right)
+					PG_TRY();
 					{
-						JsonValueList tzlist = { 0 };
-						JsonPathExecResult tzres;
-						JsonbValue *tzjbv;
+						Datum		unix_epoch =
+								DirectFunctionCall1(numeric_float8,
+											NumericGetDatum(jb->val.numeric));
 
-						jspGetRightArg(jsp, &elem);
-						tzres = recursiveExecuteNoUnwrap(cxt, &elem, jb,
-														 &tzlist);
-
-						if (jperIsError(tzres))
-							return tzres;
-
-						if (JsonValueListLength(&tzlist) != 1)
-							break;
-
-						tzjbv = JsonValueListHead(&tzlist);
-
-						if (tzjbv->type != jbvString)
-							break;
-
-						tzname = pnstrdup(tzjbv->val.string.val,
-										  tzjbv->val.string.len);
-					}
-
-					template = cstring_to_text_with_len(template_str,
-														template_len);
-
-					if (tryToParseDatetime(template, datetime, tzname, false,
-										   &value, &typid, &typmod, &tz))
+						value = DirectFunctionCall1(float8_timestamptz,
+													unix_epoch);
+						typid = TIMESTAMPTZOID;
+						tz = 0;
 						res = jperOk;
+					}
+					PG_CATCH();
+					{
+						if (ERRCODE_TO_CATEGORY(geterrcode()) !=
+														ERRCODE_DATA_EXCEPTION)
+							PG_RE_THROW();
 
-					if (tzname)
-						pfree(tzname);
+						FlushErrorState();
+						MemoryContextSwitchTo(mcxt);
+					}
+					PG_END_TRY();
 				}
-				else
+				else if (jb->type == jbvString)
 				{
-					/* Try to recognize one of ISO formats. */
-					static const char *fmt_str[] =
-					{
-						"yyyy-mm-dd HH24:MI:SS TZH:TZM",
-						"yyyy-mm-dd HH24:MI:SS TZH",
-						"yyyy-mm-dd HH24:MI:SS",
-						"yyyy-mm-dd",
-						"HH24:MI:SS TZH:TZM",
-						"HH24:MI:SS TZH",
-						"HH24:MI:SS"
-					};
-					/* cache for format texts */
-					static text *fmt_txt[lengthof(fmt_str)] = { 0 };
-					int			i;
+					text	   *datetime =
+						cstring_to_text_with_len(jb->val.string.val,
+												 jb->val.string.len);
 
-					for (i = 0; i < lengthof(fmt_str); i++)
+					if (jsp->content.args.left)
 					{
-						if (!fmt_txt[i])
+						text	   *template;
+						char	   *template_str;
+						int			template_len;
+						char	   *tzname = NULL;
+
+						jspGetLeftArg(jsp, &elem);
+
+						if (elem.type != jpiString)
+							elog(ERROR, "invalid jsonpath item type for .datetime() argument");
+
+						template_str = jspGetString(&elem, &template_len);
+
+						if (jsp->content.args.right)
 						{
-							MemoryContext oldcxt =
-								MemoryContextSwitchTo(TopMemoryContext);
+							JsonValueList tzlist = { 0 };
+							JsonPathExecResult tzres;
+							JsonbValue *tzjbv;
 
-							fmt_txt[i] = cstring_to_text(fmt_str[i]);
-							MemoryContextSwitchTo(oldcxt);
+							jspGetRightArg(jsp, &elem);
+							tzres = recursiveExecuteNoUnwrap(cxt, &elem, jb,
+															 &tzlist);
+
+							if (jperIsError(tzres))
+								return tzres;
+
+							if (JsonValueListLength(&tzlist) != 1)
+								break;
+
+							tzjbv = JsonValueListHead(&tzlist);
+
+							if (tzjbv->type != jbvString)
+								break;
+
+							tzname = pnstrdup(tzjbv->val.string.val,
+											  tzjbv->val.string.len);
 						}
 
-						if (tryToParseDatetime(fmt_txt[i], datetime, NULL, true,
-											   &value, &typid, &typmod, &tz))
-						{
+						template = cstring_to_text_with_len(template_str,
+															template_len);
+
+						if (tryToParseDatetime(template, datetime, tzname,
+											   false, &value, &typid, &typmod,
+											   &tz))
 							res = jperOk;
-							break;
+
+						if (tzname)
+							pfree(tzname);
+					}
+					else
+					{
+						/* Try to recognize one of ISO formats. */
+						static const char *fmt_str[] =
+						{
+							"yyyy-mm-dd HH24:MI:SS TZH:TZM",
+							"yyyy-mm-dd HH24:MI:SS TZH",
+							"yyyy-mm-dd HH24:MI:SS",
+							"yyyy-mm-dd",
+							"HH24:MI:SS TZH:TZM",
+							"HH24:MI:SS TZH",
+							"HH24:MI:SS"
+						};
+						/* cache for format texts */
+						static text *fmt_txt[lengthof(fmt_str)] = { 0 };
+						int			i;
+
+						for (i = 0; i < lengthof(fmt_str); i++)
+						{
+							if (!fmt_txt[i])
+							{
+								MemoryContext oldcxt =
+									MemoryContextSwitchTo(TopMemoryContext);
+
+								fmt_txt[i] = cstring_to_text(fmt_str[i]);
+								MemoryContextSwitchTo(oldcxt);
+							}
+
+							if (tryToParseDatetime(fmt_txt[i], datetime, NULL,
+												   true, &value, &typid,
+												   &typmod, &tz))
+							{
+								res = jperOk;
+								break;
+							}
 						}
 					}
-				}
 
-				pfree(datetime);
+					pfree(datetime);
+				}
 
 				if (jperIsError(res))
 					break;
@@ -2298,6 +2443,133 @@ recursiveExecuteNoUnwrap(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							break;
 					}
 				}
+			}
+			break;
+		case jpiSequence:
+		{
+			JsonPathItem next;
+			bool		hasNext = jspGetNext(jsp, &next);
+			JsonValueList list;
+			JsonValueList *plist = hasNext ? &list : found;
+			JsonValueListIterator it;
+			int			i;
+
+			for (i = 0; i < jsp->content.sequence.nelems; i++)
+			{
+				JsonbValue *v;
+
+				if (hasNext)
+					memset(&list, 0, sizeof(list));
+
+				jspGetSequenceElement(jsp, i, &elem);
+				res = recursiveExecute(cxt, &elem, jb, plist);
+
+				if (jperIsError(res))
+					break;
+
+				if (!hasNext)
+				{
+					if (!found && res == jperOk)
+						break;
+					continue;
+				}
+
+				memset(&it, 0, sizeof(it));
+
+				while ((v = JsonValueListNext(&list, &it)))
+				{
+					res = recursiveExecute(cxt, &next, v, found);
+
+					if (jperIsError(res) || (!found && res == jperOk))
+					{
+						i = jsp->content.sequence.nelems;
+						break;
+					}
+				}
+			}
+
+			break;
+		}
+		case jpiArray:
+			{
+				JsonValueList list = { 0 };
+
+				if (jsp->content.arg)
+				{
+					jspGetArg(jsp, &elem);
+					res = recursiveExecute(cxt, &elem, jb, &list);
+
+					if (jperIsError(res))
+						break;
+				}
+
+				res = recursiveExecuteNext(cxt, jsp, NULL,
+										   wrapItemsInArray(&list),
+										   found, false);
+			}
+			break;
+		case jpiObject:
+			{
+				JsonbParseState *ps = NULL;
+				JsonbValue *obj;
+				int			i;
+
+				pushJsonbValue(&ps, WJB_BEGIN_OBJECT, NULL);
+
+				for (i = 0; i < jsp->content.object.nfields; i++)
+				{
+					JsonbValue *jbv;
+					JsonbValue	jbvtmp;
+					JsonPathItem key;
+					JsonPathItem val;
+					JsonValueList key_list = { 0 };
+					JsonValueList val_list = { 0 };
+
+					jspGetObjectField(jsp, i, &key, &val);
+
+					recursiveExecute(cxt, &key, jb, &key_list);
+
+					if (JsonValueListLength(&key_list) != 1)
+					{
+						res = jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+						break;
+					}
+
+					jbv = JsonValueListHead(&key_list);
+
+					if (JsonbType(jbv) == jbvScalar)
+						jbv = JsonbExtractScalar(jbv->val.binary.data, &jbvtmp);
+
+					if (jbv->type != jbvString)
+					{
+						res = jperMakeError(ERRCODE_JSON_SCALAR_REQUIRED); /* XXX */
+						break;
+					}
+
+					pushJsonbValue(&ps, WJB_KEY, jbv);
+
+					recursiveExecute(cxt, &val, jb, &val_list);
+
+					if (JsonValueListLength(&val_list) != 1)
+					{
+						res = jperMakeError(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED);
+						break;
+					}
+
+					jbv = JsonValueListHead(&val_list);
+
+					if (jbv->type == jbvObject || jbv->type == jbvArray)
+						jbv = JsonbWrapInBinary(jbv, &jbvtmp);
+
+					pushJsonbValue(&ps, WJB_VALUE, jbv);
+				}
+
+				if (jperIsError(res))
+					break;
+
+				obj = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
+
+				res = recursiveExecuteNext(cxt, jsp, NULL, obj, found, false);
 			}
 			break;
 		default:

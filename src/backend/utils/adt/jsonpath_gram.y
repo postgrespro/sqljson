@@ -255,6 +255,26 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 	return v;
 }
 
+static JsonPathParseItem *
+makeItemSequence(List *elems)
+{
+	JsonPathParseItem  *v = makeItemType(jpiSequence);
+
+	v->value.sequence.elems = elems;
+
+	return v;
+}
+
+static JsonPathParseItem *
+makeItemObject(List *fields)
+{
+	JsonPathParseItem *v = makeItemType(jpiObject);
+
+	v->value.object.fields = fields;
+
+	return v;
+}
+
 %}
 
 /* BISON Declarations */
@@ -288,9 +308,9 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 %type	<value>		scalar_value path_primary expr array_accessor
 					any_path accessor_op key predicate delimited_predicate
 					index_elem starts_with_initial datetime_template opt_datetime_template
-					expr_or_predicate
+					expr_or_predicate expr_or_seq expr_seq object_field
 
-%type	<elems>		accessor_expr
+%type	<elems>		accessor_expr expr_list object_field_list
 
 %type	<indexs>	index_list
 
@@ -314,7 +334,7 @@ makeItemLikeRegex(JsonPathParseItem *expr, string *pattern, string *flags)
 %%
 
 result:
-	mode expr_or_predicate			{
+	mode expr_or_seq				{
 										*result = palloc(sizeof(JsonPathParseResult));
 										(*result)->expr = $2;
 										(*result)->lax = $1;
@@ -325,6 +345,20 @@ result:
 expr_or_predicate:
 	expr							{ $$ = $1; }
 	| predicate						{ $$ = $1; }
+	;
+
+expr_or_seq:
+	expr_or_predicate				{ $$ = $1; }
+	| expr_seq						{ $$ = $1; }
+	;
+
+expr_seq:
+	expr_list						{ $$ = makeItemSequence($1); }
+	;
+
+expr_list:
+	expr_or_predicate ',' expr_or_predicate	{ $$ = list_make2($1, $3); }
+	| expr_list ',' expr_or_predicate		{ $$ = lappend($1, $3); }
 	;
 
 mode:
@@ -381,6 +415,21 @@ path_primary:
 	| '$'							{ $$ = makeItemType(jpiRoot); }
 	| '@'							{ $$ = makeItemType(jpiCurrent); }
 	| LAST_P						{ $$ = makeItemType(jpiLast); }
+	| '(' expr_seq ')'				{ $$ = $2; }
+	| '[' ']'						{ $$ = makeItemUnary(jpiArray, NULL); }
+	| '[' expr_or_seq ']'			{ $$ = makeItemUnary(jpiArray, $2); }
+	| '{' object_field_list '}'		{ $$ = makeItemObject($2); }
+	;
+
+object_field_list:
+	/* EMPTY */								{ $$ = NIL; }
+	| object_field							{ $$ = list_make1($1); }
+	| object_field_list ',' object_field	{ $$ = lappend($1, $3); }
+	;
+
+object_field:
+	key_name ':' expr_or_predicate
+		{ $$ = makeItemBinary(jpiObjectField, makeItemString(&$1), $3); }
 	;
 
 accessor_expr:

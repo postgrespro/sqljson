@@ -120,6 +120,32 @@ select jsonb '[1]' @? 'strict $[1.2]';
  
 (1 row)
 
+select jsonb '[1]' @* 'strict $[1.2]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @* 'strict $[0.3]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @? 'lax $[0.3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select jsonb '{}' @* 'strict $[1.2]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @? 'lax $[1.2]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select jsonb '{}' @* 'strict $[-2 to 3]';
+ERROR:  Invalid SQL/JSON subscript
+select jsonb '{}' @? 'lax $[-2 to 3]';
+ ?column? 
+----------
+ t
+(1 row)
+
 select jsonb '{"a": [1,2,3], "b": [3,4,5]}' @? '$ ? (@.a[*] >  @.b[*])';
  ?column? 
 ----------
@@ -254,6 +280,12 @@ select jsonb '1' @* 'lax $[*]';
  1
 (1 row)
 
+select jsonb '{}' @* 'lax $[0]';
+ ?column? 
+----------
+ {}
+(1 row)
+
 select jsonb '[1]' @* 'lax $[0]';
  ?column? 
 ----------
@@ -285,6 +317,12 @@ select jsonb '[1]' @* '$[last]';
  ?column? 
 ----------
  1
+(1 row)
+
+select jsonb '{}' @* 'lax $[last]';
+ ?column? 
+----------
+ {}
 (1 row)
 
 select jsonb '[1,2,3]' @* '$[last]';
@@ -1179,8 +1217,6 @@ select jsonb 'null' @* '$.datetime()';
 ERROR:  Invalid argument for SQL/JSON datetime function
 select jsonb 'true' @* '$.datetime()';
 ERROR:  Invalid argument for SQL/JSON datetime function
-select jsonb '1' @* '$.datetime()';
-ERROR:  Invalid argument for SQL/JSON datetime function
 select jsonb '[]' @* '$.datetime()';
  ?column? 
 ----------
@@ -1192,6 +1228,25 @@ select jsonb '{}' @* '$.datetime()';
 ERROR:  Invalid argument for SQL/JSON datetime function
 select jsonb '""' @* '$.datetime()';
 ERROR:  Invalid argument for SQL/JSON datetime function
+-- Standard extension: UNIX epoch to timestamptz
+select jsonb '0' @* '$.datetime()';
+          ?column?           
+-----------------------------
+ "1970-01-01T00:00:00+00:00"
+(1 row)
+
+select jsonb '0' @* '$.datetime().type()';
+          ?column?          
+----------------------------
+ "timestamp with time zone"
+(1 row)
+
+select jsonb '1490216035.5' @* '$.datetime()';
+           ?column?            
+-------------------------------
+ "2017-03-22T20:53:55.5+00:00"
+(1 row)
+
 select jsonb '"10-03-2017"' @*       '$.datetime("dd-mm-yyyy")';
    ?column?   
 --------------
@@ -1667,6 +1722,12 @@ SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '$[*] ? (@.a > 10)';
 ----------
 (0 rows)
 
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @* '[$[*].a]';
+ ?column? 
+----------
+ [1, 2]
+(1 row)
+
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a';
  ?column? 
 ----------
@@ -1683,6 +1744,12 @@ SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '$[*].a ? (@ > 10)';
  ?column? 
 ----------
  
+(1 row)
+
+SELECT jsonb '[{"a": 1}, {"a": 2}]' @# '[$[*].a]';
+ ?column? 
+----------
+ [1, 2]
 (1 row)
 
 SELECT jsonb '[{"a": 1}, {"a": 2}]' @? '$[*].a ? (@ > 1)';
@@ -1708,4 +1775,195 @@ SELECT jsonb '[{"a": 1}, {"a": 2}]' @~ '$[*].a > 2';
 ----------
  f
 (1 row)
+
+-- extension: path sequences
+select jsonb '[1,2,3,4,5]' @* '10, 20, $[*], 30';
+ ?column? 
+----------
+ 10
+ 20
+ 1
+ 2
+ 3
+ 4
+ 5
+ 30
+(8 rows)
+
+select jsonb '[1,2,3,4,5]' @* 'lax    10, 20, $[*].a, 30';
+ ?column? 
+----------
+ 10
+ 20
+ 30
+(3 rows)
+
+select jsonb '[1,2,3,4,5]' @* 'strict 10, 20, $[*].a, 30';
+ERROR:  SQL/JSON member not found
+select jsonb '[1,2,3,4,5]' @* '-(10, 20, $[1 to 3], 30)';
+ ?column? 
+----------
+ -10
+ -20
+ -2
+ -3
+ -4
+ -30
+(6 rows)
+
+select jsonb '[1,2,3,4,5]' @* 'lax (10, 20.5, $[1 to 3], "30").double()';
+ ?column? 
+----------
+ 10
+ 20.5
+ 2
+ 3
+ 4
+ 30
+(6 rows)
+
+select jsonb '[1,2,3,4,5]' @* '$[(0, $[*], 5) ? (@ == 3)]';
+ ?column? 
+----------
+ 4
+(1 row)
+
+select jsonb '[1,2,3,4,5]' @* '$[(0, $[*], 3) ? (@ == 3)]';
+ERROR:  Invalid SQL/JSON subscript
+-- extension: array constructors
+select jsonb '[1, 2, 3]' @* '[]';
+ ?column? 
+----------
+ []
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '[1, 2, $[*], 4, 5]';
+       ?column?        
+-----------------------
+ [1, 2, 1, 2, 3, 4, 5]
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '[1, 2, $[*], 4, 5][*]';
+ ?column? 
+----------
+ 1
+ 2
+ 1
+ 2
+ 3
+ 4
+ 5
+(7 rows)
+
+select jsonb '[1, 2, 3]' @* '[(1, (2, $[*])), (4, 5)]';
+       ?column?        
+-----------------------
+ [1, 2, 1, 2, 3, 4, 5]
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '[[1, 2], [$[*], 4], 5, [(1,2)?(@ > 5)]]';
+           ?column?            
+-------------------------------
+ [[1, 2], [1, 2, 3, 4], 5, []]
+(1 row)
+
+select jsonb '[1, 2, 3]' @* 'strict [1, 2, $[*].a, 4, 5]';
+ERROR:  SQL/JSON member not found
+select jsonb '[[1, 2], [3, 4, 5], [], [6, 7]]' @* '[$[*][*] ? (@ > 3)]';
+   ?column?   
+--------------
+ [4, 5, 6, 7]
+(1 row)
+
+-- extension: object constructors
+select jsonb '[1, 2, 3]' @* '{}';
+ ?column? 
+----------
+ {}
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}';
+            ?column?            
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}.*';
+    ?column?     
+-----------------
+ 5
+ [1, 2, 3, 4, 5]
+(2 rows)
+
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": [$[*], 4, 5]}[*]';
+            ?column?            
+--------------------------------
+ {"a": 5, "b": [1, 2, 3, 4, 5]}
+(1 row)
+
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": ($[*], 4, 5)}';
+ERROR:  Singleton SQL/JSON item required
+select jsonb '[1, 2, 3]' @* '{a: 2 + 3, "b": {x: $, y: $[1] > 2, z: "foo"}}';
+                        ?column?                         
+---------------------------------------------------------
+ {"a": 5, "b": {"x": [1, 2, 3], "y": false, "z": "foo"}}
+(1 row)
+
+-- extension: object subscripting
+select jsonb '{"a": 1}' @? '$["a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select jsonb '{"a": 1}' @? '$["b"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+select jsonb '{"a": 1}' @? 'strict $["b"]';
+ ?column? 
+----------
+ 
+(1 row)
+
+select jsonb '{"a": 1}' @? '$["b", "a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+select jsonb '{"a": 1}' @* '$["a"]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb '{"a": 1}' @* 'strict $["b"]';
+ERROR:  SQL/JSON member not found
+select jsonb '{"a": 1}' @* 'lax $["b"]';
+ ?column? 
+----------
+(0 rows)
+
+select jsonb '{"a": 1, "b": 2}' @* 'lax $["b", "c", "b", "a", 0 to 3]';
+     ?column?     
+------------------
+ 2
+ 2
+ 1
+ {"a": 1, "b": 2}
+(4 rows)
+
+select jsonb 'null' @* '{"a": 1}["a"]';
+ ?column? 
+----------
+ 1
+(1 row)
+
+select jsonb 'null' @* '{"a": 1}["b"]';
+ ?column? 
+----------
+(0 rows)
 
