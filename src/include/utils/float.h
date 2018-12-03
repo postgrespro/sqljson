@@ -38,8 +38,11 @@ extern PGDLLIMPORT int extra_float_digits;
  * Utility functions in float.c
  */
 extern int	is_infinite(float8 val);
-extern float8 float8in_internal(char *num, char **endptr_p,
-				  const char *type_name, const char *orig_string);
+extern float8 float8in_internal_safe(char *num, char **endptr_p,
+				  const char *type_name, const char *orig_string,
+				  ErrorData **edata);
+#define float8in_internal(num, endptr_p, type_name, orig_string) \
+		float8in_internal_safe(num, endptr_p, type_name, orig_string, NULL)
 extern char *float8out_internal(float8 num);
 extern int	float4_cmp_internal(float4 a, float4 b);
 extern int	float8_cmp_internal(float8 a, float8 b);
