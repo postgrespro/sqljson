@@ -17,6 +17,7 @@
 #include "fmgr.h"
 #include "utils/jsonb.h"
 #include "nodes/pg_list.h"
+#include "nodes/primnodes.h"
 
 typedef struct
 {
@@ -304,7 +305,15 @@ typedef struct JsonPathVariable	{
 	void					*cb_arg;
 } JsonPathVariable;
 
-
+typedef struct JsonPathVariableEvalContext
+{
+	JsonPathVariable var;
+	struct ExprContext *econtext;
+	struct ExprState  *estate;
+	Datum		value;
+	bool		isnull;
+	bool		evaluated;
+} JsonPathVariableEvalContext;
 
 typedef struct JsonValueList
 {
@@ -316,5 +325,13 @@ JsonPathExecResult	executeJsonPath(JsonPath *path,
 									List	*vars, /* list of JsonPathVariable */
 									Jsonb *json,
 									JsonValueList *foundJson);
+
+extern bool  JsonbPathExists(Datum jb, JsonPath *path, List *vars);
+extern Datum JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
+			   bool *empty, List *vars);
+extern JsonbValue *JsonbPathValue(Datum jb, JsonPath *jp, bool *empty,
+			   List *vars);
+
+extern Datum EvalJsonPathVar(void *cxt, bool *isnull);
 
 #endif

@@ -468,6 +468,8 @@ static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
+static void get_json_path_spec(Node *path_spec, deparse_context *context,
+				   bool showimplicit);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -7466,6 +7468,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_Aggref:
 		case T_WindowFunc:
 		case T_FuncExpr:
+		case T_JsonExpr:
 			/* function-like: name(..) or name[..] */
 			return true;
 
@@ -7584,6 +7587,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_Aggref:	/* own parentheses */
 				case T_WindowFunc:	/* own parentheses */
 				case T_CaseExpr:	/* other separators */
+				case T_JsonExpr: /* own parentheses */
 					return true;
 				default:
 					return false;
@@ -7747,6 +7751,61 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 
 
 /*
+ * get_json_path_spec		- Parse back a JSON path specification
+ */
+static void
+get_json_path_spec(Node *path_spec, deparse_context *context, bool showimplicit)
+{
+	if (IsA(path_spec, Const))
+		get_const_expr((Const *) path_spec, context, -1);
+	else
+		get_rule_expr(path_spec, context, showimplicit);
+}
+
+/*
+ * get_json_format			- Parse back a JsonFormat structure
+ */
+static void
+get_json_format(JsonFormat *format, deparse_context *context)
+{
+	if (format->type == JS_FORMAT_DEFAULT)
+		return;
+
+	appendStringInfoString(context->buf,
+						   format->type == JS_FORMAT_JSONB ?
+						   " FORMAT JSONB" : " FORMAT JSON");
+
+	if (format->encoding != JS_ENC_DEFAULT)
+	{
+		const char *encoding =
+			format->encoding == JS_ENC_UTF16 ? "UTF16" :
+			format->encoding == JS_ENC_UTF32 ? "UTF32" : "UTF8";
+
+		appendStringInfo(context->buf, " ENCODING %s", encoding);
+	}
+}
+
+/*
+ * get_json_returning		- Parse back a JsonReturning structure
+ */
+static void
+get_json_returning(JsonReturning *returning, deparse_context *context,
+				   bool json_format_by_default)
+{
+	if (!OidIsValid(returning->typid))
+		return;
+
+	appendStringInfo(context->buf, " RETURNING %s",
+					 format_type_with_typemod(returning->typid,
+											  returning->typmod));
+
+	if (!json_format_by_default ||
+		returning->format.type !=
+			(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
+		get_json_format(&returning->format, context);
+}
+
+/*
  * get_coercion				- Parse back a coercion
  */
 static void
@@ -7764,6 +7823,54 @@ get_coercion(Expr *arg, deparse_context *context, bool showimplicit,
 		get_coercion_expr((Node *) arg, context, typid, typmod, node);
 	}
 }
+
+static void
+get_json_behavior(JsonBehavior *behavior, deparse_context *context,
+				  const char *on)
+{
+	switch (behavior->btype)
+	{
+		case JSON_BEHAVIOR_DEFAULT:
+			appendStringInfoString(context->buf, " DEFAULT ");
+			get_rule_expr(behavior->default_expr, context, false);
+			break;
+
+		case JSON_BEHAVIOR_EMPTY:
+			appendStringInfoString(context->buf, " EMPTY");
+			break;
+
+		case JSON_BEHAVIOR_EMPTY_ARRAY:
+			appendStringInfoString(context->buf, " EMPTY ARRAY");
+			break;
+
+		case JSON_BEHAVIOR_EMPTY_OBJECT:
+			appendStringInfoString(context->buf, " EMPTY OBJECT");
+			break;
+
+		case JSON_BEHAVIOR_ERROR:
+			appendStringInfoString(context->buf, " ERROR");
+			break;
+
+		case JSON_BEHAVIOR_FALSE:
+			appendStringInfoString(context->buf, " FALSE");
+			break;
+
+		case JSON_BEHAVIOR_NULL:
+			appendStringInfoString(context->buf, " NULL");
+			break;
+
+		case JSON_BEHAVIOR_TRUE:
+			appendStringInfoString(context->buf, " TRUE");
+			break;
+
+		case JSON_BEHAVIOR_UNKNOWN:
+			appendStringInfoString(context->buf, " UNKNOWN");
+			break;
+	}
+
+	appendStringInfo(context->buf, " ON %s", on);
+}
+
 
 /* ----------
  * get_rule_expr			- Parse back an expression
@@ -8879,6 +8986,83 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
+
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+
+				get_rule_expr((Node *) jve->expr, context, false);
+				get_json_format(&jve->format, context);
+			}
+			break;
+
+		case T_JsonExpr:
+			{
+				JsonExpr   *jexpr = (JsonExpr *) node;
+
+				switch (jexpr->op)
+				{
+					case IS_JSON_QUERY:
+						appendStringInfoString(buf, "JSON_QUERY(");
+						break;
+					case IS_JSON_VALUE:
+						appendStringInfoString(buf, "JSON_VALUE(");
+						break;
+					case IS_JSON_EXISTS:
+						appendStringInfoString(buf, "JSON_EXISTS(");
+						break;
+				}
+
+				get_rule_expr(jexpr->raw_expr, context, showimplicit);
+
+				get_json_format(&jexpr->format, context);
+
+				appendStringInfoString(buf, ", ");
+
+				get_json_path_spec(jexpr->path_spec, context, showimplicit);
+
+				if (jexpr->passing.values)
+				{
+					ListCell   *lc1, *lc2;
+					bool		needcomma = false;
+
+					appendStringInfoString(buf, " PASSING ");
+
+					forboth(lc1, jexpr->passing.names,
+							lc2, jexpr->passing.values)
+					{
+						if (needcomma)
+							appendStringInfoString(buf, ", ");
+						needcomma = true;
+
+						get_rule_expr((Node *) lfirst(lc2), context, showimplicit);
+						appendStringInfo(buf, " AS %s",
+										 ((Value *) lfirst(lc1))->val.str);
+					}
+				}
+
+				if (jexpr->op != IS_JSON_EXISTS)
+					get_json_returning(&jexpr->returning, context,
+									   jexpr->op != IS_JSON_VALUE);
+
+				if (jexpr->wrapper == JSW_CONDITIONAL)
+					appendStringInfo(buf, " WITH CONDITIONAL WRAPPER");
+
+				if (jexpr->wrapper == JSW_UNCONDITIONAL)
+					appendStringInfo(buf, " WITH UNCONDITIONAL WRAPPER");
+
+				if (jexpr->omit_quotes)
+					appendStringInfo(buf, " OMIT QUOTES");
+
+				if (jexpr->op != IS_JSON_EXISTS)
+					get_json_behavior(&jexpr->on_empty, context, "EMPTY");
+
+				get_json_behavior(&jexpr->on_error, context, "ERROR");
+
+				appendStringInfoString(buf, ")");
+			}
+			break;
+
 		case T_List:
 			{
 				char	   *sep;
@@ -8975,6 +9159,7 @@ looks_like_function(Node *node)
 		case T_MinMaxExpr:
 		case T_SQLValueFunction:
 		case T_XmlExpr:
+		case T_JsonExpr:
 			/* these are all accepted by func_expr_common_subexpr */
 			return true;
 		default:
@@ -9050,6 +9235,66 @@ get_func_opts(FuncFormat aggformat, Node *aggformatopts, deparse_context *contex
 {
 	switch (aggformat)
 	{
+		case FUNCFMT_JSON_OBJECT:
+		case FUNCFMT_JSON_OBJECTAGG:
+		case FUNCFMT_JSON_ARRAY:
+		case FUNCFMT_JSON_ARRAYAGG:
+			{
+				JsonCtorOpts *opts = castNode(JsonCtorOpts, aggformatopts);
+
+				if (!opts)
+					break;
+
+				if (opts->absent_on_null)
+				{
+					if (aggformat == FUNCFMT_JSON_OBJECT ||
+						aggformat == FUNCFMT_JSON_OBJECTAGG)
+						appendStringInfoString(context->buf, " ABSENT ON NULL");
+				}
+				else
+				{
+					if (aggformat == FUNCFMT_JSON_ARRAY ||
+						aggformat == FUNCFMT_JSON_ARRAYAGG)
+						appendStringInfoString(context->buf, " NULL ON NULL");
+				}
+
+				if (opts->unique)
+					appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
+
+				get_json_returning(&opts->returning, context, true);
+			}
+			break;
+
+		case FUNCFMT_IS_JSON:
+			{
+				JsonIsPredicateOpts *opts =
+					castNode(JsonIsPredicateOpts, aggformatopts);
+
+				appendStringInfoString(context->buf, " IS JSON");
+
+				if (!opts)
+					break;
+
+				switch (opts->value_type)
+				{
+					case JS_TYPE_SCALAR:
+						appendStringInfoString(context->buf, " SCALAR");
+						break;
+					case JS_TYPE_ARRAY:
+						appendStringInfoString(context->buf, " ARRAY");
+						break;
+					case JS_TYPE_OBJECT:
+						appendStringInfoString(context->buf, " OBJECT");
+						break;
+					default:
+						break;
+				}
+
+				if (opts->unique_keys)
+					appendStringInfoString(context->buf, " WITH UNIQUE KEYS");
+			}
+			break;
+
 		default:
 			break;
 	}
@@ -9066,6 +9311,8 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	Oid			funcoid = expr->funcid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
+	int			firstarg;
+	int			lastarg = list_length(expr->args);
 	List	   *argnames;
 	bool		use_variadic;
 	ListCell   *l;
@@ -9126,22 +9373,57 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 
 	switch (expr->funcformat2)
 	{
+		case FUNCFMT_JSON_OBJECT:
+			funcname = "JSON_OBJECT";
+			firstarg = 2;
+			use_variadic = false;
+			break;
+
+		case FUNCFMT_JSON_ARRAY:
+			funcname = "JSON_ARRAY";
+			firstarg = 1;
+			use_variadic = false;
+			break;
+
+		case FUNCFMT_IS_JSON:
+			funcname = NULL;
+			firstarg = 0;
+			lastarg = 0;
+			use_variadic = false;
+			break;
+
 		default:
 			funcname = generate_function_name(funcoid, nargs,
 											  argnames, argtypes,
 											  expr->funcvariadic,
 											  &use_variadic,
 											  context->special_exprkind);
+			firstarg = 0;
 			break;
 	}
 
-	appendStringInfo(buf, "%s(", funcname);
+	if (funcname)
+		appendStringInfo(buf, "%s(", funcname);
+	else if (!PRETTY_PAREN(context))
+		appendStringInfoChar(buf, '(');
 
 	nargs = 0;
 	foreach(l, expr->args)
 	{
-		if (nargs++ > 0)
-			appendStringInfoString(buf, ", ");
+		if (nargs > lastarg)
+			break;
+
+		if (nargs++ < firstarg)
+			continue;
+
+		if (nargs > firstarg + 1)
+		{
+			const char *sep = expr->funcformat2 == FUNCFMT_JSON_OBJECT &&
+				!((nargs - firstarg) % 2) ? " : " : ", ";
+
+			appendStringInfoString(buf, sep);
+		}
+
 		if (use_variadic && lnext(l) == NULL)
 			appendStringInfoString(buf, "VARIADIC ");
 		get_rule_expr((Node *) lfirst(l), context, true);
@@ -9149,7 +9431,8 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 
 	get_func_opts(expr->funcformat2, expr->funcformatopts, context);
 
-	appendStringInfoChar(buf, ')');
+	if (funcname || !PRETTY_PAREN(context))
+		appendStringInfoChar(buf, ')');
 }
 
 /*
@@ -9161,8 +9444,9 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 {
 	StringInfo	buf = context->buf;
 	Oid			argtypes[FUNC_MAX_ARGS];
+	const char *funcname;
 	int			nargs;
-	bool		use_variadic;
+	bool		use_variadic = false;
 
 	/*
 	 * For a combining aggregate, we look up and deparse the corresponding
@@ -9191,13 +9475,24 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 	/* Extract the argument types as seen by the parser */
 	nargs = get_aggregate_argtypes(aggref, argtypes);
 
+	switch (aggref->aggformat)
+	{
+		case FUNCFMT_JSON_OBJECTAGG:
+			funcname = "JSON_OBJECTAGG";
+			break;
+		case FUNCFMT_JSON_ARRAYAGG:
+			funcname = "JSON_ARRAYAGG";
+			break;
+		default:
+			funcname = generate_function_name(aggref->aggfnoid, nargs, NIL,
+											  argtypes, aggref->aggvariadic,
+											  &use_variadic,
+											  context->special_exprkind);
+			break;
+	}
+
 	/* Print the aggregate name, schema-qualified if needed */
-	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(aggref->aggfnoid, nargs,
-											NIL, argtypes,
-											aggref->aggvariadic,
-											&use_variadic,
-											context->special_exprkind),
+	appendStringInfo(buf, "%s(%s", funcname,
 					 (aggref->aggdistinct != NIL) ? "DISTINCT " : "");
 
 	if (AGGKIND_IS_ORDERED_SET(aggref->aggkind))
@@ -9233,7 +9528,17 @@ get_agg_expr(Aggref *aggref, deparse_context *context,
 				if (tle->resjunk)
 					continue;
 				if (i++ > 0)
-					appendStringInfoString(buf, ", ");
+				{
+					if (aggref->aggformat == FUNCFMT_JSON_OBJECTAGG)
+					{
+						if (i > 2)
+							break; /* skip ABSENT ON NULL and WITH UNIQUE args */
+
+						appendStringInfoString(buf, " : ");
+					}
+					else
+						appendStringInfoString(buf, ", ");
+				}
 				if (use_variadic && i == nargs)
 					appendStringInfoString(buf, "VARIADIC ");
 				get_rule_expr(arg, context, true);
@@ -9287,6 +9592,7 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 	int			nargs;
 	List	   *argnames;
 	ListCell   *l;
+	const char *funcname;
 
 	if (list_length(wfunc->args) > FUNC_MAX_ARGS)
 		ereport(ERROR,
@@ -9304,16 +9610,37 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 		nargs++;
 	}
 
-	appendStringInfo(buf, "%s(",
-					 generate_function_name(wfunc->winfnoid, nargs,
-											argnames, argtypes,
-											false, NULL,
-											context->special_exprkind));
+	switch (wfunc->winformat)
+	{
+		case FUNCFMT_JSON_OBJECTAGG:
+			funcname = "JSON_OBJECTAGG";
+			break;
+		case FUNCFMT_JSON_ARRAYAGG:
+			funcname = "JSON_ARRAYAGG";
+			break;
+		default:
+			funcname = generate_function_name(wfunc->winfnoid, nargs, argnames,
+											  argtypes, false, NULL,
+											  context->special_exprkind);
+			break;
+	}
+
+	appendStringInfo(buf, "%s(", funcname);
+
 	/* winstar can be set only in zero-argument aggregates */
 	if (wfunc->winstar)
 		appendStringInfoChar(buf, '*');
 	else
-		get_rule_expr((Node *) wfunc->args, context, true);
+	{
+		if (wfunc->winformat == FUNCFMT_JSON_OBJECTAGG)
+		{
+			get_rule_expr((Node *) linitial(wfunc->args), context, false);
+			appendStringInfoString(buf, " : ");
+			get_rule_expr((Node *) lsecond(wfunc->args), context, false);
+		}
+		else
+			get_rule_expr((Node *) wfunc->args, context, true);
+	}
 
 	get_func_opts(wfunc->winformat, wfunc->winformatopts, context);
 
