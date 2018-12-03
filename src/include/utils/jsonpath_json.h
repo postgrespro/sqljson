@@ -92,6 +92,9 @@
 
 /* redefine global jsonpath functions */
 #define executeJsonPath		executeJsonPathJson
+#define JsonbPathExists		JsonPathExists
+#define JsonbPathQuery		JsonPathQuery
+#define JsonbPathValue		JsonPathValue
 
 static inline JsonbValue *
 JsonbInitBinary(JsonbValue *jbv, Json *jb)
