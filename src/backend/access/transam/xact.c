@@ -189,6 +189,8 @@ typedef struct TransactionStateData
 	bool		startedInRecovery;	/* did we start in recovery? */
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
+	bool		isCachedSubXact;
+	struct TransactionStateData *cachedSubXact;
 	struct TransactionStateData *parent;	/* back link to parent */
 } TransactionStateData;
 
@@ -302,7 +304,7 @@ static void CommitSubTransaction(void);
 static void AbortSubTransaction(void);
 static void CleanupSubTransaction(void);
 static void PushTransaction(void);
-static void PopTransaction(void);
+static void PopTransaction(bool free);
 
 static void AtSubAbort_Memory(void);
 static void AtSubCleanup_Memory(void);
@@ -316,6 +318,8 @@ static void ShowTransactionStateRec(const char *str, TransactionState state);
 static const char *BlockStateAsString(TBlockState blockState);
 static const char *TransStateAsString(TransState state);
 
+static void ReleaseCurrentCachedSubTransaction(void);
+static void RollbackAndReleaseCurrentCachedSubTransaction(void);
 
 /* ----------------------------------------------------------------
  *	transaction state accessors
@@ -2768,6 +2772,8 @@ CommitTransactionCommand(void)
 {
 	TransactionState s = CurrentTransactionState;
 
+	ReleaseCurrentCachedSubTransaction();
+
 	switch (s->blockState)
 	{
 			/*
@@ -3007,6 +3013,8 @@ void
 AbortCurrentTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
+
+	RollbackAndReleaseCurrentCachedSubTransaction();
 
 	switch (s->blockState)
 	{
@@ -4155,6 +4163,47 @@ RollbackToSavepoint(const char *name)
 			 BlockStateAsString(xact->blockState));
 }
 
+static void
+RestoreSubTransactionState(TransactionState subxact)
+{
+	CurrentTransactionState = subxact;
+
+	CurTransactionContext = subxact->curTransactionContext;
+	MemoryContextSwitchTo(CurTransactionContext);
+	CurTransactionResourceOwner = subxact->curTransactionOwner;
+	CurrentResourceOwner = subxact->curTransactionOwner;
+}
+
+static void
+ReleaseCurrentCachedSubTransaction(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	if (s->cachedSubXact)
+	{
+		RestoreSubTransactionState(s->cachedSubXact);
+		ReleaseCurrentCachedSubTransaction();
+		MemoryContextSwitchTo(CurTransactionContext);
+		CommitSubTransaction();
+		Assert(s == CurrentTransactionState);
+		s->cachedSubXact = NULL;
+	}
+}
+
+static void
+RollbackAndReleaseCurrentCachedSubTransaction(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	if (s->cachedSubXact)
+	{
+		RestoreSubTransactionState(s->cachedSubXact);
+		RollbackAndReleaseCurrentSubTransaction();
+		Assert(s == CurrentTransactionState);
+		s->cachedSubXact = NULL;
+	}
+}
+
 /*
  * BeginInternalSubTransaction
  *		This is the same as DefineSavepoint except it allows TBLOCK_STARTED,
@@ -4165,8 +4214,8 @@ RollbackToSavepoint(const char *name)
  *		CommitTransactionCommand/StartTransactionCommand instead of expecting
  *		the caller to do it.
  */
-void
-BeginInternalSubTransaction(const char *name)
+static void
+BeginInternalSubTransactionInternal(const char *name, bool cached)
 {
 	TransactionState s = CurrentTransactionState;
 
@@ -4193,9 +4242,30 @@ BeginInternalSubTransaction(const char *name)
 		case TBLOCK_END:
 		case TBLOCK_PREPARE:
 		case TBLOCK_SUBINPROGRESS:
+			if (s->cachedSubXact)
+			{
+				TransactionState subxact = s->cachedSubXact;
+
+				s->cachedSubXact = NULL;
+
+				Assert(subxact->subTransactionId == currentSubTransactionId);
+				if (subxact->subTransactionId == currentSubTransactionId)
+				{
+					/* reuse cached subtransaction */
+					RestoreSubTransactionState(subxact);
+					return;
+				}
+				else
+				{
+					ReleaseCurrentCachedSubTransaction();
+				}
+			}
+
 			/* Normal subtransaction start */
 			PushTransaction();
 			s = CurrentTransactionState;	/* changed by push */
+
+			s->isCachedSubXact = cached;
 
 			/*
 			 * Savepoint names, like the TransactionState block itself, live
@@ -4229,6 +4299,18 @@ BeginInternalSubTransaction(const char *name)
 	StartTransactionCommand();
 }
 
+void
+BeginInternalSubTransaction(const char *name)
+{
+	BeginInternalSubTransactionInternal(name, false);
+}
+
+void
+BeginInternalCachedSubTransaction(const char *name)
+{
+	BeginInternalSubTransactionInternal(name, true);
+}
+
 /*
  * ReleaseCurrentSubTransaction
  *
@@ -4257,8 +4339,40 @@ ReleaseCurrentSubTransaction(void)
 		elog(ERROR, "ReleaseCurrentSubTransaction: unexpected state %s",
 			 BlockStateAsString(s->blockState));
 	Assert(s->state == TRANS_INPROGRESS);
-	MemoryContextSwitchTo(CurTransactionContext);
-	CommitSubTransaction();
+
+	ReleaseCurrentCachedSubTransaction();
+
+	if (s->isCachedSubXact &&
+		!TransactionIdIsValid(s->transactionId) &&
+		!s->cachedSubXact /*&
+		(!s->curTransactionOwner ||
+		 (!s->curTransactionOwner->firstchild &&
+		   s->curTransactionOwner->nlocks <= 0))*/)
+	{
+		if (s->curTransactionOwner)
+		{
+			ResourceOwnerRelease(s->curTransactionOwner,
+								 RESOURCE_RELEASE_BEFORE_LOCKS,
+								 true, false);
+			ResourceOwnerRelease(s->curTransactionOwner,
+								 RESOURCE_RELEASE_LOCKS,
+								 true, false);
+			ResourceOwnerRelease(s->curTransactionOwner,
+								 RESOURCE_RELEASE_AFTER_LOCKS,
+								 true, false);
+		}
+
+		Assert(!s->parent->cachedSubXact);
+		s->parent->cachedSubXact = s;
+
+		PopTransaction(false);
+	}
+	else
+	{
+		MemoryContextSwitchTo(CurTransactionContext);
+		CommitSubTransaction();
+	}
+
 	s = CurrentTransactionState;	/* changed by pop */
 	Assert(s->state == TRANS_INPROGRESS);
 }
@@ -4313,6 +4427,8 @@ RollbackAndReleaseCurrentSubTransaction(void)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
+
+	RollbackAndReleaseCurrentCachedSubTransaction();
 
 	/*
 	 * Abort the current subtransaction, if needed.
@@ -4678,7 +4794,7 @@ CommitSubTransaction(void)
 
 	s->state = TRANS_DEFAULT;
 
-	PopTransaction();
+	PopTransaction(true);
 }
 
 /*
@@ -4856,7 +4972,7 @@ CleanupSubTransaction(void)
 
 	s->state = TRANS_DEFAULT;
 
-	PopTransaction();
+	PopTransaction(true);
 }
 
 /*
@@ -4926,11 +5042,11 @@ PushTransaction(void)
  *	if it has a local pointer to it after calling this function.
  */
 static void
-PopTransaction(void)
+PopTransaction(bool free)
 {
 	TransactionState s = CurrentTransactionState;
 
-	if (s->state != TRANS_DEFAULT)
+	if (free && s->state != TRANS_DEFAULT)
 		elog(WARNING, "PopTransaction while in %s state",
 			 TransStateAsString(s->state));
 
@@ -4946,6 +5062,9 @@ PopTransaction(void)
 	/* Ditto for ResourceOwner links */
 	CurTransactionResourceOwner = s->parent->curTransactionOwner;
 	CurrentResourceOwner = s->parent->curTransactionOwner;
+
+	if (!free)
+		return;
 
 	/* Free the old child structure */
 	if (s->name)

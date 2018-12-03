@@ -4536,7 +4536,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 		MemoryContext oldcontext = CurrentMemoryContext;
 		ResourceOwner oldowner = CurrentResourceOwner;
 
-		BeginInternalSubTransaction(NULL);
+		BeginInternalCachedSubTransaction(NULL);
 		/* Want to execute expressions inside function's memory context */
 		MemoryContextSwitchTo(oldcontext);
 

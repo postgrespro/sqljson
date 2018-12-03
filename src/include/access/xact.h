@@ -381,6 +381,7 @@ extern void ReleaseSavepoint(const char *name);
 extern void DefineSavepoint(const char *name);
 extern void RollbackToSavepoint(const char *name);
 extern void BeginInternalSubTransaction(const char *name);
+extern void BeginInternalCachedSubTransaction(const char *name);
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);
