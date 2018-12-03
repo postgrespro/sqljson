@@ -23,10 +23,12 @@
 #include "postgres.h"
 
 #include "nodes/execnodes.h"
+#include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "executor/nodeTableFuncscan.h"
 #include "executor/tablefunc.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
 #include "utils/builtins.h"
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
@@ -165,7 +167,8 @@ ExecInitTableFuncScan(TableFuncScan *node, EState *estate, int eflags)
 
 	/* Only XMLTABLE and JSON_TABLE are supported currently */
 	scanstate->routine =
-		tf->functype == TFT_XMLTABLE ? &XmlTableRoutine : &JsonbTableRoutine;
+		tf->functype == TFT_XMLTABLE ? &XmlTableRoutine :
+		exprType(tf->docexpr) == JSONBOID ? &JsonbTableRoutine : &JsonTableRoutine;
 
 	scanstate->perTableCxt =
 		AllocSetContextCreate(CurrentMemoryContext,
