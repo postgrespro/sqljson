@@ -7567,8 +7567,10 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 						CoercionForm type = ((FuncExpr *) parentNode)->funcformat;
 
 						if (type == COERCE_EXPLICIT_CAST ||
-							type == COERCE_IMPLICIT_CAST)
+							type == COERCE_IMPLICIT_CAST ||
+							type == COERCE_INTERNAL_CAST)
 							return false;
+
 						return true;	/* own parentheses */
 					}
 				case T_BoolExpr:	/* lower precedence */
@@ -7618,7 +7620,8 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 						CoercionForm type = ((FuncExpr *) parentNode)->funcformat;
 
 						if (type == COERCE_EXPLICIT_CAST ||
-							type == COERCE_IMPLICIT_CAST)
+							type == COERCE_IMPLICIT_CAST ||
+							type == COERCE_INTERNAL_CAST)
 							return false;
 						return true;	/* own parentheses */
 					}
@@ -7742,6 +7745,25 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 		appendStringInfoChar(context->buf, ')');
 }
 
+
+/*
+ * get_coercion				- Parse back a coercion
+ */
+static void
+get_coercion(Expr *arg, deparse_context *context, bool showimplicit,
+			 Node *node, CoercionForm format, Oid typid, int32 typmod)
+{
+	if (format == COERCE_INTERNAL_CAST ||
+		(format == COERCE_IMPLICIT_CAST && !showimplicit))
+	{
+		/* don't show the implicit cast */
+		get_rule_expr_paren((Node *) arg, context, false, node);
+	}
+	else
+	{
+		get_coercion_expr((Node *) arg, context, typid, typmod, node);
+	}
+}
 
 /* ----------
  * get_rule_expr			- Parse back an expression
@@ -8123,83 +8145,38 @@ get_rule_expr(Node *node, deparse_context *context,
 		case T_RelabelType:
 			{
 				RelabelType *relabel = (RelabelType *) node;
-				Node	   *arg = (Node *) relabel->arg;
 
-				if (relabel->relabelformat == COERCE_IMPLICIT_CAST &&
-					!showimplicit)
-				{
-					/* don't show the implicit cast */
-					get_rule_expr_paren(arg, context, false, node);
-				}
-				else
-				{
-					get_coercion_expr(arg, context,
-									  relabel->resulttype,
-									  relabel->resulttypmod,
-									  node);
-				}
+				get_coercion(relabel->arg, context, showimplicit, node,
+							 relabel->relabelformat, relabel->resulttype,
+							 relabel->resulttypmod);
 			}
 			break;
 
 		case T_CoerceViaIO:
 			{
 				CoerceViaIO *iocoerce = (CoerceViaIO *) node;
-				Node	   *arg = (Node *) iocoerce->arg;
 
-				if (iocoerce->coerceformat == COERCE_IMPLICIT_CAST &&
-					!showimplicit)
-				{
-					/* don't show the implicit cast */
-					get_rule_expr_paren(arg, context, false, node);
-				}
-				else
-				{
-					get_coercion_expr(arg, context,
-									  iocoerce->resulttype,
-									  -1,
-									  node);
-				}
+				get_coercion(iocoerce->arg, context, showimplicit, node,
+							 iocoerce->coerceformat, iocoerce->resulttype, -1);
 			}
 			break;
 
 		case T_ArrayCoerceExpr:
 			{
 				ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *) node;
-				Node	   *arg = (Node *) acoerce->arg;
 
-				if (acoerce->coerceformat == COERCE_IMPLICIT_CAST &&
-					!showimplicit)
-				{
-					/* don't show the implicit cast */
-					get_rule_expr_paren(arg, context, false, node);
-				}
-				else
-				{
-					get_coercion_expr(arg, context,
-									  acoerce->resulttype,
-									  acoerce->resulttypmod,
-									  node);
-				}
+				get_coercion(acoerce->arg, context, showimplicit, node,
+							 acoerce->coerceformat, acoerce->resulttype,
+							 acoerce->resulttypmod);
 			}
 			break;
 
 		case T_ConvertRowtypeExpr:
 			{
 				ConvertRowtypeExpr *convert = (ConvertRowtypeExpr *) node;
-				Node	   *arg = (Node *) convert->arg;
 
-				if (convert->convertformat == COERCE_IMPLICIT_CAST &&
-					!showimplicit)
-				{
-					/* don't show the implicit cast */
-					get_rule_expr_paren(arg, context, false, node);
-				}
-				else
-				{
-					get_coercion_expr(arg, context,
-									  convert->resulttype, -1,
-									  node);
-				}
+				get_coercion(convert->arg, context, showimplicit, node,
+							 convert->convertformat, convert->resulttype, -1);
 			}
 			break;
 
@@ -8752,21 +8729,10 @@ get_rule_expr(Node *node, deparse_context *context,
 		case T_CoerceToDomain:
 			{
 				CoerceToDomain *ctest = (CoerceToDomain *) node;
-				Node	   *arg = (Node *) ctest->arg;
 
-				if (ctest->coercionformat == COERCE_IMPLICIT_CAST &&
-					!showimplicit)
-				{
-					/* don't show the implicit cast */
-					get_rule_expr(arg, context, false);
-				}
-				else
-				{
-					get_coercion_expr(arg, context,
-									  ctest->resulttype,
-									  ctest->resulttypmod,
-									  node);
-				}
+				get_coercion(ctest->arg, context, showimplicit, node,
+							 ctest->coercionformat, ctest->resulttype,
+							 ctest->resulttypmod);
 			}
 			break;
 
@@ -9098,7 +9064,8 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	 * If the function call came from an implicit coercion, then just show the
 	 * first argument --- unless caller wants to see implicit coercions.
 	 */
-	if (expr->funcformat == COERCE_IMPLICIT_CAST && !showimplicit)
+	if (expr->funcformat == COERCE_INTERNAL_CAST ||
+		(expr->funcformat == COERCE_IMPLICIT_CAST && !showimplicit))
 	{
 		get_rule_expr_paren((Node *) linitial(expr->args), context,
 							false, (Node *) expr);
