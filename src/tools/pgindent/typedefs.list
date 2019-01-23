@@ -1144,7 +1144,11 @@ JsonPathKeyword
 JsonPathParseItem
 JsonPathParseResult
 JsonPathPredicateCallback
+<<<<<<< HEAD
 JsonPathString
+=======
+JsonPathUserFuncContext
+>>>>>>> 19911df... Extract common code from jsonb_path_*() functions
 JsonSemAction
 JsonTokenType
 JsonTransformStringValuesAction

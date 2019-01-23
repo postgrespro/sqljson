@@ -168,6 +168,20 @@ typedef struct JsonValueListIterator
 	ListCell   *next;
 } JsonValueListIterator;
 
+/*
+ * Context for execution of
+ * jsonb_path_*(jsonb, jsonpath [, vars jsonb, silent boolean]) user functions.
+ */
+typedef struct JsonPathUserFuncContext
+{
+	FunctionCallInfo fcinfo;
+	Jsonb	   *jb;				/* first jsonb function argument */
+	JsonPath   *jp;				/* second jsonpath function argument */
+	Jsonb	   *vars;			/* third vars function argument */
+	JsonValueList found;		/* resulting item list */
+	bool		silent;			/* error suppression flag */
+} JsonPathUserFuncContext;
+
 /* strict/lax flags is decomposed into four [un]wrap/error flags */
 #define jspStrictAbsenseOfErrors(cxt)	(!(cxt)->laxMode)
 #define jspAutoUnwrap(cxt)				((cxt)->laxMode)
@@ -189,6 +203,10 @@ typedef JsonPathBool (*JsonPathPredicateCallback) (JsonPathItem *jsp,
 												   JsonbValue *rarg,
 												   void *param);
 typedef Numeric (*BinaryArithmFunc) (Numeric num1, Numeric num2, bool *error);
+
+static void freeUserFuncContext(JsonPathUserFuncContext *cxt);
+static JsonPathExecResult executeUserFunc(FunctionCallInfo fcinfo,
+				JsonPathUserFuncContext *cxt, bool copy);
 
 static JsonPathExecResult executeJsonPath(JsonPath *path, void *vars,
 										  JsonPathVarCallback getVar,
@@ -301,23 +319,7 @@ static void popJsonItem(JsonItemStack *stack);
 Datum
 jsonb_path_exists(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
-	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonPathExecResult res;
-	Jsonb	   *vars = NULL;
-	bool		silent = true;
-
-	if (PG_NARGS() == 4)
-	{
-		vars = PG_GETARG_JSONB_P(2);
-		silent = PG_GETARG_BOOL(3);
-	}
-
-	res = executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
-						  jb, !silent, NULL);
-
-	PG_FREE_IF_COPY(jb, 0);
-	PG_FREE_IF_COPY(jp, 1);
+	JsonPathExecResult res = executeUserFunc(fcinfo, NULL, false);
 
 	if (jperIsError(res))
 		PG_RETURN_NULL();
@@ -345,27 +347,15 @@ jsonb_path_exists_opr(PG_FUNCTION_ARGS)
 Datum
 jsonb_path_match(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
-	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonValueList found = {0};
-	Jsonb	   *vars = NULL;
-	bool		silent = true;
+	JsonPathUserFuncContext cxt;
 
-	if (PG_NARGS() == 4)
+	(void) executeUserFunc(fcinfo, &cxt, false);
+
+	freeUserFuncContext(&cxt);
+
+	if (JsonValueListLength(&cxt.found) == 1)
 	{
-		vars = PG_GETARG_JSONB_P(2);
-		silent = PG_GETARG_BOOL(3);
-	}
-
-	(void) executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
-						   jb, !silent, &found);
-
-	PG_FREE_IF_COPY(jb, 0);
-	PG_FREE_IF_COPY(jp, 1);
-
-	if (JsonValueListLength(&found) == 1)
-	{
-		JsonbValue *jbv = JsonValueListHead(&found);
+		JsonbValue *jbv = JsonValueListHead(&cxt.found);
 
 		if (jbv->type == jbvBool)
 			PG_RETURN_BOOL(jbv->val.boolean);
@@ -374,7 +364,7 @@ jsonb_path_match(PG_FUNCTION_ARGS)
 			PG_RETURN_NULL();
 	}
 
-	if (!silent)
+	if (!cxt.silent)
 		ereport(ERROR,
 				(errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
 				 errmsg("single boolean result is expected")));
@@ -409,26 +399,21 @@ jsonb_path_query(PG_FUNCTION_ARGS)
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		JsonPath   *jp;
-		Jsonb	   *jb;
+		JsonPathUserFuncContext jspcxt;
 		MemoryContext oldcontext;
-		Jsonb	   *vars;
-		bool		silent;
-		JsonValueList found = {0};
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-		jb = PG_GETARG_JSONB_P_COPY(0);
-		jp = PG_GETARG_JSONPATH_P_COPY(1);
-		vars = PG_GETARG_JSONB_P_COPY(2);
-		silent = PG_GETARG_BOOL(3);
+		/* jsonb and jsonpath arguments are copied into SRF context. */
+		(void) executeUserFunc(fcinfo, &jspcxt, true);
 
-		(void) executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
-							   jb, !silent, &found);
+		/*
+		 * Don't free jspcxt because items in jspcxt.found can reference
+		 * untoasted copies of jsonb and jsonpath arguments.
+		 */
 
-		funcctx->user_fctx = JsonValueListGetList(&found);
-
+		funcctx->user_fctx = JsonValueListGetList(&jspcxt.found);
 		MemoryContextSwitchTo(oldcontext);
 	}
 
@@ -454,16 +439,16 @@ jsonb_path_query(PG_FUNCTION_ARGS)
 Datum
 jsonb_path_query_array(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
-	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonValueList found = {0};
-	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
-	bool		silent = PG_GETARG_BOOL(3);
+	JsonPathUserFuncContext cxt;
+	Jsonb	   *jb;
 
-	(void) executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
-						   jb, !silent, &found);
+	(void) executeUserFunc(fcinfo, &cxt, false);
 
-	PG_RETURN_JSONB_P(JsonbValueToJsonb(wrapItemsInArray(&found)));
+	jb = JsonbValueToJsonb(wrapItemsInArray(&cxt.found));
+
+	freeUserFuncContext(&cxt);
+
+	PG_RETURN_JSONB_P(jb);
 }
 
 /*
@@ -474,17 +459,20 @@ jsonb_path_query_array(PG_FUNCTION_ARGS)
 Datum
 jsonb_path_query_first(PG_FUNCTION_ARGS)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
-	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	JsonValueList found = {0};
-	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
-	bool		silent = PG_GETARG_BOOL(3);
+	JsonPathUserFuncContext cxt;
+	Jsonb	   *jb;
 
-	(void) executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
-						   jb, !silent, &found);
+	(void) executeUserFunc(fcinfo, &cxt, false);
 
-	if (JsonValueListLength(&found) >= 1)
-		PG_RETURN_JSONB_P(JsonbValueToJsonb(JsonValueListHead(&found)));
+	if (JsonValueListLength(&cxt.found) >= 1)
+		jb = JsonbValueToJsonb(JsonValueListHead(&cxt.found));
+	else
+		jb = NULL;
+
+	freeUserFuncContext(&cxt);
+
+	if (jb)
+		PG_RETURN_JSONB_P(jb);
 	else
 		PG_RETURN_NULL();
 }
@@ -497,19 +485,81 @@ jsonb_path_query_first(PG_FUNCTION_ARGS)
 Datum
 jsonb_path_query_first_text(FunctionCallInfo fcinfo)
 {
-	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
-	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
-	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
-	bool		silent = PG_GETARG_BOOL(3);
-	JsonValueList found = {0};
+	JsonPathUserFuncContext cxt;
+	text	   *txt;
 
-	(void) executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
-						   jb, !silent, &found);
+	(void) executeUserFunc(fcinfo, &cxt, false);
 
-	if (JsonValueListLength(&found) >= 1)
-		PG_RETURN_TEXT_P(JsonbValueUnquoteText(JsonValueListHead(&found)));
+	if (JsonValueListLength(&cxt.found) >= 1)
+		txt = JsonbValueUnquoteText(JsonValueListHead(&cxt.found));
+	else
+		txt = NULL;
+
+	freeUserFuncContext(&cxt);
+
+	if (txt)
+		PG_RETURN_TEXT_P(txt);
 	else
 		PG_RETURN_NULL();
+}
+
+/* Free untoasted copies of jsonb and jsonpath arguments. */
+static void
+freeUserFuncContext(JsonPathUserFuncContext *cxt)
+{
+	FunctionCallInfo fcinfo = cxt->fcinfo;
+
+	PG_FREE_IF_COPY(cxt->jb, 0);
+	PG_FREE_IF_COPY(cxt->jp, 1);
+	if (cxt->vars)
+		PG_FREE_IF_COPY(cxt->vars, 2);
+}
+
+/*
+ * Common code for jsonb_path_*(jsonb, jsonpath [, vars jsonb, silent bool])
+ * user functions.
+ *
+ * 'copy' flag enables copying of first three arguments into the current memory
+ * context.
+ */
+static JsonPathExecResult
+executeUserFunc(FunctionCallInfo fcinfo, JsonPathUserFuncContext *cxt,
+				bool copy)
+{
+	Jsonb	   *jb = copy ? PG_GETARG_JSONB_P_COPY(0) : PG_GETARG_JSONB_P(0);
+	JsonPath   *jp = copy ? PG_GETARG_JSONPATH_P_COPY(1) : PG_GETARG_JSONPATH_P(1);
+	Jsonb	   *vars = NULL;
+	bool		silent = true;
+	JsonPathExecResult res;
+
+	if (PG_NARGS() == 4)
+	{
+		vars = copy ? PG_GETARG_JSONB_P_COPY(2) : PG_GETARG_JSONB_P(2);
+		silent = PG_GETARG_BOOL(3);
+	}
+
+	if (cxt)
+	{
+		cxt->fcinfo = fcinfo;
+		cxt->jb = jb;
+		cxt->jp = jp;
+		cxt->vars = vars;
+		cxt->silent = silent;
+		memset(&cxt->found, 0, sizeof(cxt->found));
+	}
+
+	res = executeJsonPath(jp, vars, getJsonPathVariableFromJsonb, jb,
+						  !silent, cxt ? &cxt->found : NULL);
+
+	if (!cxt && !copy)
+	{
+		PG_FREE_IF_COPY(jb, 0);
+		PG_FREE_IF_COPY(jp, 1);
+		if (vars)
+			PG_FREE_IF_COPY(vars, 2);
+	}
+
+	return res;
 }
 
 /********************Execute functions for JsonPath**************************/
