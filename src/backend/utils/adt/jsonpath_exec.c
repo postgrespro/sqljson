@@ -409,6 +409,8 @@ static inline JsonbValue *JsonInitBinary(JsonbValue *jbv, Json *js);
 static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items, bool isJsonb);
 static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
+static JsonItem *wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf,
+					  bool isJsonb);
 
 static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
 				 bool isJsonb, JsonItem *val);
@@ -945,7 +947,15 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			}
 
 		case jpiKey:
-			if (JsonbType(jb) == jbvObject)
+			if (JsonItemIsObject(jb))
+			{
+				JsonItem	obj;
+
+				jb = wrapJsonObjectOrArray(jb, &obj, cxt->isJsonb);
+				return executeItemOptUnwrapTarget(cxt, jsp, jb, found, unwrap);
+			}
+			else if (JsonItemIsBinary(jb) &&
+					 JsonContainerIsObject(JsonItemBinary(jb).data))
 			{
 				JsonItem	val;
 				int			keylen;
@@ -1015,6 +1025,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				int			innermostArraySize = cxt->innermostArraySize;
 				int			i;
 				int			size = JsonxArraySize(jb, cxt->isJsonb);
+				bool		binary = JsonItemIsBinary(jb);
 				bool		singleton = size < 0;
 				bool		hasNext = jspGetNext(jsp, &elem);
 
@@ -1073,13 +1084,18 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						{
 							jsi = jb;
 						}
-						else
+						else if (binary)
 						{
 							jsi = getJsonArrayElement(jb, (uint32) index,
 													  cxt->isJsonb, &jsibuf);
 
 							if (jsi == NULL)
 								continue;
+						}
+						else
+						{
+							jsi = JsonbValueToJsonItem(&JsonItemArray(jb).elems[index],
+													   &jsibuf);
 						}
 
 						if (!hasNext && !found)
@@ -1143,11 +1159,10 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiAnyKey:
 			if (JsonbType(jb) == jbvObject)
 			{
+				JsonItem	bin;
 				bool		hasNext = jspGetNext(jsp, &elem);
 
-				if (!JsonItemIsBinary(jb))
-					elog(ERROR, "invalid jsonb object type: %d",
-						 JsonItemGetType(jb));
+				jb = wrapJsonObjectOrArray(jb, &bin, cxt->isJsonb);
 
 				return executeAnyItem
 					(cxt, hasNext ? &elem : NULL,
@@ -1212,7 +1227,10 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		case jpiAny:
 			{
+				JsonItem	bin;
 				bool		hasNext = jspGetNext(jsp, &elem);
+
+				jb = wrapJsonObjectOrArray(jb, &bin, cxt->isJsonb);
 
 				/* first try without any intermediate steps */
 				if (jsp->content.anybounds.first == 0)
@@ -1557,10 +1575,41 @@ executeItemUnwrapTargetArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							 JsonItem *jb, JsonValueList *found,
 							 bool unwrapElements)
 {
-	if (!JsonItemIsBinary(jb))
+	if (JsonItemIsArray(jb))
 	{
-		Assert(!JsonItemIsArray(jb));
-		elog(ERROR, "invalid jsonb array value type: %d", JsonItemGetType(jb));
+		JsonPathExecResult res = jperNotFound;
+		JsonbValue *elem = JsonItemArray(jb).elems;
+		JsonbValue *last = elem + JsonItemArray(jb).nElems;
+
+		for (; elem < last; elem++)
+		{
+			if (jsp)
+			{
+				JsonItem	buf;
+
+				res = executeItemOptUnwrapTarget(cxt, jsp,
+												 JsonbValueToJsonItem(elem, &buf),
+												 found, unwrapElements);
+
+				if (jperIsError(res))
+					break;
+				if (res == jperOk && !found)
+					break;
+			}
+			else
+			{
+				if (found)
+				{
+					JsonItem   *jsi = palloc(sizeof(*jsi));
+
+					JsonValueListAppend(found, JsonbValueToJsonItem(elem, jsi));
+				}
+				else
+					return jperOk;
+			}
+		}
+
+		return res;
 	}
 
 	return executeAnyItem
@@ -1639,8 +1688,6 @@ executeItemOptUnwrapResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		JsonValueListInitIterator(&seq, &it);
 		while ((item = JsonValueListNext(&seq, &it)))
 		{
-			Assert(!JsonItemIsArray(item));
-
 			if (JsonbType(item) == jbvArray)
 				executeItemUnwrapTargetArray(cxt, NULL, item, found, false);
 			else
@@ -2266,6 +2313,7 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonPathExecResult res = jperNotFound;
 	JsonPathItem next;
 	JsonbContainer *jbc;
+	JsonItem	bin;
 	JsonbValue	key;
 	JsonbValue	val;
 	JsonbValue	idval;
@@ -2278,12 +2326,13 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	int64		id;
 	bool		hasNext;
 
-	if (JsonbType(jb) != jbvObject || !JsonItemIsBinary(jb))
+	if (JsonbType(jb) != jbvObject)
 		RETURN_ERROR(ereport(ERROR,
 							 (errcode(ERRCODE_JSON_OBJECT_NOT_FOUND),
 							  errmsg("jsonpath item method .%s() can only be applied to an object",
 									 jspOperationName(jsp->type)))));
 
+	jb = wrapJsonObjectOrArray(jb, &bin, cxt->isJsonb);
 	jbc = JsonItemBinary(jb).data;
 
 	if (!JsonContainerSize(jbc))
@@ -2529,7 +2578,8 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 static int
 JsonxArraySize(JsonItem *jb, bool isJsonb)
 {
-	Assert(!JsonItemIsArray(jb));
+	if (JsonItemIsArray(jb))
+		return JsonItemArray(jb).nElems;
 
 	if (JsonItemIsBinary(jb))
 	{
@@ -2898,6 +2948,41 @@ JsonInitBinary(JsonbValue *jbv, Json *js)
 }
 
 /*
+ * Transform a JsonbValue into a binary JsonbValue by encoding it to a
+ * binary jsonb container.
+ */
+static JsonItem *
+JsonxWrapInBinary(JsonItem *jsi, JsonItem *out, bool isJsonb)
+{
+	if (!out)
+		out = palloc(sizeof(*out));
+
+	if (isJsonb)
+	{
+		Jsonb	   *jb = JsonItemToJsonb(jsi);
+
+		JsonbInitBinary(JsonItemJbv(out), jb);
+	}
+	else
+	{
+		Json	   *js = JsonItemToJson(jsi);
+
+		JsonInitBinary(JsonItemJbv(out), js);
+	}
+
+	return out;
+}
+
+static JsonItem *
+wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf, bool isJsonb)
+{
+	if (!JsonItemIsObject(js) && !JsonItemIsArray(js))
+		return js;
+
+	return JsonxWrapInBinary(js, buf, isJsonb);
+}
+
+/*
  * Returns jbv* type of of JsonbValue. Note, it never returns jbvBinary as is.
  */
 static int
@@ -3096,7 +3181,6 @@ wrapItemsInArray(const JsonValueList *items, bool isJsonb)
 	JsonbParseState *ps = NULL;
 	JsonValueListIterator it;
 	JsonItem   *jsi;
-	JsonbValue	jbv;
 	JsonBuilderFunc push = isJsonb ? pushJsonbValue : pushJsonValue;
 
 	push(&ps, WJB_BEGIN_ARRAY, NULL);
@@ -3104,7 +3188,13 @@ wrapItemsInArray(const JsonValueList *items, bool isJsonb)
 	JsonValueListInitIterator(items, &it);
 
 	while ((jsi = JsonValueListNext(items, &it)))
+	{
+		JsonItem	bin;
+		JsonbValue	jbv;
+
+		jsi = wrapJsonObjectOrArray(jsi, &bin, isJsonb);
 		push(&ps, WJB_ELEM, JsonItemToJsonbValue(jsi, &jbv));
+	}
 
 	return push(&ps, WJB_END_ARRAY, NULL);
 }
