@@ -242,14 +242,6 @@ enum jbvType
 	jbvObject,
 	/* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
 	jbvBinary,
-
-	/*
-	 * Virtual types.
-	 *
-	 * These types are used only for in-memory JSON processing and serialized
-	 * into JSON strings when outputted to json/jsonb.
-	 */
-	jbvDatetime = 0x20,
 };
 
 /*
@@ -290,20 +282,11 @@ struct JsonbValue
 			int			len;
 			JsonbContainer *data;
 		}			binary;		/* Array or object, in on-disk format */
-
-		struct
-		{
-			Datum		value;
-			Oid			typid;
-			int32		typmod;
-			int			tz;
-		}			datetime;
 	}			val;
 };
 
 #define IsAJsonbScalar(jsonbval)	(((jsonbval)->type >= jbvNull && \
-									  (jsonbval)->type <= jbvBool) || \
-									  (jsonbval)->type == jbvDatetime)
+									  (jsonbval)->type <= jbvBool))
 
 /*
  * Key/value pair within an Object.

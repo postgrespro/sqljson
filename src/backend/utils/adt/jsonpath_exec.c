@@ -79,11 +79,43 @@
 #include "utils/varlena.h"
 
 
+typedef enum JsonItemType
+{
+	/* Scalar types */
+	jsiNull = jbvNull,
+	jsiString = jbvString,
+	jsiNumeric = jbvNumeric,
+	jsiBool = jbvBool,
+	/* Composite types */
+	jsiArray = jbvArray,
+	jsiObject = jbvObject,
+	/* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
+	jsiBinary = jbvBinary,
+
+	/*
+	 * Virtual types.
+	 *
+	 * These types are used only for in-memory JSON processing and serialized
+	 * into JSON strings when outputted to json/jsonb.
+	 */
+	jsiDatetime = 0x20
+} JsonItemType;
+
 /* SQL/JSON item */
 typedef union JsonItem
 {
-	JsonbValue jbv;
-	enum jbvType type;
+	int			type;	/* XXX JsonItemType */
+
+	JsonbValue	jbv;
+
+	struct
+	{
+		enum jbvType type;
+		Datum		value;
+		Oid			typid;
+		int32		typmod;
+		int			tz;
+	}			datetime;
 } JsonItem;
 
 #define JsonbValueToJsonItem(jbv) ((JsonItem *) (jbv))
@@ -318,8 +350,7 @@ static int	JsonbType(JsonItem *jb);
 static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items);
-static text *JsonbValueUnquoteText(JsonbValue *jbv);
-static text *JsonItemUnquoteText(JsonItem *jbv);
+static text *JsonItemUnquoteText(JsonItem *jsi);
 
 static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 				   bool strict, Datum *value, Oid *typid,
@@ -1320,11 +1351,11 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				jb = hasNext ? &jbvbuf : palloc(sizeof(*jb));
 
-				jb->jbv.type = jbvDatetime;
-				jb->jbv.val.datetime.value = value;
-				jb->jbv.val.datetime.typid = typid;
-				jb->jbv.val.datetime.typmod = typmod;
-				jb->jbv.val.datetime.tz = tz;
+				jb->type = jsiDatetime;
+				jb->datetime.value = value;
+				jb->datetime.typid = typid;
+				jb->datetime.typmod = typmod;
+				jb->datetime.tz = tz;
 
 				res = executeNextItem(cxt, jsp, &elem, jb, found, hasNext);
 			}
@@ -2322,7 +2353,7 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 		return jpbUnknown;
 	}
 
-	switch (jb1->type)
+	switch (jsi1->type)
 	{
 		case jbvNull:
 			cmp = 0;
@@ -2345,16 +2376,16 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 							 jb2->val.string.val, jb2->val.string.len,
 							 DEFAULT_COLLATION_OID);
 			break;
-		case jbvDatetime:
+		case jsiDatetime:
 			{
 				bool		error = false;
 
-				cmp = compareDatetime(jb1->val.datetime.value,
-									  jb1->val.datetime.typid,
-									  jb1->val.datetime.tz,
-									  jb2->val.datetime.value,
-									  jb2->val.datetime.typid,
-									  jb2->val.datetime.tz,
+				cmp = compareDatetime(jsi1->datetime.value,
+									  jsi1->datetime.typid,
+									  jsi1->datetime.tz,
+									  jsi2->datetime.value,
+									  jsi2->datetime.typid,
+									  jsi2->datetime.tz,
 									  &error);
 
 				if (error)
@@ -2421,7 +2452,20 @@ copyJsonItem(JsonItem *src)
 static JsonbValue *
 JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv)
 {
-	return &jsi->jbv;
+	switch (jsi->type)
+	{
+		case jsiDatetime:
+			jbv->type = jbvString;
+			jbv->val.string.val = JsonEncodeDateTime(NULL,
+													 jsi->datetime.value,
+													 jsi->datetime.typid,
+													 &jsi->datetime.tz);
+			jbv->val.string.len = strlen(jbv->val.string.val);
+			return jbv;
+
+		default:
+			return &jsi->jbv;
+	}
 }
 
 static Jsonb *
@@ -2435,7 +2479,30 @@ JsonItemToJsonb(JsonItem *jsi)
 static const char *
 JsonItemTypeName(JsonItem *jsi)
 {
-	return JsonbTypeName(&jsi->jbv);
+	switch (jsi->type)
+	{
+		case jsiDatetime:
+			switch (jsi->datetime.typid)
+			{
+				case DATEOID:
+					return "date";
+				case TIMEOID:
+					return "time without time zone";
+				case TIMETZOID:
+					return "time with time zone";
+				case TIMESTAMPOID:
+					return "timestamp without time zone";
+				case TIMESTAMPTZOID:
+					return "timestamp with time zone";
+				default:
+					elog(ERROR, "unrecognized jsonb value datetime type: %d",
+						 jsi->datetime.typid);
+					return "unknown";
+			}
+
+		default:
+			return JsonbTypeName(&jsi->jbv);
+	}
 }
 
 /*
@@ -2635,13 +2702,6 @@ JsonbValueUnquote(JsonbValue *jbv, int *len)
 			*len = 4;
 			return "null";
 
-		case jbvDatetime:
-			*len = -1;
-			return JsonEncodeDateTime(NULL,
-									  jbv->val.datetime.value,
-									  jbv->val.datetime.typid,
-									  &jbv->val.datetime.tz);
-
 		case jbvBinary:
 			{
 				JsonbValue	jbvbuf;
@@ -2660,22 +2720,33 @@ JsonbValueUnquote(JsonbValue *jbv, int *len)
 	}
 }
 
-static text *
-JsonbValueUnquoteText(JsonbValue *jbv)
+static char *
+JsonItemUnquote(JsonItem *jsi, int *len)
 {
-	int			len;
-	char	   *str = JsonbValueUnquote(jbv, &len);
+	switch (jsi->type)
+	{
+		case jsiDatetime:
+			*len = -1;
+			return JsonEncodeDateTime(NULL,
+									  jsi->datetime.value,
+									  jsi->datetime.typid,
+									  &jsi->datetime.tz);
 
-	if (len < 0)
-		return cstring_to_text(str);
-	else
-		return cstring_to_text_with_len(str, len);
+		default:
+			return JsonbValueUnquote(&jsi->jbv, len);
+	}
 }
 
 static text *
 JsonItemUnquoteText(JsonItem *jsi)
 {
-	return JsonbValueUnquoteText(&jsi->jbv);
+	int			len;
+	char	   *str = JsonItemUnquote(jsi, &len);
+
+	if (len < 0)
+		return cstring_to_text(str);
+	else
+		return cstring_to_text_with_len(str, len);
 }
 
 /* Get scalar of given type or NULL on type mismatch */

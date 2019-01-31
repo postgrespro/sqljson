@@ -244,7 +244,6 @@ compareJsonbContainers(JsonbContainer *a, JsonbContainer *b)
 							res = (va.val.object.nPairs > vb.val.object.nPairs) ? 1 : -1;
 						break;
 					case jbvBinary:
-					case jbvDatetime:
 						elog(ERROR, "unexpected jbvBinary value");
 				}
 			}
@@ -1751,22 +1750,6 @@ convertJsonbScalar(StringInfo buffer, JEntry *jentry, JsonbValue *scalarVal)
 		case jbvBool:
 			*jentry = (scalarVal->val.boolean) ?
 				JENTRY_ISBOOL_TRUE : JENTRY_ISBOOL_FALSE;
-			break;
-
-		case jbvDatetime:
-			{
-				char		buf[MAXDATELEN + 1];
-				size_t		len;
-
-				JsonEncodeDateTime(buf,
-								   scalarVal->val.datetime.value,
-								   scalarVal->val.datetime.typid,
-								   &scalarVal->val.datetime.tz);
-				len = strlen(buf);
-				appendToBuffer(buffer, buf, len);
-
-				*jentry = JENTRY_ISSTRING | len;
-			}
 			break;
 
 		default:

@@ -206,24 +206,6 @@ JsonbTypeName(JsonbValue *jbv)
 			return "boolean";
 		case jbvNull:
 			return "null";
-		case jbvDatetime:
-			switch (jbv->val.datetime.typid)
-			{
-				case DATEOID:
-					return "date";
-				case TIMEOID:
-					return "time without time zone";
-				case TIMETZOID:
-					return "time with time zone";
-				case TIMESTAMPOID:
-					return "timestamp without time zone";
-				case TIMESTAMPTZOID:
-					return "timestamp with time zone";
-				default:
-					elog(ERROR, "unrecognized jsonb value datetime type: %d",
-						 jbv->val.datetime.typid);
-			}
-			return "unknown";
 		default:
 			elog(ERROR, "unrecognized jsonb value type: %d", jbv->type);
 			return "unknown";
