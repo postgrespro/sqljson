@@ -3376,7 +3376,7 @@ JsonUnquote(Json *jb)
 			return pnstrdup(v.val.string.val, v.val.string.len);
 	}
 
-	return pnstrdup(jb->root.data, jb->root.len);
+	return JsonToCString(NULL, &jb->root, 0);
 }
 
 /*

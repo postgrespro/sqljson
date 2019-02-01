@@ -78,11 +78,6 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-#ifdef JSONPATH_JSON_C
-#define JSONXOID JSONOID
-#else
-#define JSONXOID JSONBOID
-#endif
 
 typedef enum JsonItemType
 {
@@ -125,12 +120,35 @@ typedef union JsonItem
 
 #define JsonbValueToJsonItem(jbv) ((JsonItem *) (jbv))
 
+typedef union Jsonx
+{
+	Jsonb		jb;
+	Json		js;
+} Jsonx;
+
+#define DatumGetJsonxP(datum, isJsonb) \
+	((isJsonb) ? (Jsonx *) DatumGetJsonbP(datum) : (Jsonx *) DatumGetJsonP(datum))
+
+typedef JsonbContainer JsonxContainer;
+
+typedef struct JsonxIterator
+{
+	bool		isJsonb;
+	union
+	{
+		JsonbIterator *jb;
+		JsonIterator *js;
+	}			it;
+} JsonxIterator;
+
+#define JsonbValueToJsonItem(jbv) ((JsonItem *) (jbv))
+
 /*
  * Represents "base object" and it's "id" for .keyvalue() evaluation.
  */
 typedef struct JsonBaseObjectInfo
 {
-	JsonbContainer *jbc;
+	JsonxContainer *jbc;
 	int			id;
 } JsonBaseObjectInfo;
 
@@ -147,7 +165,8 @@ typedef struct JsonItemStackEntry
 
 typedef JsonItemStackEntry *JsonItemStack;
 
-typedef int (*JsonPathVarCallback) (void *vars, char *varName, int varNameLen,
+typedef int (*JsonPathVarCallback) (void *vars, bool isJsonb,
+									char *varName, int varNameLen,
 									JsonItem *val, JsonbValue *baseObject);
 
 /*
@@ -222,9 +241,10 @@ typedef struct JsonValueListIterator
 typedef struct JsonPathUserFuncContext
 {
 	FunctionCallInfo fcinfo;
-	Jsonb	   *jb;				/* first jsonb function argument */
+	void	   *js;				/* first jsonb function argument */
+	Json	   *json;
 	JsonPath   *jp;				/* second jsonpath function argument */
-	Jsonb	   *vars;			/* third vars function argument */
+	void	   *vars;			/* third vars function argument */
 	JsonValueList found;		/* resulting item list */
 	bool		silent;			/* error suppression flag */
 } JsonPathUserFuncContext;
@@ -251,13 +271,18 @@ typedef JsonPathBool (*JsonPathPredicateCallback) (JsonPathItem *jsp,
 												   void *param);
 typedef Numeric (*BinaryArithmFunc) (Numeric num1, Numeric num2, bool *error);
 
+typedef JsonbValue *(*JsonBuilderFunc) (JsonbParseState **,
+										JsonbIteratorToken,
+										JsonbValue *);
+
 static void freeUserFuncContext(JsonPathUserFuncContext *cxt);
 static JsonPathExecResult executeUserFunc(FunctionCallInfo fcinfo,
-				JsonPathUserFuncContext *cxt, bool copy);
+				JsonPathUserFuncContext *cxt, bool isJsonb, bool copy);
 
 static JsonPathExecResult executeJsonPath(JsonPath *path, void *vars,
 										  JsonPathVarCallback getVar,
-										  Jsonb *json, bool throwErrors,
+										  Jsonx *json, bool isJsonb,
+										  bool throwErrors,
 										  JsonValueList *result);
 static JsonPathExecResult executeItem(JsonPathExecContext *cxt,
 									  JsonPathItem *jsp, JsonItem *jb,
@@ -325,11 +350,11 @@ static JsonPathExecResult appendBoolResult(JsonPathExecContext *cxt,
 static void getJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item,
 							JsonItem *value);
 static void getJsonPathVariable(JsonPathExecContext *cxt,
-								JsonPathItem *variable, JsonItem *value);
-static int getJsonPathVariableFromJsonb(void *varsJsonb, char *varName,
-										int varNameLen, JsonItem *val,
-										JsonbValue *baseObject);
-static int	JsonbArraySize(JsonItem *jb);
+					JsonPathItem *variable, JsonItem *value);
+static int getJsonPathVariableFromJsonx(void *varsJsonb, bool isJsonb,
+										char *varName, int varNameLen,
+										JsonItem *val, JsonbValue *baseObject);
+static int	JsonxArraySize(JsonItem *jb, bool isJsonb);
 static JsonPathBool executeComparison(JsonPathItem *cmp, JsonItem *lv,
 									  JsonItem *rv, void *p);
 static JsonPathBool compareItems(int32 op, JsonItem *jb1, JsonItem *jb2);
@@ -354,13 +379,24 @@ static JsonItem *JsonValueListNext(const JsonValueList *jvl,
 								   JsonValueListIterator *it);
 static int	JsonbType(JsonItem *jb);
 static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
+static inline JsonbValue *JsonInitBinary(JsonbValue *jbv, Json *js);
 static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
-static JsonbValue *wrapItemsInArray(const JsonValueList *items);
-static text *JsonItemUnquoteText(JsonItem *jsi);
+static JsonbValue *wrapItemsInArray(const JsonValueList *items, bool isJsonb);
+static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
 
 static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
 				 bool isJsonb);
-static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index);
+static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb);
+
+static void JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc,
+				  bool isJsonb);
+static JsonbIteratorToken JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv,
+				  bool skipNested);
+static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
+static Json *JsonItemToJson(JsonItem *jsi);
+static Jsonx *JsonbValueToJsonx(JsonbValue *jbv, bool isJsonb);
+static Datum JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb);
+static Datum JsonItemToJsonxDatum(JsonItem *jsi, bool isJsonb);
 
 static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 				   bool strict, Datum *value, Oid *typid,
@@ -375,6 +411,12 @@ static void popJsonItem(JsonItemStack *stack);
 
 /****************** User interface to JsonPath executor ********************/
 
+#define DefineJsonPathFunc(funcname) \
+static Datum jsonx_ ## funcname(FunctionCallInfo fcinfo, bool isJsonb); \
+Datum jsonb_ ## funcname(PG_FUNCTION_ARGS) { return jsonx_ ## funcname(fcinfo, true); } \
+Datum json_  ## funcname(PG_FUNCTION_ARGS) { return jsonx_ ## funcname(fcinfo, false); } \
+static Datum jsonx_ ## funcname(FunctionCallInfo fcinfo, bool isJsonb)
+
 /*
  * jsonb_path_exists
  *		Returns true if jsonpath returns at least one item for the specified
@@ -387,10 +429,9 @@ static void popJsonItem(JsonItemStack *stack);
  *		SQL/JSON.  Regarding jsonb_path_match(), this function doesn't have
  *		an analogy in SQL/JSON, so we define its behavior on our own.
  */
-Datum
-jsonb_path_exists(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_exists)
 {
-	JsonPathExecResult res = executeUserFunc(fcinfo, NULL, false);
+	JsonPathExecResult res = executeUserFunc(fcinfo, NULL, isJsonb, false);
 
 	if (jperIsError(res))
 		PG_RETURN_NULL();
@@ -403,11 +444,10 @@ jsonb_path_exists(PG_FUNCTION_ARGS)
  *		Implementation of operator "jsonb @? jsonpath" (2-argument version of
  *		jsonb_path_exists()).
  */
-Datum
-jsonb_path_exists_opr(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_exists_opr)
 {
 	/* just call the other one -- it can handle both cases */
-	return jsonb_path_exists(fcinfo);
+	return jsonx_path_exists(fcinfo, isJsonb);
 }
 
 /*
@@ -415,12 +455,11 @@ jsonb_path_exists_opr(PG_FUNCTION_ARGS)
  *		Returns jsonpath predicate result item for the specified jsonb value.
  *		See jsonb_path_exists() comment for details regarding error handling.
  */
-Datum
-jsonb_path_match(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_match)
 {
 	JsonPathUserFuncContext cxt;
 
-	(void) executeUserFunc(fcinfo, &cxt, false);
+	(void) executeUserFunc(fcinfo, &cxt, isJsonb, false);
 
 	freeUserFuncContext(&cxt);
 
@@ -448,11 +487,10 @@ jsonb_path_match(PG_FUNCTION_ARGS)
  *		Implementation of operator "jsonb @@ jsonpath" (2-argument version of
  *		jsonb_path_match()).
  */
-Datum
-jsonb_path_match_opr(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_match_opr)
 {
 	/* just call the other one -- it can handle both cases */
-	return jsonb_path_match(fcinfo);
+	return jsonx_path_match(fcinfo, isJsonb);
 }
 
 /*
@@ -460,13 +498,13 @@ jsonb_path_match_opr(PG_FUNCTION_ARGS)
  *		Executes jsonpath for given jsonb document and returns result as
  *		rowset.
  */
-Datum
-jsonb_path_query(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_query)
 {
 	FuncCallContext *funcctx;
 	List	   *found;
 	JsonItem   *v;
 	ListCell   *c;
+	Datum		res;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -477,7 +515,7 @@ jsonb_path_query(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* jsonb and jsonpath arguments are copied into SRF context. */
-		(void) executeUserFunc(fcinfo, &jspcxt, true);
+		(void) executeUserFunc(fcinfo, &jspcxt, isJsonb, true);
 
 		/*
 		 * Don't free jspcxt because items in jspcxt.found can reference
@@ -499,7 +537,11 @@ jsonb_path_query(PG_FUNCTION_ARGS)
 	v = lfirst(c);
 	funcctx->user_fctx = list_delete_first(found);
 
-	SRF_RETURN_NEXT(funcctx, JsonbPGetDatum(JsonItemToJsonb(v)));
+	res = isJsonb ?
+		JsonbPGetDatum(JsonItemToJsonb(v)) :
+		JsonPGetDatum(JsonItemToJson(v));
+
+	SRF_RETURN_NEXT(funcctx, res);
 }
 
 /*
@@ -507,19 +549,18 @@ jsonb_path_query(PG_FUNCTION_ARGS)
  *		Executes jsonpath for given jsonb document and returns result as
  *		jsonb array.
  */
-Datum
-jsonb_path_query_array(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_query_array)
 {
 	JsonPathUserFuncContext cxt;
-	Jsonb	   *jb;
+	Datum		res;
 
-	(void) executeUserFunc(fcinfo, &cxt, false);
+	(void) executeUserFunc(fcinfo, &cxt, isJsonb, false);
 
-	jb = JsonbValueToJsonb(wrapItemsInArray(&cxt.found));
+	res = JsonbValueToJsonxDatum(wrapItemsInArray(&cxt.found, isJsonb), isJsonb);
 
 	freeUserFuncContext(&cxt);
 
-	PG_RETURN_JSONB_P(jb);
+	PG_RETURN_DATUM(res);
 }
 
 /*
@@ -527,23 +568,22 @@ jsonb_path_query_array(PG_FUNCTION_ARGS)
  *		Executes jsonpath for given jsonb document and returns first result
  *		item.  If there are no items, NULL returned.
  */
-Datum
-jsonb_path_query_first(PG_FUNCTION_ARGS)
+DefineJsonPathFunc(path_query_first)
 {
 	JsonPathUserFuncContext cxt;
-	Jsonb	   *jb;
+	Datum		res;
 
-	(void) executeUserFunc(fcinfo, &cxt, false);
+	(void) executeUserFunc(fcinfo, &cxt, isJsonb, false);
 
 	if (JsonValueListLength(&cxt.found) >= 1)
-		jb = JsonItemToJsonb(JsonValueListHead(&cxt.found));
+		res = JsonItemToJsonxDatum(JsonValueListHead(&cxt.found), isJsonb);
 	else
-		jb = NULL;
+		res = (Datum) 0;
 
 	freeUserFuncContext(&cxt);
 
-	if (jb)
-		PG_RETURN_JSONB_P(jb);
+	if (res)
+		PG_RETURN_DATUM(res);
 	else
 		PG_RETURN_NULL();
 }
@@ -553,16 +593,15 @@ jsonb_path_query_first(PG_FUNCTION_ARGS)
  *		Executes jsonpath for given jsonb document and returns first result
  *		item as text.  If there are no items, NULL returned.
  */
-Datum
-jsonb_path_query_first_text(FunctionCallInfo fcinfo)
+DefineJsonPathFunc(path_query_first_text)
 {
 	JsonPathUserFuncContext cxt;
 	text	   *txt;
 
-	(void) executeUserFunc(fcinfo, &cxt, false);
+	(void) executeUserFunc(fcinfo, &cxt, isJsonb, false);
 
 	if (JsonValueListLength(&cxt.found) >= 1)
-		txt = JsonItemUnquoteText(JsonValueListHead(&cxt.found));
+		txt = JsonItemUnquoteText(JsonValueListHead(&cxt.found), isJsonb);
 	else
 		txt = NULL;
 
@@ -580,10 +619,12 @@ freeUserFuncContext(JsonPathUserFuncContext *cxt)
 {
 	FunctionCallInfo fcinfo = cxt->fcinfo;
 
-	PG_FREE_IF_COPY(cxt->jb, 0);
+	PG_FREE_IF_COPY(cxt->js, 0);
 	PG_FREE_IF_COPY(cxt->jp, 1);
 	if (cxt->vars)
 		PG_FREE_IF_COPY(cxt->vars, 2);
+	if (cxt->json)
+		pfree(cxt->json);
 }
 
 /*
@@ -595,39 +636,60 @@ freeUserFuncContext(JsonPathUserFuncContext *cxt)
  */
 static JsonPathExecResult
 executeUserFunc(FunctionCallInfo fcinfo, JsonPathUserFuncContext *cxt,
-				bool copy)
+				bool isJsonb, bool copy)
 {
-	Jsonb	   *jb = copy ? PG_GETARG_JSONB_P_COPY(0) : PG_GETARG_JSONB_P(0);
+	Datum		js_toasted = PG_GETARG_DATUM(0);
+	struct varlena *js_detoasted = copy ?
+		PG_DETOAST_DATUM(js_toasted) :
+		PG_DETOAST_DATUM_COPY(js_toasted);
+	Jsonx	   *js = DatumGetJsonxP(js_detoasted, isJsonb);
 	JsonPath   *jp = copy ? PG_GETARG_JSONPATH_P_COPY(1) : PG_GETARG_JSONPATH_P(1);
-	Jsonb	   *vars = NULL;
+	struct varlena *vars_detoasted = NULL;
+	Jsonx	   *vars = NULL;
 	bool		silent = true;
 	JsonPathExecResult res;
 
 	if (PG_NARGS() == 4)
 	{
-		vars = copy ? PG_GETARG_JSONB_P_COPY(2) : PG_GETARG_JSONB_P(2);
+		Datum		vars_toasted = PG_GETARG_DATUM(2);
+
+		vars_detoasted = copy ?
+			PG_DETOAST_DATUM(vars_toasted) :
+			PG_DETOAST_DATUM_COPY(vars_toasted);
+
+		vars = DatumGetJsonxP(vars_detoasted, isJsonb);
+
 		silent = PG_GETARG_BOOL(3);
 	}
 
 	if (cxt)
 	{
 		cxt->fcinfo = fcinfo;
-		cxt->jb = jb;
+		cxt->js = js_detoasted;
 		cxt->jp = jp;
-		cxt->vars = vars;
+		cxt->vars = vars_detoasted;
+		cxt->json = isJsonb ? NULL : &js->js;
 		cxt->silent = silent;
 		memset(&cxt->found, 0, sizeof(cxt->found));
 	}
 
-	res = executeJsonPath(jp, vars, getJsonPathVariableFromJsonb, jb,
-						  !silent, cxt ? &cxt->found : NULL);
+	res = executeJsonPath(jp, vars, getJsonPathVariableFromJsonx,
+						  js, isJsonb, !silent, cxt ? &cxt->found : NULL);
 
 	if (!cxt && !copy)
 	{
-		PG_FREE_IF_COPY(jb, 0);
+		PG_FREE_IF_COPY(js_detoasted, 0);
 		PG_FREE_IF_COPY(jp, 1);
-		if (vars)
-			PG_FREE_IF_COPY(vars, 2);
+
+		if (vars_detoasted)
+			PG_FREE_IF_COPY(vars_detoasted, 2);
+
+		if (!isJsonb)
+		{
+			pfree(js);
+			if (vars)
+				pfree(vars);
+		}
 	}
 
 	return res;
@@ -656,7 +718,8 @@ executeUserFunc(FunctionCallInfo fcinfo, JsonPathUserFuncContext *cxt,
  */
 static JsonPathExecResult
 executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
-				Jsonb *json, bool throwErrors, JsonValueList *result)
+				Jsonx *json, bool isJsonb, bool throwErrors,
+				JsonValueList *result)
 {
 	JsonPathExecContext cxt;
 	JsonPathExecResult res;
@@ -666,8 +729,16 @@ executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
 
 	jspInit(&jsp, path);
 
-	if (!JsonbExtractScalar(&json->root, &jsi.jbv))
-		JsonbInitBinary(&jsi.jbv, json);
+	if (isJsonb)
+	{
+		if (!JsonbExtractScalar(&json->jb.root, &jsi.jbv))
+			JsonbInitBinary(&jsi.jbv, &json->jb);
+	}
+	else
+	{
+		if (!JsonExtractScalar(&json->js.root, &jsi.jbv))
+			JsonInitBinary(&jsi.jbv, &json->js);
+	}
 
 	cxt.vars = vars;
 	cxt.getVar = getVar;
@@ -678,10 +749,10 @@ executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
 	cxt.baseObject.jbc = NULL;
 	cxt.baseObject.id = 0;
 	/* 1 + number of base objects in vars */
-	cxt.lastGeneratedObjectId = 1 + getVar(vars, NULL, 0, NULL, NULL);
+	cxt.lastGeneratedObjectId = 1 + getVar(vars, isJsonb, NULL, 0, NULL, NULL);
 	cxt.innermostArraySize = -1;
 	cxt.throwErrors = throwErrors;
-	cxt.isJsonb = true;
+	cxt.isJsonb = isJsonb;
 
 	pushJsonItem(&cxt.stack, &root, cxt.root);
 
@@ -830,7 +901,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			{
 				int			innermostArraySize = cxt->innermostArraySize;
 				int			i;
-				int			size = JsonbArraySize(jb);
+				int			size = JsonxArraySize(jb, cxt->isJsonb);
 				bool		singleton = size < 0;
 				bool		hasNext = jspGetNext(jsp, &elem);
 
@@ -892,7 +963,8 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						}
 						else
 						{
-							jsi = getJsonArrayElement(jb, (uint32) index);
+							jsi = getJsonArrayElement(jb, (uint32) index,
+													  cxt->isJsonb);
 
 							if (jsi == NULL)
 								continue;
@@ -1098,7 +1170,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		case jpiSize:
 			{
-				int			size = JsonbArraySize(jb);
+				int			size = JsonxArraySize(jb, cxt->isJsonb);
 
 				if (size < 0)
 				{
@@ -1658,7 +1730,7 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 			   bool ignoreStructuralErrors, bool unwrapNext)
 {
 	JsonPathExecResult res = jperNotFound;
-	JsonbIterator *it;
+	JsonxIterator it;
 	int32		r;
 	JsonItem	v;
 
@@ -1667,16 +1739,17 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 	if (level > last)
 		return res;
 
-	it = JsonbIteratorInit(jbc);
+
+	JsonxIteratorInit(&it, jbc, cxt->isJsonb);
 
 	/*
 	 * Recursively iterate over jsonb objects/arrays
 	 */
-	while ((r = JsonbIteratorNext(&it, &v.jbv, true)) != WJB_DONE)
+	while ((r = JsonxIteratorNext(&it, &v.jbv, true)) != WJB_DONE)
 	{
 		if (r == WJB_KEY)
 		{
-			r = JsonbIteratorNext(&it, &v.jbv, true);
+			r = JsonxIteratorNext(&it, &v.jbv, true);
 			Assert(r == WJB_VALUE);
 		}
 
@@ -2099,8 +2172,9 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonbValue	keystr;
 	JsonbValue	valstr;
 	JsonbValue	idstr;
-	JsonbIterator *it;
+	JsonxIterator it;
 	JsonbIteratorToken tok;
+	JsonBuilderFunc push;
 	int64		id;
 	bool		hasNext;
 
@@ -2130,28 +2204,29 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	idstr.val.string.len = 2;
 
 	/* construct object id from its base object and offset inside that */
-	id = jb->type != jbvBinary ? 0 :
-#ifdef JSONPATH_JSON_C
-		(int64) ((char *) ((JsonContainer *) jbc)->data -
-						   (char *) cxt->baseObject.jbc->data);
-#else
-		(int64) ((char *) jbc - (char *) cxt->baseObject.jbc);
-#endif
+	id = cxt->isJsonb ?
+		(int64) ((char *)(JsonContainer *) jbc -
+				 (char *)(JsonContainer *) cxt->baseObject.jbc) :
+		(int64) (((JsonContainer *) jbc)->data -
+				 ((JsonContainer *) cxt->baseObject.jbc)->data);
+
 	id += (int64) cxt->baseObject.id * INT64CONST(10000000000);
 
 	idval.type = jbvNumeric;
 	idval.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric,
 															Int64GetDatum(id)));
 
-	it = JsonbIteratorInit(jbc);
+	push = cxt->isJsonb ? pushJsonbValue : pushJsonValue;
 
-	while ((tok = JsonbIteratorNext(&it, &key, true)) != WJB_DONE)
+	JsonxIteratorInit(&it, jbc, cxt->isJsonb);
+
+	while ((tok = JsonxIteratorNext(&it, &key, true)) != WJB_DONE)
 	{
 		JsonBaseObjectInfo baseObject;
 		JsonItem	obj;
 		JsonbParseState *ps;
 		JsonbValue *keyval;
-		Jsonb	   *jsonb;
+		Jsonx	   *jsonx;
 
 		if (tok != WJB_KEY)
 			continue;
@@ -2161,26 +2236,29 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		if (!hasNext && !found)
 			break;
 
-		tok = JsonbIteratorNext(&it, &val, true);
+		tok = JsonxIteratorNext(&it, &val, true);
 		Assert(tok == WJB_VALUE);
 
 		ps = NULL;
-		pushJsonbValue(&ps, WJB_BEGIN_OBJECT, NULL);
+		push(&ps, WJB_BEGIN_OBJECT, NULL);
 
 		pushJsonbValue(&ps, WJB_KEY, &keystr);
 		pushJsonbValue(&ps, WJB_VALUE, &key);
 
 		pushJsonbValue(&ps, WJB_KEY, &valstr);
-		pushJsonbValue(&ps, WJB_VALUE, &val);
+		push(&ps, WJB_VALUE, &val);
 
 		pushJsonbValue(&ps, WJB_KEY, &idstr);
 		pushJsonbValue(&ps, WJB_VALUE, &idval);
 
 		keyval = pushJsonbValue(&ps, WJB_END_OBJECT, NULL);
 
-		jsonb = JsonbValueToJsonb(keyval);
+		jsonx = JsonbValueToJsonx(keyval, cxt->isJsonb);
 
-		JsonbInitBinary(&obj.jbv, jsonb);
+		if (cxt->isJsonb)
+			JsonbInitBinary(&obj.jbv, &jsonx->jb);
+		else
+			JsonInitBinary(&obj.jbv, &jsonx->js);
 
 		baseObject = setBaseObject(cxt, &obj, cxt->lastGeneratedObjectId++);
 
@@ -2276,8 +2354,8 @@ getJsonPathVariable(JsonPathExecContext *cxt, JsonPathItem *variable,
 	varName = jspGetString(variable, &varNameLength);
 
 	if (!cxt->vars ||
-		(baseObjectId = cxt->getVar(cxt->vars, varName, varNameLength, value,
-									&baseObject.jbv)) < 0)
+		(baseObjectId = cxt->getVar(cxt->vars, cxt->isJsonb, varName,
+									varNameLength, value, &baseObject.jbv)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("could not find jsonpath variable \"%s\"",
@@ -2288,39 +2366,61 @@ getJsonPathVariable(JsonPathExecContext *cxt, JsonPathItem *variable,
 }
 
 static int
-getJsonPathVariableFromJsonb(void *varsJsonb, char *varName, int varNameLength,
+getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
+							 char *varName, int varNameLength,
 							 JsonItem *value, JsonbValue *baseObject)
 {
-	Jsonb	   *vars = varsJsonb;
-	JsonbValue	tmp;
-	JsonbValue *v;
+	Jsonx	   *vars = varsJsonx;
+	JsonbValue *val;
+	JsonbValue	key;
 
 	if (!varName)
 	{
-		if (vars && !JsonContainerIsObject(&vars->root))
-		{
+		if (vars &&
+			!(isJsonb ?
+			  JsonContainerIsObject(&vars->jb.root) :
+			  JsonContainerIsObject(&vars->js.root)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("\"vars\" argument is not an object"),
 					 errdetail("Jsonpath parameters should be encoded as key-value pairs of \"vars\" object.")));
-		}
 
 		return vars ? 1 : 0;	/* count of base objects */
 	}
 
-	tmp.type = jbvString;
-	tmp.val.string.val = varName;
-	tmp.val.string.len = varNameLength;
-
-	v = findJsonbValueFromContainer(&vars->root, JB_FOBJECT, &tmp);
-
-	if (!v)
+	if (!vars)
 		return -1;
 
-	value->jbv = *v;
-	pfree(v);
+	key.type = jbvString;
+	key.val.string.val = varName;
+	key.val.string.len = varNameLength;
 
-	JsonbInitBinary(baseObject, vars);
+	if (isJsonb)
+	{
+		Jsonb	   *jb = &vars->jb;
+
+		val = findJsonbValueFromContainer(&jb->root, JB_FOBJECT, &key);
+
+		if (!val)
+			return -1;
+
+		JsonbInitBinary(baseObject, jb);
+	}
+	else
+	{
+		Json	   *js = &vars->js;
+
+		val = findJsonValueFromContainer(&js->root, JB_FOBJECT, &key);
+
+		if (!val)
+			return -1;
+
+		JsonInitBinary(baseObject, js);
+	}
+
+	value->jbv = *val;
+	pfree(val);
+
 	return 1;
 }
 
@@ -2330,16 +2430,26 @@ getJsonPathVariableFromJsonb(void *varsJsonb, char *varName, int varNameLength,
  * Returns the size of an array item, or -1 if item is not an array.
  */
 static int
-JsonbArraySize(JsonItem *jb)
+JsonxArraySize(JsonItem *jb, bool isJsonb)
 {
 	Assert(jb->type != jbvArray);
 
 	if (jb->type == jbvBinary)
 	{
-		JsonbContainer *jbc = (void *) jb->jbv.val.binary.data;
+		if (isJsonb)
+		{
+			JsonbContainer *jbc = jb->jbv.val.binary.data;
 
-		if (JsonContainerIsArray(jbc) && !JsonContainerIsScalar(jbc))
-			return JsonContainerSize(jbc);
+			if (JsonContainerIsArray(jbc) && !JsonContainerIsScalar(jbc))
+				return JsonContainerSize(jbc);
+		}
+		else
+		{
+			JsonContainer *jc = (JsonContainer *) jb->jbv.val.binary.data;
+
+			if (JsonContainerIsArray(jc) && !JsonContainerIsScalar(jc))
+				return JsonTextContainerSize(jc);
+		}
 	}
 
 	return -1;
@@ -2662,7 +2772,6 @@ JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 	return result;
 }
 
-#ifndef JSONPATH_JSON_C
 /*
  * Initialize a binary JsonbValue with the given jsonb container.
  */
@@ -2675,7 +2784,19 @@ JsonbInitBinary(JsonbValue *jbv, Jsonb *jb)
 
 	return jbv;
 }
-#endif
+
+/*
+ * Initialize a binary JsonbValue with the given json container.
+ */
+static inline JsonbValue *
+JsonInitBinary(JsonbValue *jbv, Json *js)
+{
+	jbv->type = jbvBinary;
+	jbv->val.binary.data = (void *) &js->root;
+	jbv->val.binary.len = js->root.len;
+
+	return jbv;
+}
 
 /*
  * Returns jbv* type of of JsonbValue. Note, it never returns jbvBinary as is.
@@ -2707,7 +2828,7 @@ JsonbType(JsonItem *jb)
  * Convert jsonb to a C-string stripping quotes from scalar strings.
  */
 static char *
-JsonbValueUnquote(JsonbValue *jbv, int *len)
+JsonbValueUnquote(JsonbValue *jbv, int *len, bool isJsonb)
 {
 	switch (jbv->type)
 	{
@@ -2732,12 +2853,15 @@ JsonbValueUnquote(JsonbValue *jbv, int *len)
 			{
 				JsonbValue	jbvbuf;
 
-				if (JsonbExtractScalar(jbv->val.binary.data, &jbvbuf))
-					return JsonbValueUnquote(&jbvbuf, len);
+				if (isJsonb ?
+					JsonbExtractScalar(jbv->val.binary.data, &jbvbuf) :
+					JsonExtractScalar((JsonContainer *) jbv->val.binary.data, &jbvbuf))
+					return JsonbValueUnquote(&jbvbuf, len, isJsonb);
 
 				*len = -1;
-				return JsonbToCString(NULL, jbv->val.binary.data,
-									  jbv->val.binary.len);
+				return isJsonb ?
+					JsonbToCString(NULL, jbv->val.binary.data, jbv->val.binary.len) :
+					JsonToCString(NULL, (JsonContainer *) jbv->val.binary.data, jbv->val.binary.len);
 			}
 
 		default:
@@ -2747,7 +2871,7 @@ JsonbValueUnquote(JsonbValue *jbv, int *len)
 }
 
 static char *
-JsonItemUnquote(JsonItem *jsi, int *len)
+JsonItemUnquote(JsonItem *jsi, int *len, bool isJsonb)
 {
 	switch (jsi->type)
 	{
@@ -2759,15 +2883,15 @@ JsonItemUnquote(JsonItem *jsi, int *len)
 									  &jsi->datetime.tz);
 
 		default:
-			return JsonbValueUnquote(&jsi->jbv, len);
+			return JsonbValueUnquote(&jsi->jbv, len, isJsonb);
 	}
 }
 
 static text *
-JsonItemUnquoteText(JsonItem *jsi)
+JsonItemUnquoteText(JsonItem *jsi, bool isJsonb)
 {
 	int			len;
-	char	   *str = JsonItemUnquote(jsi, &len);
+	char	   *str = JsonItemUnquote(jsi, &len, isJsonb);
 
 	if (len < 0)
 		return cstring_to_text(str);
@@ -2776,8 +2900,9 @@ JsonItemUnquoteText(JsonItem *jsi)
 }
 
 static JsonItem *
-getJsonObjectKey(JsonItem *jb, char *keystr, int keylen, bool isJsonb)
+getJsonObjectKey(JsonItem *jsi, char *keystr, int keylen, bool isJsonb)
 {
+	JsonbContainer *jbc = jsi->jbv.val.binary.data;
 	JsonbValue *val;
 	JsonbValue	key;
 
@@ -2786,19 +2911,71 @@ getJsonObjectKey(JsonItem *jb, char *keystr, int keylen, bool isJsonb)
 	key.val.string.len = keylen;
 
 	val = isJsonb ?
-		findJsonbValueFromContainer(jb->jbv.val.binary.data, JB_FOBJECT, &key) :
-		getIthJsonbValueFromContainer(jb->jbv.val.binary.data, 0);
+		findJsonbValueFromContainer(jbc, JB_FOBJECT, &key) :
+		findJsonValueFromContainer((JsonContainer *) jbc, JB_FOBJECT, &key);
 
 	return val ? JsonbValueToJsonItem(val) : NULL;
 }
 
 static JsonItem *
-getJsonArrayElement(JsonItem *jb, uint32 index)
+getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb)
 {
-	JsonbValue *elem =
-	getIthJsonbValueFromContainer(jb->jbv.val.binary.data, index);
+	JsonbContainer *jbc = jb->jbv.val.binary.data;
+	JsonbValue *elem = isJsonb ?
+		getIthJsonbValueFromContainer(jbc, index) :
+		getIthJsonValueFromContainer((JsonContainer *) jbc, index);
 
 	return elem ? JsonbValueToJsonItem(elem) : NULL;
+}
+
+static inline void
+JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc, bool isJsonb)
+{
+	it->isJsonb = isJsonb;
+	if (isJsonb)
+		it->it.jb = JsonbIteratorInit((JsonbContainer *) jxc);
+	else
+		it->it.js = JsonIteratorInit((JsonContainer *) jxc);
+}
+
+static JsonbIteratorToken
+JsonxIteratorNext(JsonxIterator *it, JsonbValue *jbv, bool skipNested)
+{
+	return it->isJsonb ?
+		JsonbIteratorNext(&it->it.jb, jbv, skipNested) :
+		JsonIteratorNext(&it->it.js, jbv, skipNested);
+}
+
+static Json *
+JsonItemToJson(JsonItem *jsi)
+{
+	JsonbValue	jbv;
+
+	return JsonbValueToJson(JsonItemToJsonbValue(jsi, &jbv));
+}
+
+static Jsonx *
+JsonbValueToJsonx(JsonbValue *jbv, bool isJsonb)
+{
+	return isJsonb ?
+		(Jsonx *) JsonbValueToJsonb(jbv) :
+		(Jsonx *) JsonbValueToJson(jbv);
+}
+
+static Datum
+JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb)
+{
+	return isJsonb ?
+		JsonbPGetDatum(JsonbValueToJsonb(jbv)) :
+		JsonPGetDatum(JsonbValueToJson(jbv));
+}
+
+static Datum
+JsonItemToJsonxDatum(JsonItem *jsi, bool isJsonb)
+{
+	JsonbValue	jbv;
+
+	return JsonbValueToJsonxDatum(JsonItemToJsonbValue(jsi, &jbv), isJsonb);
 }
 
 /* Get scalar of given type or NULL on type mismatch */
@@ -2814,23 +2991,22 @@ getScalar(JsonItem *scalar, enum jbvType type)
 
 /* Construct a JSON array from the item list */
 static JsonbValue *
-wrapItemsInArray(const JsonValueList *items)
+wrapItemsInArray(const JsonValueList *items, bool isJsonb)
 {
 	JsonbParseState *ps = NULL;
 	JsonValueListIterator it;
 	JsonItem   *jsi;
+	JsonbValue	jbv;
+	JsonBuilderFunc push = isJsonb ? pushJsonbValue : pushJsonValue;
 
-	pushJsonbValue(&ps, WJB_BEGIN_ARRAY, NULL);
+	push(&ps, WJB_BEGIN_ARRAY, NULL);
 
 	JsonValueListInitIterator(items, &it);
+
 	while ((jsi = JsonValueListNext(items, &it)))
-	{
-		JsonbValue	jbv;
+		push(&ps, WJB_ELEM, JsonItemToJsonbValue(jsi, &jbv));
 
-		pushJsonbValue(&ps, WJB_ELEM, JsonItemToJsonbValue(jsi, &jbv));
-	}
-
-	return pushJsonbValue(&ps, WJB_END_ARRAY, NULL);
+	return push(&ps, WJB_END_ARRAY, NULL);
 }
 
 static void

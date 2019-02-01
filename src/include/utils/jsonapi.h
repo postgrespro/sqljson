@@ -116,6 +116,10 @@ typedef struct JsonContainerData
 
 typedef const JsonContainerData JsonContainer;
 
+#define JsonTextContainerSize(jc) \
+	(((jc)->header & JB_CMASK) == JB_CMASK && JsonContainerIsArray(jc) \
+	 ? JsonGetArraySize(jc) : (jc)->header & JB_CMASK)
+
 typedef struct Json
 {
 	JsonContainer root;
@@ -135,6 +139,10 @@ typedef struct JsonIterator
 
 #define JsonPGetDatum(json) \
 	PointerGetDatum(cstring_to_text_with_len((json)->root.data, (json)->root.len))
+
+#define PG_GETARG_JSON_P(n)			DatumGetJsonP(PG_GETARG_DATUM(n))
+#define PG_GETARG_JSON_P_COPY(n)	DatumGetJsonPCopy(PG_GETARG_DATUM(n))
+#define PG_RETURN_JSON_P(json)		PG_RETURN_DATUM(JsonPGetDatum(json))
 
 /*
  * parse_json will parse the string in the lex calling the
