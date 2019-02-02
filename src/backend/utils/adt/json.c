@@ -3713,41 +3713,44 @@ JsonGetArraySize(JsonContainer *jc)
  * Find last key in a json object by name. Returns palloc()'d copy of the
  * corresponding value, or NULL if is not found.
  */
-static inline JsonbValue *
-jsonFindLastKeyInObject(JsonContainer *obj, const JsonbValue *key)
+JsonbValue *
+jsonFindLastKeyInObject(JsonContainer *obj, const char *keyval, int keylen,
+						JsonbValue *res)
 {
-	JsonbValue *res = NULL;
+	JsonbValue *val = NULL;
 	JsonbValue	jbv;
 	JsonIterator *it;
 	JsonbIteratorToken tok;
 
 	Assert(JsonContainerIsObject(obj));
-	Assert(key->type == jbvString);
 
 	it = JsonIteratorInit(obj);
 
 	while ((tok = JsonIteratorNext(&it, &jbv, true)) != WJB_DONE)
 	{
-		if (tok == WJB_KEY && !lengthCompareJsonbStringValue(key, &jbv))
+		if (tok == WJB_KEY &&
+			jbv.val.string.len == keylen &&
+			!memcmp(jbv.val.string.val, keyval, keylen))
 		{
-			if (!res)
-				res = palloc(sizeof(*res));
+			if (!val)
+				val = res ? res : palloc(sizeof(*val));
 
 			tok = JsonIteratorNext(&it, res, true);
 			Assert(tok == WJB_VALUE);
 		}
 	}
 
-	return res;
+	return val;
 }
 
 /*
  * Find scalar element in a array.  Returns palloc()'d copy of value or NULL.
  */
 static JsonbValue *
-jsonFindValueInArray(JsonContainer *array, const JsonbValue *elem)
+jsonFindValueInArray(JsonContainer *array, const JsonbValue *elem,
+					 JsonbValue *res)
 {
-	JsonbValue *val = palloc(sizeof(*val));
+	JsonbValue *val = res ? res : palloc(sizeof(*val));
 	JsonIterator *it;
 	JsonbIteratorToken tok;
 
@@ -3766,7 +3769,8 @@ jsonFindValueInArray(JsonContainer *array, const JsonbValue *elem)
 		}
 	}
 
-	pfree(val);
+	if (!res)
+		pfree(val);
 	return NULL;
 }
 
@@ -3780,7 +3784,8 @@ jsonFindValueInArray(JsonContainer *array, const JsonbValue *elem)
  * For more details, see findJsonbValueFromContainer().
  */
 JsonbValue *
-findJsonValueFromContainer(JsonContainer *jc, uint32 flags, JsonbValue *key)
+findJsonValueFromContainer(JsonContainer *jc, uint32 flags, JsonbValue *key,
+						   JsonbValue *val)
 {
 	Assert((flags & ~(JB_FARRAY | JB_FOBJECT)) == 0);
 
@@ -3788,10 +3793,14 @@ findJsonValueFromContainer(JsonContainer *jc, uint32 flags, JsonbValue *key)
 		return NULL;
 
 	if ((flags & JB_FARRAY) && JsonContainerIsArray(jc))
-		return jsonFindValueInArray(jc, key);
+		return jsonFindValueInArray(jc, key, val);
 
 	if ((flags & JB_FOBJECT) && JsonContainerIsObject(jc))
-		return jsonFindLastKeyInObject(jc, key);
+	{
+		Assert(key->type == jbvString);
+		return jsonFindLastKeyInObject(jc, key->val.string.val,
+									   key->val.string.len, val);
+	}
 
 	/* Not found */
 	return NULL;
@@ -3803,9 +3812,10 @@ findJsonValueFromContainer(JsonContainer *jc, uint32 flags, JsonbValue *key)
  * Returns palloc()'d copy of the value, or NULL if it does not exist.
  */
 JsonbValue *
-getIthJsonValueFromContainer(JsonContainer *array, uint32 index)
+getIthJsonValueFromContainer(JsonContainer *array, uint32 index,
+							 JsonbValue *res)
 {
-	JsonbValue *val = palloc(sizeof(JsonbValue));
+	JsonbValue *val = res ? res : palloc(sizeof(*val));
 	JsonIterator *it;
 	JsonbIteratorToken tok;
 
@@ -3825,7 +3835,8 @@ getIthJsonValueFromContainer(JsonContainer *array, uint32 index)
 		}
 	}
 
-	pfree(val);
+	if (!res)
+		pfree(val);
 
 	return NULL;
 }

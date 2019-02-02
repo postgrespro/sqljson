@@ -366,10 +366,14 @@ extern int lengthCompareJsonbStringValue(const void *a, const void *b);
 extern bool equalsJsonbScalarValue(JsonbValue *a, JsonbValue *b);
 extern int	compareJsonbContainers(JsonbContainer *a, JsonbContainer *b);
 extern JsonbValue *findJsonbValueFromContainer(JsonbContainer *sheader,
-											   uint32 flags,
-											   JsonbValue *key);
+											   uint32 flags, JsonbValue *key,
+											   JsonbValue *res);
+extern JsonbValue *jsonbFindKeyInObject(JsonbContainer *container,
+										const char *keyVal, int keyLen,
+										JsonbValue *res);
 extern JsonbValue *getIthJsonbValueFromContainer(JsonbContainer *sheader,
-												 uint32 i);
+												 uint32 i, JsonbValue *result);
+
 extern JsonbValue *pushJsonbValue(JsonbParseState **pstate,
 								  JsonbIteratorToken seq, JsonbValue *jbVal);
 extern JsonbValue *pushJsonbValueScalar(JsonbParseState **pstate,

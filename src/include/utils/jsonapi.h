@@ -234,9 +234,11 @@ extern char *JsonToCString(StringInfo out, JsonContainer *jc,
 			  int estimated_len);
 extern JsonbValue *pushJsonValue(JsonbParseState **pstate,
 			  JsonbIteratorToken tok, JsonbValue *jbv);
+extern JsonbValue *jsonFindLastKeyInObject(JsonContainer *obj,
+						const char *keyval, int keylen, JsonbValue *res);
 extern JsonbValue *findJsonValueFromContainer(JsonContainer *jc, uint32 flags,
-						   JsonbValue *key);
+						   JsonbValue *key, JsonbValue *res);
 extern JsonbValue *getIthJsonValueFromContainer(JsonContainer *array,
-							 uint32 index);
+							 uint32 index, JsonbValue *res);
 
 #endif							/* JSONAPI_H */

@@ -24,6 +24,7 @@ jsonb_exists(PG_FUNCTION_ARGS)
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
 	text	   *key = PG_GETARG_TEXT_PP(1);
 	JsonbValue	kval;
+	JsonbValue	vval;
 	JsonbValue *v = NULL;
 
 	/*
@@ -38,7 +39,7 @@ jsonb_exists(PG_FUNCTION_ARGS)
 
 	v = findJsonbValueFromContainer(&jb->root,
 									JB_FOBJECT | JB_FARRAY,
-									&kval);
+									&kval, &vval);
 
 	PG_RETURN_BOOL(v != NULL);
 }
@@ -59,6 +60,7 @@ jsonb_exists_any(PG_FUNCTION_ARGS)
 	for (i = 0; i < elem_count; i++)
 	{
 		JsonbValue	strVal;
+		JsonbValue	valVal;
 
 		if (key_nulls[i])
 			continue;
@@ -69,7 +71,7 @@ jsonb_exists_any(PG_FUNCTION_ARGS)
 
 		if (findJsonbValueFromContainer(&jb->root,
 										JB_FOBJECT | JB_FARRAY,
-										&strVal) != NULL)
+										&strVal, &valVal) != NULL)
 			PG_RETURN_BOOL(true);
 	}
 
@@ -92,6 +94,7 @@ jsonb_exists_all(PG_FUNCTION_ARGS)
 	for (i = 0; i < elem_count; i++)
 	{
 		JsonbValue	strVal;
+		JsonbValue	valVal;
 
 		if (key_nulls[i])
 			continue;
@@ -102,7 +105,7 @@ jsonb_exists_all(PG_FUNCTION_ARGS)
 
 		if (findJsonbValueFromContainer(&jb->root,
 										JB_FOBJECT | JB_FARRAY,
-										&strVal) == NULL)
+										&strVal, &valVal) == NULL)
 			PG_RETURN_BOOL(false);
 	}
 

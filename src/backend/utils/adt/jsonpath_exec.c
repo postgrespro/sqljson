@@ -424,9 +424,9 @@ static JsonItem *wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf,
 					  bool isJsonb);
 
 static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
-				 bool isJsonb, JsonItem *val);
+				 bool isJsonb, JsonItem *res);
 static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb,
-					JsonItem *elem);
+					JsonItem *res);
 
 static void JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc,
 				  bool isJsonb);
@@ -2922,8 +2922,6 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 							 JsonItem *value, JsonbValue *baseObject)
 {
 	Jsonx	   *vars = varsJsonx;
-	JsonbValue *val;
-	JsonbValue	key;
 
 	if (!varName)
 	{
@@ -2942,17 +2940,12 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 	if (!vars)
 		return -1;
 
-	key.type = jbvString;
-	key.val.string.val = varName;
-	key.val.string.len = varNameLength;
-
 	if (isJsonb)
 	{
 		Jsonb	   *jb = &vars->jb;
 
-		val = findJsonbValueFromContainer(&jb->root, JB_FOBJECT, &key);
-
-		if (!val)
+		if (!jsonbFindKeyInObject(&jb->root, varName, varNameLength,
+								  JsonItemJbv(value)))
 			return -1;
 
 		JsonbInitBinary(baseObject, jb);
@@ -2961,16 +2954,12 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 	{
 		Json	   *js = &vars->js;
 
-		val = findJsonValueFromContainer(&js->root, JB_FOBJECT, &key);
-
-		if (!val)
+		if (!jsonFindLastKeyInObject(&js->root, varName, varNameLength,
+									 JsonItemJbv(value)))
 			return -1;
 
 		JsonInitBinary(baseObject, js);
 	}
-
-	*JsonItemJbv(value) = *val;
-	pfree(val);
 
 	return 1;
 }
@@ -3555,18 +3544,12 @@ getJsonObjectKey(JsonItem *jsi, char *keystr, int keylen, bool isJsonb,
 				 JsonItem *res)
 {
 	JsonbContainer *jbc = JsonItemBinary(jsi).data;
-	JsonbValue *val;
-	JsonbValue	key;
+	JsonbValue *val = isJsonb ?
+		jsonbFindKeyInObject(jbc, keystr, keylen, JsonItemJbv(res)) :
+		jsonFindLastKeyInObject((JsonContainer *) jbc, keystr, keylen,
+								JsonItemJbv(res));
 
-	key.type = jbvString;
-	key.val.string.val = keystr;
-	key.val.string.len = keylen;
-
-	val = isJsonb ?
-		findJsonbValueFromContainer(jbc, JB_FOBJECT, &key) :
-		findJsonValueFromContainer((JsonContainer *) jbc, JB_FOBJECT, &key);
-
-	return val ? JsonbValueToJsonItem(val, res) : NULL;
+	return val ? res : NULL;
 }
 
 static JsonItem *
@@ -3574,10 +3557,11 @@ getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb, JsonItem *res)
 {
 	JsonbContainer *jbc = JsonItemBinary(jb).data;
 	JsonbValue *elem = isJsonb ?
-		getIthJsonbValueFromContainer(jbc, index) :
-		getIthJsonValueFromContainer((JsonContainer *) jbc, index);
+		getIthJsonbValueFromContainer(jbc, index, JsonItemJbv(res)) :
+		getIthJsonValueFromContainer((JsonContainer *) jbc, index,
+									 JsonItemJbv(res));
 
-	return elem ? JsonbValueToJsonItem(elem, res) : NULL;
+	return elem ? res : NULL;
 }
 
 static inline void
