@@ -672,11 +672,8 @@ typedef struct ExprEvalStep
 				Oid			typioparam;
 			} input;					/* I/O info for output type */
 
-			struct
-			{
-				Datum		value;
-				bool		isnull;
-			}		   *raw_expr,			/* raw context item value */
+			NullableDatum
+					   *raw_expr,			/* raw context item value */
 					   *res_expr,			/* result item */
 					   *coercion_expr,		/* input for JSON item coercion */
 					   *pathspec;			/* path specification value */
@@ -816,7 +813,8 @@ extern Datum ExecPrepareJsonItemCoercion(struct JsonbValue *item,
 										 JsonReturning *returning,
 										 struct JsonCoercionsState *coercions,
 										 struct JsonCoercionState **pjcstate);
-extern bool ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr);
+extern bool ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr,
+											struct JsonCoercionsState *);
 
 extern void ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup,
 							 ExprContext *aggcontext);

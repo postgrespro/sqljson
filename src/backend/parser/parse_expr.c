@@ -3713,7 +3713,9 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 
 	get_type_category_preferred(exprtype, &typcategory, &typispreferred);
 
-	if (rawexpr)
+	rawexpr = expr;
+
+	if (prawexpr)
 	{
 		/*
 		 * Save a raw context item expression if it is needed for the isolation
@@ -3777,7 +3779,9 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 	else
 		format = default_format;
 
-	if (format != JS_FORMAT_DEFAULT)
+	if (format == JS_FORMAT_DEFAULT)
+		expr = rawexpr;
+	else
 	{
 		Oid			targettype = format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
 		Node	   *orig = makeCaseTestExpr(expr);

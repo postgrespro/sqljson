@@ -2886,31 +2886,41 @@ compareDatetime(Datum val1, Oid typid1, Datum val2, Oid typid2,
 /********************Interface to pgsql's executor***************************/
 
 bool
-JsonbPathExists(Datum jb, JsonPath *jp, List *vars)
+JsonPathExists(Datum jb, JsonPath *jp, List *vars, bool *error)
 {
 	JsonPathExecResult res = executeJsonPath(jp, vars, EvalJsonPathVar,
-											 DatumGetJsonbP(jb),
-											 true, NULL, false /* XXX */);
+											 DatumGetJsonbP(jb), !error, NULL,
+											 false /* XXX */);
 
-	Assert(!jperIsError(res));
+	Assert(error || !jperIsError(res));
+
+	if (error && jperIsError(res))
+		*error = true;
 
 	return res == jperOk;
 }
 
 Datum
-JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
-			   bool *empty, List *vars)
+JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper, bool *empty,
+			  bool *error, List *vars)
 {
 	JsonbValue *first;
 	bool		wrap;
 	JsonValueList found = {0};
-	JsonPathExecResult jper PG_USED_FOR_ASSERTS_ONLY;
+	JsonPathExecResult res PG_USED_FOR_ASSERTS_ONLY;
 	int			count;
 
-	jper = executeJsonPath(jp, vars, EvalJsonPathVar,
-						   DatumGetJsonbP(jb), true, &found,
-						   false /* XXX */);
-	Assert(!jperIsError(jper));
+	res = executeJsonPath(jp, vars, EvalJsonPathVar, DatumGetJsonbP(jb), !error,
+						  &found, false /* XXX */);
+
+	Assert(error || !jperIsError(res));
+
+	if (error && jperIsError(res))
+	{
+		*error = true;
+		*empty = false;
+		return (Datum) 0;
+	}
 
 	count = JsonValueListLength(&found);
 
@@ -2937,12 +2947,20 @@ JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 		return JsonbPGetDatum(JsonbValueToJsonb(wrapItemsInArray(&found)));
 
 	if (count > 1)
+	{
+		if (error)
+		{
+			*error = true;
+			return (Datum) 0;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
 				 errmsg("JSON path expression in JSON_QUERY should return "
 						"singleton item without wrapper"),
 				 errhint("use WITH WRAPPER clause to wrap SQL/JSON item "
 						 "sequence into array")));
+	}
 
 	if (first)
 		return JsonbPGetDatum(JsonbValueToJsonb(first));
@@ -2952,17 +2970,24 @@ JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
 }
 
 JsonbValue *
-JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
+JsonPathValue(Datum jb, JsonPath *jp, bool *empty, bool *error, List *vars)
 {
 	JsonbValue   *res;
 	JsonValueList found = { 0 };
 	JsonPathExecResult jper PG_USED_FOR_ASSERTS_ONLY;
 	int			count;
 
-	jper = executeJsonPath(jp, vars, EvalJsonPathVar,
-						   DatumGetJsonbP(jb), true, &found,
-						   false /* XXX */);
-	Assert(!jperIsError(jper));
+	jper = executeJsonPath(jp, vars, EvalJsonPathVar, DatumGetJsonbP(jb), !error,
+						   &found, false /* XXX */);
+
+	Assert(error || !jperIsError(jper));
+
+	if (error && jperIsError(jper))
+	{
+		*error = true;
+		*empty = false;
+		return NULL;
+	}
 
 	count = JsonValueListLength(&found);
 
@@ -2972,10 +2997,18 @@ JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 		return NULL;
 
 	if (count > 1)
+	{
+		if (error)
+		{
+			*error = true;
+			return NULL;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
 				 errmsg("JSON path expression in JSON_VALUE should return "
 						"singleton scalar item")));
+	}
 
 	res = JsonValueListHead(&found);
 
@@ -2984,10 +3017,18 @@ JsonbPathValue(Datum jb, JsonPath *jp, bool *empty, List *vars)
 		JsonbExtractScalar(res->val.binary.data, res);
 
 	if (!IsAJsonbScalar(res))
+	{
+		if (error)
+		{
+			*error = true;
+			return NULL;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_SQL_JSON_SCALAR_REQUIRED),
 				 errmsg("JSON path expression in JSON_VALUE should return "
 						"singleton scalar item")));
+	}
 
 	if (res->type == jbvNull)
 		return NULL;

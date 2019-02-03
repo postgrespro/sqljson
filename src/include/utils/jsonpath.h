@@ -271,11 +271,11 @@ typedef struct JsonPathVariableEvalContext
 extern void JsonItemFromDatum(Datum val, Oid typid, int32 typmod,
 							  JsonbValue *res);
 
-extern bool  JsonbPathExists(Datum jb, JsonPath *path, List *vars);
-extern Datum JsonbPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
-			   bool *empty, List *vars);
-extern JsonbValue *JsonbPathValue(Datum jb, JsonPath *jp, bool *empty,
-								  List *vars);
+extern bool  JsonPathExists(Datum jb, JsonPath *path, List *vars, bool *error);
+extern Datum JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
+						   bool *empty, bool *error, List *vars);
+extern JsonbValue *JsonPathValue(Datum jb, JsonPath *jp, bool *empty,
+								 bool *error, List *vars);
 
 extern int EvalJsonPathVar(void *vars, char *varName, int varNameLen,
 						   JsonbValue *val, JsonbValue *baseObject);
