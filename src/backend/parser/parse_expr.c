@@ -3693,9 +3693,10 @@ makeCaseTestExpr(Node *expr)
 static Node *
 transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 						  JsonFormatType default_format, bool isarg,
-						  Node **rawexpr)
+						  Node **prawexpr)
 {
 	Node	   *expr = transformExprRecurse(pstate, (Node *) ve->expr);
+	Node	   *rawexpr;
 	JsonFormatType format;
 	Oid			exprtype;
 	int			location;
@@ -3710,13 +3711,15 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 
 	get_type_category_preferred(exprtype, &typcategory, &typispreferred);
 
-	if (rawexpr)
+	rawexpr = expr;
+
+	if (prawexpr)
 	{
 		/*
 		 * Save a raw context item expression if it is needed for the isolation
 		 * of error handling in the formatting stage.
 		 */
-		*rawexpr = expr;
+		*prawexpr = expr;
 		assign_expr_collations(pstate, expr);
 		expr = makeCaseTestExpr(expr);
 	}
@@ -3776,6 +3779,7 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 	if (format != JS_FORMAT_DEFAULT)
 	{
 		Oid			targettype = format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
+		Node	   *orig = expr;
 		Node	   *coerced;
 		FuncExpr   *fexpr;
 
@@ -3803,10 +3807,9 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 										location);
 
 		if (coerced)
-			expr = coerced;
+			expr = coerced != orig ? coerced : rawexpr;
 		else
 		{
-
 			/* If coercion failed, use to_json()/to_jsonb() functions. */
 			fexpr = makeFuncExpr(targettype == JSONOID ? F_TO_JSON : F_TO_JSONB,
 								 targettype, list_make1(expr),
@@ -3822,6 +3825,8 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 
 		expr = (Node *) ve;
 	}
+	else
+		expr = rawexpr;
 
 	return expr;
 }

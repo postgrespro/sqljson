@@ -339,11 +339,12 @@ extern void JsonItemFromDatum(Datum val, Oid typid, int32 typmod,
 extern Datum JsonItemToJsonxDatum(JsonItem *jsi, bool isJsonb);
 extern Datum JsonbValueToJsonxDatum(JsonbValue *jbv, bool isJsonb);
 
-extern bool  JsonPathExists(Datum jb, JsonPath *path, List *vars, bool isJsonb);
+extern bool JsonPathExists(Datum jb, JsonPath *path,
+			   List *vars, bool isJsonb, bool *error);
 extern Datum JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper,
-			   bool *empty, List *vars, bool isJsonb);
+			   bool *empty, bool *error, List *vars, bool isJsonb);
 extern JsonItem *JsonPathValue(Datum jb, JsonPath *jp, bool *empty,
-			   List *vars, bool isJsonb);
+			   bool *error, List *vars, bool isJsonb);
 
 extern int EvalJsonPathVar(void *vars, bool isJsonb, char *varName,
 				int varNameLen, JsonItem *val, JsonbValue *baseObject);

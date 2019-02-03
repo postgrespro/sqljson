@@ -811,7 +811,8 @@ extern Datum ExecPrepareJsonItemCoercion(struct JsonItem *item, bool is_jsonb,
 										 JsonReturning *returning,
 										 struct JsonCoercionsState *coercions,
 										 struct JsonCoercionState **pjcstate);
-extern bool ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr);
+extern bool ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr,
+											struct JsonCoercionsState *);
 
 extern void ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup);
 extern Datum ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
