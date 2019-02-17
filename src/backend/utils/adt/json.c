@@ -108,14 +108,14 @@ typedef struct JsonUniqueState
 	JsonObjectFields *stack;
 } JsonUniqueState;
 
-static inline void json_lex(JsonLexContext *lex);
+static inline bool json_lex(JsonLexContext *lex);
 static inline void json_lex_string(JsonLexContext *lex);
 static inline void json_lex_number(JsonLexContext *lex, char *s,
 								   bool *num_err, int *total_len);
 static inline void parse_scalar(JsonLexContext *lex, JsonSemAction *sem);
-static void parse_object_field(JsonLexContext *lex, JsonSemAction *sem);
+static bool parse_object_field(JsonLexContext *lex, JsonSemAction *sem);
 static void parse_object(JsonLexContext *lex, JsonSemAction *sem);
-static void parse_array_element(JsonLexContext *lex, JsonSemAction *sem);
+static bool parse_array_element(JsonLexContext *lex, JsonSemAction *sem);
 static void parse_array(JsonLexContext *lex, JsonSemAction *sem);
 static void report_parse_error(JsonParseContext ctx, JsonLexContext *lex) pg_attribute_noreturn();
 static void report_invalid_token(JsonLexContext *lex) pg_attribute_noreturn();
@@ -183,6 +183,16 @@ lex_peek_value(JsonLexContext *lex)
 	}
 }
 
+static inline bool
+lex_set_error(JsonLexContext *lex)
+{
+	if (lex->throw_errors)
+		return false;
+
+	lex->error = true;
+	return true;
+}
+
 /*
  * lex_accept
  *
@@ -200,8 +210,7 @@ lex_accept(JsonLexContext *lex, JsonTokenType token, char **lexeme)
 		if (lexeme != NULL)
 			*lexeme = lex_peek_value(lex);
 
-		json_lex(lex);
-		return true;
+		return json_lex(lex);
 	}
 	return false;
 }
@@ -212,11 +221,16 @@ lex_accept(JsonLexContext *lex, JsonTokenType token, char **lexeme)
  * move the lexer to the next token if the current look_ahead token matches
  * the parameter token. Otherwise, report an error.
  */
-static inline void
+static inline bool
 lex_expect(JsonParseContext ctx, JsonLexContext *lex, JsonTokenType token)
 {
-	if (!lex_accept(lex, token, NULL))
+	if (lex_accept(lex, token, NULL))
+		return true;
+
+	if (!lex_set_error(lex))
 		report_parse_error(ctx, lex);
+
+	return false;
 }
 
 /* chars to consider as part of an alphanumeric token */
@@ -276,7 +290,7 @@ json_in(PG_FUNCTION_ARGS)
 
 	/* validate it */
 	lex = makeJsonLexContext(result, false);
-	pg_parse_json(lex, &nullSemAction);
+	(void) pg_parse_json(lex, &nullSemAction);
 
 	/* Internal representation is the same as text, for now */
 	PG_RETURN_TEXT_P(result);
@@ -323,7 +337,7 @@ json_recv(PG_FUNCTION_ARGS)
 
 	/* Validate it. */
 	lex = makeJsonLexContextCstringLen(str, nbytes, false);
-	pg_parse_json(lex, &nullSemAction);
+	(void) pg_parse_json(lex, &nullSemAction);
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(str, nbytes));
 }
@@ -356,6 +370,7 @@ makeJsonLexContextCstringLen(char *json, int len, bool need_escapes)
 	lex->input = lex->token_terminator = lex->line_start = json;
 	lex->line_number = 1;
 	lex->input_length = len;
+	lex->throw_errors = true;
 	if (need_escapes)
 		lex->strval = makeStringInfo();
 	return lex;
@@ -371,13 +386,14 @@ makeJsonLexContextCstringLen(char *json, int len, bool need_escapes)
  * action routines to be called at appropriate spots during parsing, and a
  * pointer to a state object to be passed to those routines.
  */
-void
+bool
 pg_parse_json(JsonLexContext *lex, JsonSemAction *sem)
 {
 	JsonTokenType tok;
 
 	/* get the initial token */
-	json_lex(lex);
+	if (!json_lex(lex))
+		return false;
 
 	tok = lex_peek(lex);
 
@@ -394,8 +410,7 @@ pg_parse_json(JsonLexContext *lex, JsonSemAction *sem)
 			parse_scalar(lex, sem); /* json can be a bare scalar */
 	}
 
-	lex_expect(JSON_PARSE_END, lex, JSON_TOKEN_END);
-
+	return !lex->error && lex_expect(JSON_PARSE_END, lex, JSON_TOKEN_END);
 }
 
 /*
@@ -420,6 +435,7 @@ json_count_array_elements(JsonLexContext *lex)
 	memcpy(&copylex, lex, sizeof(JsonLexContext));
 	copylex.strval = NULL;		/* not interested in values here */
 	copylex.lex_level++;
+	copylex.throw_errors = true;
 
 	count = 0;
 	lex_expect(JSON_PARSE_ARRAY_START, &copylex, JSON_TOKEN_ARRAY_START);
@@ -475,14 +491,16 @@ parse_scalar(JsonLexContext *lex, JsonSemAction *sem)
 			lex_accept(lex, JSON_TOKEN_STRING, valaddr);
 			break;
 		default:
-			report_parse_error(JSON_PARSE_VALUE, lex);
+			if (!lex_set_error(lex))
+				report_parse_error(JSON_PARSE_VALUE, lex);
+			return;
 	}
 
-	if (sfunc != NULL)
+	if (sfunc != NULL && !lex->error)
 		(*sfunc) (sem->semstate, val, tok);
 }
 
-static void
+static bool
 parse_object_field(JsonLexContext *lex, JsonSemAction *sem)
 {
 	/*
@@ -502,15 +520,25 @@ parse_object_field(JsonLexContext *lex, JsonSemAction *sem)
 		fnameaddr = &fname;
 
 	if (!lex_accept(lex, JSON_TOKEN_STRING, fnameaddr))
-		report_parse_error(JSON_PARSE_STRING, lex);
+	{
+		if (!lex_set_error(lex))
+			report_parse_error(JSON_PARSE_STRING, lex);
+		return false;
+	}
 
-	lex_expect(JSON_PARSE_OBJECT_LABEL, lex, JSON_TOKEN_COLON);
+	if (!lex_expect(JSON_PARSE_OBJECT_LABEL, lex, JSON_TOKEN_COLON))
+		return false;
 
 	tok = lex_peek(lex);
 	isnull = tok == JSON_TOKEN_NULL;
 
 	if (ostart != NULL)
+	{
 		(*ostart) (sem->semstate, fname, isnull);
+
+		if (lex->error)
+			return false;
+	}
 
 	switch (tok)
 	{
@@ -524,8 +552,13 @@ parse_object_field(JsonLexContext *lex, JsonSemAction *sem)
 			parse_scalar(lex, sem);
 	}
 
+	if (lex->error)
+		return false;
+
 	if (oend != NULL)
 		(*oend) (sem->semstate, fname, isnull);
+
+	return !lex->error;
 }
 
 static void
@@ -542,7 +575,12 @@ parse_object(JsonLexContext *lex, JsonSemAction *sem)
 	check_stack_depth();
 
 	if (ostart != NULL)
+	{
 		(*ostart) (sem->semstate);
+
+		if (lex->error)
+			return;
+	}
 
 	/*
 	 * Data inside an object is at a higher nesting level than the object
@@ -553,24 +591,30 @@ parse_object(JsonLexContext *lex, JsonSemAction *sem)
 	lex->lex_level++;
 
 	/* we know this will succeed, just clearing the token */
-	lex_expect(JSON_PARSE_OBJECT_START, lex, JSON_TOKEN_OBJECT_START);
+	if (!lex_expect(JSON_PARSE_OBJECT_START, lex, JSON_TOKEN_OBJECT_START))
+		return;
 
 	tok = lex_peek(lex);
 	switch (tok)
 	{
 		case JSON_TOKEN_STRING:
-			parse_object_field(lex, sem);
+			if (!parse_object_field(lex, sem))
+				return;
 			while (lex_accept(lex, JSON_TOKEN_COMMA, NULL))
-				parse_object_field(lex, sem);
+				if (!parse_object_field(lex, sem))
+					return;
 			break;
 		case JSON_TOKEN_OBJECT_END:
 			break;
 		default:
 			/* case of an invalid initial token inside the object */
-			report_parse_error(JSON_PARSE_OBJECT_START, lex);
+			if (!lex_set_error(lex))
+				report_parse_error(JSON_PARSE_OBJECT_START, lex);
+			return;
 	}
 
-	lex_expect(JSON_PARSE_OBJECT_NEXT, lex, JSON_TOKEN_OBJECT_END);
+	if (!lex_expect(JSON_PARSE_OBJECT_NEXT, lex, JSON_TOKEN_OBJECT_END))
+		return;
 
 	lex->lex_level--;
 
@@ -578,7 +622,7 @@ parse_object(JsonLexContext *lex, JsonSemAction *sem)
 		(*oend) (sem->semstate);
 }
 
-static void
+static bool
 parse_array_element(JsonLexContext *lex, JsonSemAction *sem)
 {
 	json_aelem_action astart = sem->array_element_start;
@@ -590,7 +634,12 @@ parse_array_element(JsonLexContext *lex, JsonSemAction *sem)
 	isnull = tok == JSON_TOKEN_NULL;
 
 	if (astart != NULL)
+	{
 		(*astart) (sem->semstate, isnull);
+
+		if (lex->error)
+			return false;
+	}
 
 	/* an array element is any object, array or scalar */
 	switch (tok)
@@ -605,8 +654,13 @@ parse_array_element(JsonLexContext *lex, JsonSemAction *sem)
 			parse_scalar(lex, sem);
 	}
 
+	if (lex->error)
+		return false;
+
 	if (aend != NULL)
 		(*aend) (sem->semstate, isnull);
+
+	return !lex->error;
 }
 
 static void
@@ -622,7 +676,12 @@ parse_array(JsonLexContext *lex, JsonSemAction *sem)
 	check_stack_depth();
 
 	if (astart != NULL)
+	{
 		(*astart) (sem->semstate);
+
+		if (lex->error)
+			return;
+	}
 
 	/*
 	 * Data inside an array is at a higher nesting level than the array
@@ -632,17 +691,21 @@ parse_array(JsonLexContext *lex, JsonSemAction *sem)
 	 */
 	lex->lex_level++;
 
-	lex_expect(JSON_PARSE_ARRAY_START, lex, JSON_TOKEN_ARRAY_START);
+	if (!lex_expect(JSON_PARSE_ARRAY_START, lex, JSON_TOKEN_ARRAY_START))
+		return;
+
 	if (lex_peek(lex) != JSON_TOKEN_ARRAY_END)
 	{
-
-		parse_array_element(lex, sem);
+		if (!parse_array_element(lex, sem))
+			return;
 
 		while (lex_accept(lex, JSON_TOKEN_COMMA, NULL))
-			parse_array_element(lex, sem);
+			if (!parse_array_element(lex, sem))
+				return;
 	}
 
-	lex_expect(JSON_PARSE_ARRAY_NEXT, lex, JSON_TOKEN_ARRAY_END);
+	if (!lex_expect(JSON_PARSE_ARRAY_NEXT, lex, JSON_TOKEN_ARRAY_END))
+		return;
 
 	lex->lex_level--;
 
@@ -653,7 +716,7 @@ parse_array(JsonLexContext *lex, JsonSemAction *sem)
 /*
  * Lex one token from the input stream.
  */
-static inline void
+static inline bool
 json_lex(JsonLexContext *lex)
 {
 	char	   *s;
@@ -763,7 +826,9 @@ json_lex(JsonLexContext *lex)
 					{
 						lex->prev_token_terminator = lex->token_terminator;
 						lex->token_terminator = s + 1;
-						report_invalid_token(lex);
+						if (!lex_set_error(lex))
+							report_invalid_token(lex);
+						return false;
 					}
 
 					/*
@@ -779,16 +844,18 @@ json_lex(JsonLexContext *lex)
 							lex->token_type = JSON_TOKEN_TRUE;
 						else if (memcmp(s, "null", 4) == 0)
 							lex->token_type = JSON_TOKEN_NULL;
-						else
+						else if (!lex_set_error(lex))
 							report_invalid_token(lex);
 					}
 					else if (p - s == 5 && memcmp(s, "false", 5) == 0)
 						lex->token_type = JSON_TOKEN_FALSE;
-					else
+					else if (!lex_set_error(lex))
 						report_invalid_token(lex);
 
 				}
 		}						/* end of switch */
+
+	return !lex->error;
 }
 
 /*
@@ -815,7 +882,9 @@ json_lex_string(JsonLexContext *lex)
 		if (len >= lex->input_length)
 		{
 			lex->token_terminator = s;
-			report_invalid_token(lex);
+			if (!lex_set_error(lex))
+				report_invalid_token(lex);
+			return;
 		}
 		else if (*s == '"')
 			break;
@@ -824,6 +893,8 @@ json_lex_string(JsonLexContext *lex)
 			/* Per RFC4627, these characters MUST be escaped. */
 			/* Since *s isn't printable, exclude it from the context string */
 			lex->token_terminator = s;
+			if (lex_set_error(lex))
+				return;
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid input syntax for type %s", "json"),
@@ -839,7 +910,9 @@ json_lex_string(JsonLexContext *lex)
 			if (len >= lex->input_length)
 			{
 				lex->token_terminator = s;
-				report_invalid_token(lex);
+				if (!lex_set_error(lex))
+					report_invalid_token(lex);
+				return;
 			}
 			else if (*s == 'u')
 			{
@@ -853,7 +926,9 @@ json_lex_string(JsonLexContext *lex)
 					if (len >= lex->input_length)
 					{
 						lex->token_terminator = s;
-						report_invalid_token(lex);
+						if (!lex_set_error(lex))
+							report_invalid_token(lex);
+						return;
 					}
 					else if (*s >= '0' && *s <= '9')
 						ch = (ch * 16) + (*s - '0');
@@ -863,6 +938,8 @@ json_lex_string(JsonLexContext *lex)
 						ch = (ch * 16) + (*s - 'A') + 10;
 					else
 					{
+						if (lex_set_error(lex))
+							return;
 						lex->token_terminator = s + pg_mblen(s);
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
@@ -880,33 +957,45 @@ json_lex_string(JsonLexContext *lex)
 					if (ch >= 0xd800 && ch <= 0xdbff)
 					{
 						if (hi_surrogate != -1)
+						{
+							if (lex_set_error(lex))
+								return;
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 									 errmsg("invalid input syntax for type %s",
 											"json"),
 									 errdetail("Unicode high surrogate must not follow a high surrogate."),
 									 report_json_context(lex)));
+						}
 						hi_surrogate = (ch & 0x3ff) << 10;
 						continue;
 					}
 					else if (ch >= 0xdc00 && ch <= 0xdfff)
 					{
 						if (hi_surrogate == -1)
+						{
+							if (lex_set_error(lex))
+								return;
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 									 errmsg("invalid input syntax for type %s", "json"),
 									 errdetail("Unicode low surrogate must follow a high surrogate."),
 									 report_json_context(lex)));
+						}
 						ch = 0x10000 + hi_surrogate + (ch & 0x3ff);
 						hi_surrogate = -1;
 					}
 
 					if (hi_surrogate != -1)
+					{
+						if (lex_set_error(lex))
+							return;
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								 errmsg("invalid input syntax for type %s", "json"),
 								 errdetail("Unicode low surrogate must follow a high surrogate."),
 								 report_json_context(lex)));
+					}
 
 					/*
 					 * For UTF8, replace the escape sequence by the actual
@@ -918,6 +1007,8 @@ json_lex_string(JsonLexContext *lex)
 					if (ch == 0)
 					{
 						/* We can't allow this, since our TEXT type doesn't */
+						if (lex_set_error(lex))
+							return;
 						ereport(ERROR,
 								(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
 								 errmsg("unsupported Unicode escape sequence"),
@@ -941,6 +1032,8 @@ json_lex_string(JsonLexContext *lex)
 					}
 					else
 					{
+						if (lex_set_error(lex))
+							return;
 						ereport(ERROR,
 								(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
 								 errmsg("unsupported Unicode escape sequence"),
@@ -953,12 +1046,16 @@ json_lex_string(JsonLexContext *lex)
 			else if (lex->strval != NULL)
 			{
 				if (hi_surrogate != -1)
+				{
+					if (lex_set_error(lex))
+						return;
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							 errmsg("invalid input syntax for type %s",
 									"json"),
 							 errdetail("Unicode low surrogate must follow a high surrogate."),
 							 report_json_context(lex)));
+				}
 
 				switch (*s)
 				{
@@ -984,6 +1081,8 @@ json_lex_string(JsonLexContext *lex)
 						break;
 					default:
 						/* Not a valid string escape, so error out. */
+						if (lex_set_error(lex))
+							return;
 						lex->token_terminator = s + pg_mblen(s);
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
@@ -1003,6 +1102,8 @@ json_lex_string(JsonLexContext *lex)
 				 * replace it with a switch statement, but testing so far has
 				 * shown it's not a performance win.
 				 */
+				if (lex_set_error(lex))
+					return;
 				lex->token_terminator = s + pg_mblen(s);
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
@@ -1016,11 +1117,15 @@ json_lex_string(JsonLexContext *lex)
 		else if (lex->strval != NULL)
 		{
 			if (hi_surrogate != -1)
+			{
+				if (lex_set_error(lex))
+					return;
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						 errmsg("invalid input syntax for type %s", "json"),
 						 errdetail("Unicode low surrogate must follow a high surrogate."),
 						 report_json_context(lex)));
+			}
 
 			appendStringInfoChar(lex->strval, *s);
 		}
@@ -1028,11 +1133,15 @@ json_lex_string(JsonLexContext *lex)
 	}
 
 	if (hi_surrogate != -1)
+	{
+		if (lex_set_error(lex))
+			return;
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input syntax for type %s", "json"),
 				 errdetail("Unicode low surrogate must follow a high surrogate."),
 				 report_json_context(lex)));
+	}
 
 	/* Hooray, we found the end of the string! */
 	lex->prev_token_terminator = lex->token_terminator;
@@ -1155,7 +1264,7 @@ json_lex_number(JsonLexContext *lex, char *s,
 		lex->prev_token_terminator = lex->token_terminator;
 		lex->token_terminator = s;
 		/* handle error if any */
-		if (error)
+		if (error && !lex_set_error(lex))
 			report_invalid_token(lex);
 	}
 }
@@ -2883,7 +2992,7 @@ json_unique_object_field_start(void *_state, char *field, bool isnull)
 	/* find key collision in the current object */
 	(void) hash_search(state->stack->fields, &field, HASH_ENTER, &found);
 
-	if (found)
+	if (found && !lex_set_error(state->lex))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("duplicate JSON key \"%s\"", field),
@@ -2899,7 +3008,6 @@ json_is_valid(PG_FUNCTION_ARGS)
 	text	   *json = PG_GETARG_TEXT_P(0);
 	text	   *type = PG_GETARG_TEXT_P(1);
 	bool		unique = PG_GETARG_BOOL(2);
-	MemoryContext mcxt = CurrentMemoryContext;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
@@ -2911,23 +3019,11 @@ json_is_valid(PG_FUNCTION_ARGS)
 		JsonTokenType tok;
 
 		lex = makeJsonLexContext(json, false);
+		lex->throw_errors = false;
 
 		/* Lex exactly one token from the input and check its type. */
-		PG_TRY();
-		{
-			json_lex(lex);
-		}
-		PG_CATCH();
-		{
-			if (ERRCODE_TO_CATEGORY(geterrcode()) == ERRCODE_DATA_EXCEPTION)
-			{
-				FlushErrorState();
-				MemoryContextSwitchTo(mcxt);
-				PG_RETURN_BOOL(false);	/* invalid json */
-			}
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
+		if (!json_lex(lex))
+			PG_RETURN_BOOL(false);	/* invalid json */
 
 		tok = lex_peek(lex);
 
@@ -2968,21 +3064,10 @@ json_is_valid(PG_FUNCTION_ARGS)
 			uniqueSemAction.object_end = json_unique_object_end;
 		}
 
-		PG_TRY();
-		{
-			pg_parse_json(lex, unique ? &uniqueSemAction : &nullSemAction);
-		}
-		PG_CATCH();
-		{
-			if (ERRCODE_TO_CATEGORY(geterrcode()) == ERRCODE_DATA_EXCEPTION)
-			{
-				FlushErrorState();
-				MemoryContextSwitchTo(mcxt);
-				PG_RETURN_BOOL(false);	/* invalid json or key collision found */
-			}
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
+		lex->throw_errors = false;
+
+		if (!pg_parse_json(lex, unique ? &uniqueSemAction : &nullSemAction))
+			PG_RETURN_BOOL(false);	/* invalid json or key collision found */
 	}
 
 	PG_RETURN_BOOL(true);	/* ok */

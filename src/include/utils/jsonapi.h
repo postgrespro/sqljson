@@ -61,6 +61,8 @@ typedef struct JsonLexContext
 	int			line_number;
 	char	   *line_start;
 	StringInfo	strval;
+	bool		throw_errors;
+	bool		error;
 } JsonLexContext;
 
 typedef void (*json_struct_action) (void *state);
@@ -153,7 +155,7 @@ typedef struct JsonIterator
  * points to. If the action pointers are NULL the parser
  * does nothing and just continues.
  */
-extern void pg_parse_json(JsonLexContext *lex, JsonSemAction *sem);
+extern bool pg_parse_json(JsonLexContext *lex, JsonSemAction *sem);
 
 /*
  * json_count_array_elements performs a fast secondary parse to determine the
