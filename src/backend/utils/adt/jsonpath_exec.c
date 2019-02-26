@@ -1068,7 +1068,6 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					res = jperOk;	/* skip evaluation */
 					break;
 				}
-
 				v = hasNext ? &vbuf : palloc(sizeof(*v));
 
 				baseObject = cxt->baseObject;
@@ -1436,9 +1435,27 @@ executeItemOptUnwrapResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		JsonValueListIterator it;
 		JsonPathExecResult res = executeItem(cxt, jsp, jb, &seq);
 		JsonItem   *item;
+		int			count;
 
 		if (jperIsError(res))
 			return res;
+
+		count = JsonValueListLength(&seq);
+
+		if (!count)
+			return jperNotFound;
+
+		/* Optimize copying of singleton item into empty list */
+		if (count == 1 &&
+			JsonbType((item = JsonValueListHead(&seq))) != jbvArray)
+		{
+			if (JsonValueListIsEmpty(found))
+				*found = seq;
+			else
+				JsonValueListAppend(found, item);
+
+			return jperOk;
+		}
 
 		JsonValueListInitIterator(&seq, &it);
 		while ((item = JsonValueListNext(&seq, &it)))
