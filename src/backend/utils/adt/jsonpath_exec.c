@@ -167,6 +167,7 @@ typedef struct JsonPathExecContext
 										 * ignored */
 	bool		throwErrors;	/* with "false" all suppressible errors are
 								 * suppressed */
+	bool		isJsonb;
 } JsonPathExecContext;
 
 /* Context for LIKE_REGEX execution. */
@@ -351,6 +352,10 @@ static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items);
 static text *JsonItemUnquoteText(JsonItem *jsi);
+
+static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
+				 bool isJsonb);
+static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index);
 
 static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 				   bool strict, Datum *value, Oid *typid,
@@ -671,6 +676,7 @@ executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
 	cxt.lastGeneratedObjectId = 1 + getVar(vars, NULL, 0, NULL, NULL);
 	cxt.innermostArraySize = -1;
 	cxt.throwErrors = throwErrors;
+	cxt.isJsonb = true;
 
 	pushJsonItem(&cxt.stack, &root, cxt.root);
 
@@ -749,23 +755,18 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiKey:
 			if (JsonbType(jb) == jbvObject)
 			{
-				JsonbValue *v;
-				JsonbValue	key;
+				int			keylen;
+				char	   *key = jspGetString(jsp, &keylen);
 
-				key.type = jbvString;
-				key.val.string.val = jspGetString(jsp, &key.val.string.len);
+				jb = getJsonObjectKey(jb, key, keylen, cxt->isJsonb);
 
-				v = findJsonbValueFromContainer(jb->jbv.val.binary.data,
-												JB_FOBJECT, &key);
-
-				if (v != NULL)
+				if (jb != NULL)
 				{
-					jb = JsonbValueToJsonItem(v);
 					res = executeNextItem(cxt, jsp, NULL, jb, found, false);
 
 					/* free value if it was not added to found list */
 					if (jspHasNext(jsp) || !found)
-						pfree(v);
+						pfree(jb);
 				}
 				else if (!jspIgnoreStructuralErrors(cxt))
 				{
@@ -777,8 +778,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					ereport(ERROR,
 							(errcode(ERRCODE_JSON_MEMBER_NOT_FOUND),
 							 errmsg("JSON object does not contain key \"%s\"",
-									pnstrdup(key.val.string.val,
-											 key.val.string.len))));
+									pnstrdup(key, keylen))));
 				}
 			}
 			else if (unwrap && JsonbType(jb) == jbvArray)
@@ -887,14 +887,11 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						}
 						else
 						{
-							JsonbValue *v =
-							getIthJsonbValueFromContainer(jb->jbv.val.binary.data,
-														  (uint32) index);
+							jsi = getJsonArrayElement(jb, (uint32) index);
 
-							if (v == NULL)
+							if (jsi == NULL)
 								continue;
 
-							jsi = JsonbValueToJsonItem(v);
 							copy = false;
 						}
 
@@ -2747,6 +2744,32 @@ JsonItemUnquoteText(JsonItem *jsi)
 		return cstring_to_text(str);
 	else
 		return cstring_to_text_with_len(str, len);
+}
+
+static JsonItem *
+getJsonObjectKey(JsonItem *jb, char *keystr, int keylen, bool isJsonb)
+{
+	JsonbValue *val;
+	JsonbValue	key;
+
+	key.type = jbvString;
+	key.val.string.val = keystr;
+	key.val.string.len = keylen;
+
+	val = isJsonb ?
+		findJsonbValueFromContainer(jb->jbv.val.binary.data, JB_FOBJECT, &key) :
+		getIthJsonbValueFromContainer(jb->jbv.val.binary.data, 0);
+
+	return val ? JsonbValueToJsonItem(val) : NULL;
+}
+
+static JsonItem *
+getJsonArrayElement(JsonItem *jb, uint32 index)
+{
+	JsonbValue *elem =
+	getIthJsonbValueFromContainer(jb->jbv.val.binary.data, index);
+
+	return elem ? JsonbValueToJsonItem(elem) : NULL;
 }
 
 /* Get scalar of given type or NULL on type mismatch */
