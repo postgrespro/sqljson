@@ -88,13 +88,26 @@ typedef struct JsonBaseObjectInfo
 } JsonBaseObjectInfo;
 
 /*
+ * Special data structure representing stack of current items.  We use it
+ * instead of regular list in order to evade extra memory allocation.  These
+ * items are always allocated in local variables.
+ */
+typedef struct JsonItemStackEntry
+{
+	JsonbValue *item;
+	struct JsonItemStackEntry *parent;
+} JsonItemStackEntry;
+
+typedef JsonItemStackEntry *JsonItemStack;
+
+/*
  * Context of jsonpath execution.
  */
 typedef struct JsonPathExecContext
 {
 	Jsonb	   *vars;			/* variables to substitute into jsonpath */
 	JsonbValue *root;			/* for $ evaluation */
-	JsonbValue *current;		/* for @ evaluation */
+	JsonItemStack stack;		/* for @ evaluation */
 	JsonBaseObjectInfo baseObject;	/* "base object" for .keyvalue()
 									 * evaluation */
 	int			lastGeneratedObjectId;	/* "id" counter for .keyvalue()
@@ -255,6 +268,10 @@ static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 static int compareDatetime(Datum val1, Oid typid1, int tz1,
 				Datum val2, Oid typid2, int tz2,
 				bool *error);
+
+static void pushJsonItem(JsonItemStack *stack,
+			 JsonItemStackEntry *entry, JsonbValue *item);
+static void popJsonItem(JsonItemStack *stack);
 
 /****************** User interface to JsonPath executor ********************/
 
@@ -485,6 +502,7 @@ executeJsonPath(JsonPath *path, Jsonb *vars, Jsonb *json, bool throwErrors,
 	JsonPathExecResult res;
 	JsonPathItem jsp;
 	JsonbValue	jbv;
+	JsonItemStackEntry root;
 
 	jspInit(&jsp, path);
 
@@ -503,12 +521,14 @@ executeJsonPath(JsonPath *path, Jsonb *vars, Jsonb *json, bool throwErrors,
 	cxt.laxMode = (path->header & JSONPATH_LAX) != 0;
 	cxt.ignoreStructuralErrors = cxt.laxMode;
 	cxt.root = &jbv;
-	cxt.current = &jbv;
+	cxt.stack = NULL;
 	cxt.baseObject.jbc = NULL;
 	cxt.baseObject.id = 0;
 	cxt.lastGeneratedObjectId = vars ? 2 : 1;
 	cxt.innermostArraySize = -1;
 	cxt.throwErrors = throwErrors;
+
+	pushJsonItem(&cxt.stack, &root, cxt.root);
 
 	if (jspStrictAbsenseOfErrors(&cxt) && !result)
 	{
@@ -636,7 +656,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			break;
 
 		case jpiCurrent:
-			res = executeNextItem(cxt, jsp, NULL, cxt->current,
+			res = executeNextItem(cxt, jsp, NULL, cxt->stack->item,
 								  found, true);
 			break;
 
@@ -1453,13 +1473,12 @@ static JsonPathBool
 executeNestedBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					  JsonbValue *jb)
 {
-	JsonbValue *prev;
+	JsonItemStackEntry current;
 	JsonPathBool res;
 
-	prev = cxt->current;
-	cxt->current = jb;
+	pushJsonItem(&cxt->stack, &current, jb);
 	res = executeBoolItem(cxt, jsp, jb, false);
-	cxt->current = prev;
+	popJsonItem(&cxt->stack);
 
 	return res;
 }
@@ -2461,6 +2480,21 @@ wrapItemsInArray(const JsonValueList *items)
 		pushJsonbValue(&ps, WJB_ELEM, jbv);
 
 	return pushJsonbValue(&ps, WJB_END_ARRAY, NULL);
+}
+
+static void
+pushJsonItem(JsonItemStack *stack, JsonItemStackEntry *entry,
+			 JsonbValue *item)
+{
+	entry->item = item;
+	entry->parent = *stack;
+	*stack = entry;
+}
+
+static void
+popJsonItem(JsonItemStack *stack)
+{
+	*stack = (*stack)->parent;
 }
 
 static inline Datum

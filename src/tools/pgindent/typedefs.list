@@ -1121,6 +1121,8 @@ JsValue
 JsonAggState
 JsonBaseObjectInfo
 JsonHashEntry
+JsonItemStack
+JsonItemStackEntry
 JsonIterateStringValuesAction
 JsonLexContext
 JsonLikeRegexContext
