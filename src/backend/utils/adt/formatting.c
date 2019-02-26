@@ -4147,6 +4147,10 @@ parse_datetime(text *date_txt, text *fmt, char *tzname, bool strict,
 						 error))
 		return (Datum) 0;
 
+	/* Save default time-zone for non-zoned types. */
+	if (!(flags & DCH_ZONED) && tzname &&
+		!get_timezone(&tm, tzname, NULL, "timezone", false, tz, error))
+		return (Datum) 0;
 
 	if (flags & DCH_DATED)
 	{
