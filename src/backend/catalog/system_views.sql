@@ -1287,6 +1287,14 @@ LANGUAGE INTERNAL
 STRICT IMMUTABLE PARALLEL SAFE
 AS 'jsonb_path_query_first';
 
+CREATE OR REPLACE FUNCTION
+  jsonb_path_query_first_text(target jsonb, path jsonpath, vars jsonb DEFAULT '{}',
+                              silent boolean DEFAULT false)
+RETURNS text
+LANGUAGE INTERNAL
+STRICT IMMUTABLE PARALLEL SAFE
+AS 'jsonb_path_query_first_text';
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather

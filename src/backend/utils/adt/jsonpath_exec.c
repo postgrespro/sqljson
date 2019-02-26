@@ -72,6 +72,7 @@
 #include "utils/float.h"
 #include "utils/guc.h"
 #include "utils/json.h"
+#include "utils/jsonapi.h"
 #include "utils/jsonpath.h"
 #include "utils/date.h"
 #include "utils/timestamp.h"
@@ -270,6 +271,7 @@ static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static int	JsonbType(JsonbValue *jb);
 static JsonbValue *getScalar(JsonbValue *scalar, enum jbvType type);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items);
+static text *JsonbValueUnquoteText(JsonbValue *jbv);
 
 static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
 				   bool strict, Datum *value, Oid *typid,
@@ -483,6 +485,29 @@ jsonb_path_query_first(PG_FUNCTION_ARGS)
 
 	if (JsonValueListLength(&found) >= 1)
 		PG_RETURN_JSONB_P(JsonbValueToJsonb(JsonValueListHead(&found)));
+	else
+		PG_RETURN_NULL();
+}
+
+/*
+ * jsonb_path_query_first_text
+ *		Executes jsonpath for given jsonb document and returns first result
+ *		item as text.  If there are no items, NULL returned.
+ */
+Datum
+jsonb_path_query_first_text(FunctionCallInfo fcinfo)
+{
+	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
+	JsonPath   *jp = PG_GETARG_JSONPATH_P(1);
+	Jsonb	   *vars = PG_GETARG_JSONB_P(2);
+	bool		silent = PG_GETARG_BOOL(3);
+	JsonValueList found = {0};
+
+	(void) executeJsonPath(jp, vars, getJsonPathVariableFromJsonb,
+						   jb, !silent, &found);
+
+	if (JsonValueListLength(&found) >= 1)
+		PG_RETURN_TEXT_P(JsonbValueUnquoteText(JsonValueListHead(&found)));
 	else
 		PG_RETURN_NULL();
 }
@@ -2481,6 +2506,68 @@ JsonbType(JsonbValue *jb)
 	}
 
 	return type;
+}
+
+/*
+ * Convert jsonb to a C-string stripping quotes from scalar strings.
+ */
+static char *
+JsonbValueUnquote(JsonbValue *jbv, int *len)
+{
+	switch (jbv->type)
+	{
+		case jbvString:
+			*len = jbv->val.string.len;
+			return jbv->val.string.val;
+
+		case jbvBool:
+			*len = jbv->val.boolean ? 4 : 5;
+			return jbv->val.boolean ? "true" : "false";
+
+		case jbvNumeric:
+			*len = -1;
+			return DatumGetCString(DirectFunctionCall1(numeric_out,
+													   PointerGetDatum(jbv->val.numeric)));
+
+		case jbvNull:
+			*len = 4;
+			return "null";
+
+		case jbvDatetime:
+			*len = -1;
+			return JsonEncodeDateTime(NULL,
+									  jbv->val.datetime.value,
+									  jbv->val.datetime.typid,
+									  &jbv->val.datetime.tz);
+
+		case jbvBinary:
+			{
+				JsonbValue	jbvbuf;
+
+				if (JsonbExtractScalar(jbv->val.binary.data, &jbvbuf))
+					return JsonbValueUnquote(&jbvbuf, len);
+
+				*len = -1;
+				return JsonbToCString(NULL, jbv->val.binary.data,
+									  jbv->val.binary.len);
+			}
+
+		default:
+			elog(ERROR, "unexpected jsonb value type: %d", jbv->type);
+			return NULL;
+	}
+}
+
+static text *
+JsonbValueUnquoteText(JsonbValue *jbv)
+{
+	int			len;
+	char	   *str = JsonbValueUnquote(jbv, &len);
+
+	if (len < 0)
+		return cstring_to_text(str);
+	else
+		return cstring_to_text_with_len(str, len);
 }
 
 /* Get scalar of given type or NULL on type mismatch */
