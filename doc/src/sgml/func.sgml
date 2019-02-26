@@ -11650,9 +11650,9 @@ table2-mapping
    listed in <xref linkend="functions-sqljson-path-operators"/>.
    Each method must be preceded by a dot, while arithmetic and boolean
    operators are separated from the operands by spaces. For example,
-   you can get an array size:
+   you can convert a text string into a datetime value:
 <programlisting>
-'$.track.segments.size()'
+'$.track.segments[*]."start time".datetime()'
 </programlisting>
    For more examples of using <type>jsonpath</type> operators
    and methods within path expressions, see
@@ -11945,6 +11945,27 @@ table2-mapping
         <entry><literal>{"z": -0.3}</literal></entry>
         <entry><literal>$.z.abs()</literal></entry>
         <entry><literal>0.3</literal></entry>
+       </row>
+       <row>
+        <entry><literal>datetime()</literal></entry>
+        <entry>Datetime value converted from a string</entry>
+        <entry><literal>["2015-8-1", "2015-08-12"]</literal></entry>
+        <entry><literal>$[*] ? (@.datetime() &lt; "2015-08-2". datetime())</literal></entry>
+        <entry><literal>2015-8-1</literal></entry>
+       </row>
+       <row>
+        <entry><literal>datetime(<replaceable>template</replaceable>)</literal></entry>
+        <entry>Datetime value converted from a string with a specified template</entry>
+        <entry><literal>["12:30", "18:40"]</literal></entry>
+        <entry><literal>$[*].datetime("HH24:MI")</literal></entry>
+        <entry><literal>"12:30:00", "18:40:00"</literal></entry>
+       </row>
+       <row>
+        <entry><literal>datetime(<replaceable>template</replaceable>, <replaceable>default_tz</replaceable>)</literal></entry>
+        <entry>Datetime value converted from a string with a specified template and default timezone</entry>
+        <entry><literal>["12:30 -02", "18:40"]</literal></entry>
+        <entry><literal>$[*].datetime("HH24:MI TZH", "+03:00")</literal></entry>
+        <entry><literal>"12:30:00-02:00", "18:40:00+03:00"</literal></entry>
        </row>
        <row>
         <entry><literal>keyvalue()</literal></entry>

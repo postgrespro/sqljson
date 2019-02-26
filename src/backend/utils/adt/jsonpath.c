@@ -286,6 +286,7 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 		case jpiDiv:
 		case jpiMod:
 		case jpiStartsWith:
+		case jpiDatetime:
 			{
 				/*
 				 * First, reserve place for left/right arg's positions, then
@@ -692,6 +693,22 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 		case jpiDouble:
 			appendBinaryStringInfo(buf, ".double()", 9);
 			break;
+		case jpiDatetime:
+			appendBinaryStringInfo(buf, ".datetime(", 10);
+			if (v->content.args.left)
+			{
+				jspGetLeftArg(v, &elem);
+				printJsonPathItem(buf, &elem, false, false);
+
+				if (v->content.args.right)
+				{
+					appendBinaryStringInfo(buf, ", ", 2);
+					jspGetRightArg(v, &elem);
+					printJsonPathItem(buf, &elem, false, false);
+				}
+			}
+			appendStringInfoChar(buf, ')');
+			break;
 		case jpiKeyValue:
 			appendBinaryStringInfo(buf, ".keyvalue()", 11);
 			break;
@@ -754,6 +771,8 @@ jspOperationName(JsonPathItemType type)
 			return "floor";
 		case jpiCeiling:
 			return "ceiling";
+		case jpiDatetime:
+			return "datetime";
 		default:
 			elog(ERROR, "unrecognized jsonpath item type: %d", type);
 			return NULL;
@@ -874,6 +893,7 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiLessOrEqual:
 		case jpiGreaterOrEqual:
 		case jpiStartsWith:
+		case jpiDatetime:
 			read_int32(v->content.args.left, base, pos);
 			read_int32(v->content.args.right, base, pos);
 			break;
@@ -961,6 +981,7 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiFloor ||
 			   v->type == jpiCeiling ||
 			   v->type == jpiDouble ||
+			   v->type == jpiDatetime ||
 			   v->type == jpiKeyValue ||
 			   v->type == jpiStartsWith);
 
@@ -988,6 +1009,7 @@ jspGetLeftArg(JsonPathItem *v, JsonPathItem *a)
 		   v->type == jpiMul ||
 		   v->type == jpiDiv ||
 		   v->type == jpiMod ||
+		   v->type == jpiDatetime ||
 		   v->type == jpiStartsWith);
 
 	jspInitByBuffer(a, v->base, v->content.args.left);
@@ -1009,6 +1031,7 @@ jspGetRightArg(JsonPathItem *v, JsonPathItem *a)
 		   v->type == jpiMul ||
 		   v->type == jpiDiv ||
 		   v->type == jpiMod ||
+		   v->type == jpiDatetime ||
 		   v->type == jpiStartsWith);
 
 	jspInitByBuffer(a, v->base, v->content.args.right);

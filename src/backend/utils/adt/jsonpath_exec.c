@@ -66,6 +66,7 @@
 #include "miscadmin.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/datetime.h"
 #include "utils/datum.h"
 #include "utils/formatting.h"
 #include "utils/float.h"
@@ -247,6 +248,13 @@ static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static int	JsonbType(JsonbValue *jb);
 static JsonbValue *getScalar(JsonbValue *scalar, enum jbvType type);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items);
+
+static bool tryToParseDatetime(text *fmt, text *datetime, char *tzname,
+				   bool strict, Datum *value, Oid *typid,
+				   int32 *typmod, int *tzp, bool throwErrors);
+static int compareDatetime(Datum val1, Oid typid1, int tz1,
+				Datum val2, Oid typid2, int tz2,
+				bool *error);
 
 /****************** User interface to JsonPath executor ********************/
 
@@ -1026,6 +1034,162 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 												 jspOperationName(jsp->type)))));
 
 				res = executeNextItem(cxt, jsp, NULL, jb, found, true);
+			}
+			break;
+
+		case jpiDatetime:
+			{
+				JsonbValue	jbvbuf;
+				Datum		value;
+				text	   *datetime;
+				Oid			typid;
+				int32		typmod = -1;
+				int			tz = PG_INT32_MIN;
+				bool		hasNext;
+
+				if (unwrap && JsonbType(jb) == jbvArray)
+					return executeItemUnwrapTargetArray(cxt, jsp, jb, found,
+														false);
+
+				if (!(jb = getScalar(jb, jbvString)))
+					RETURN_ERROR(ereport(ERROR,
+										 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+										  errmsg("jsonpath item method .%s() can only be applied to a string value",
+												 jspOperationName(jsp->type)))));
+
+				datetime = cstring_to_text_with_len(jb->val.string.val,
+													jb->val.string.len);
+
+				if (jsp->content.args.left)
+				{
+					text	   *template;
+					char	   *template_str;
+					int			template_len;
+					char	   *tzname = NULL;
+
+					jspGetLeftArg(jsp, &elem);
+
+					if (elem.type != jpiString)
+						elog(ERROR, "invalid jsonpath item type for .datetime() argument");
+
+					template_str = jspGetString(&elem, &template_len);
+
+					if (jsp->content.args.right)
+					{
+						JsonValueList tzlist = {0};
+						JsonPathExecResult tzres;
+						JsonbValue *tzjbv;
+
+						jspGetRightArg(jsp, &elem);
+						tzres = executeItem(cxt, &elem, jb, &tzlist);
+						if (jperIsError(tzres))
+							return tzres;
+
+						if (JsonValueListLength(&tzlist) != 1 ||
+							((tzjbv = JsonValueListHead(&tzlist))->type != jbvString &&
+							 tzjbv->type != jbvNumeric))
+							RETURN_ERROR(ereport(ERROR,
+												 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+												  errmsg("timezone argument of jsonpath item method .%s() is not a singleton string or number",
+														 jspOperationName(jsp->type)))));
+
+						if (tzjbv->type == jbvString)
+							tzname = pnstrdup(tzjbv->val.string.val,
+											  tzjbv->val.string.len);
+						else
+						{
+							bool		error = false;
+
+							tz = numeric_int4_opt_error(tzjbv->val.numeric,
+														&error);
+
+							if (error || tz == PG_INT32_MIN)
+								RETURN_ERROR(ereport(ERROR,
+													 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+													  errmsg("timezone argument of jsonpath item method .%s() is out of integer range",
+															 jspOperationName(jsp->type)))));
+
+							tz = -tz;
+						}
+					}
+
+					template = cstring_to_text_with_len(template_str,
+														template_len);
+
+					if (tryToParseDatetime(template, datetime, tzname, false,
+										   &value, &typid, &typmod,
+										   &tz, jspThrowErrors(cxt)))
+						res = jperOk;
+					else
+						res = jperError;
+
+					if (tzname)
+						pfree(tzname);
+				}
+				else
+				{
+					/* Try to recognize one of ISO formats. */
+					static const char *fmt_str[] =
+					{
+						"yyyy-mm-dd HH24:MI:SS TZH:TZM",
+						"yyyy-mm-dd HH24:MI:SS TZH",
+						"yyyy-mm-dd HH24:MI:SS",
+						"yyyy-mm-dd",
+						"HH24:MI:SS TZH:TZM",
+						"HH24:MI:SS TZH",
+						"HH24:MI:SS"
+					};
+
+					/* cache for format texts */
+					static text *fmt_txt[lengthof(fmt_str)] = {0};
+					int			i;
+
+					for (i = 0; i < lengthof(fmt_str); i++)
+					{
+						if (!fmt_txt[i])
+						{
+							MemoryContext oldcxt =
+							MemoryContextSwitchTo(TopMemoryContext);
+
+							fmt_txt[i] = cstring_to_text(fmt_str[i]);
+							MemoryContextSwitchTo(oldcxt);
+						}
+
+						if (tryToParseDatetime(fmt_txt[i], datetime, NULL,
+											   true, &value, &typid, &typmod,
+											   &tz, false))
+						{
+							res = jperOk;
+							break;
+						}
+					}
+
+					if (res == jperNotFound)
+						RETURN_ERROR(ereport(ERROR,
+											 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
+											  errmsg("unrecognized datetime format"),
+											  errhint("use datetime template argument for explicit format specification"))));
+				}
+
+				pfree(datetime);
+
+				if (jperIsError(res))
+					break;
+
+				hasNext = jspGetNext(jsp, &elem);
+
+				if (!hasNext && !found)
+					break;
+
+				jb = hasNext ? &jbvbuf : palloc(sizeof(*jb));
+
+				jb->type = jbvDatetime;
+				jb->val.datetime.value = value;
+				jb->val.datetime.typid = typid;
+				jb->val.datetime.typmod = typmod;
+				jb->val.datetime.tz = tz;
+
+				res = executeNextItem(cxt, jsp, &elem, jb, found, hasNext);
 			}
 			break;
 
@@ -2022,6 +2186,22 @@ compareItems(int32 op, JsonbValue *jb1, JsonbValue *jb2)
 							 jb2->val.string.val, jb2->val.string.len,
 							 DEFAULT_COLLATION_OID);
 			break;
+		case jbvDatetime:
+			{
+				bool		error = false;
+
+				cmp = compareDatetime(jb1->val.datetime.value,
+									  jb1->val.datetime.typid,
+									  jb1->val.datetime.tz,
+									  jb2->val.datetime.value,
+									  jb2->val.datetime.typid,
+									  jb2->val.datetime.tz,
+									  &error);
+
+				if (error)
+					return jpbUnknown;
+			}
+			break;
 
 		case jbvBinary:
 		case jbvArray:
@@ -2277,4 +2457,294 @@ wrapItemsInArray(const JsonValueList *items)
 		pushJsonbValue(&ps, WJB_ELEM, jbv);
 
 	return pushJsonbValue(&ps, WJB_END_ARRAY, NULL);
+}
+
+#define USE_CURRENT_TZ
+
+static int
+get_current_tz()
+{
+	struct pg_tm tm;
+
+	GetCurrentDateTime(&tm);
+
+	return DetermineTimeZoneOffset(&tm, session_timezone);
+}
+
+static inline Datum
+time_to_timetz(Datum time, int tz, bool *error)
+{
+	TimeADT		tm = DatumGetTimeADT(time);
+	TimeTzADT  *result = palloc(sizeof(TimeTzADT));
+
+	if (tz == PG_INT32_MIN)
+	{
+#ifdef USE_CURRENT_TZ
+		tz = get_current_tz();
+#else
+		*error = true;
+		return (Datum) 0;
+#endif
+	}
+
+	result->time = tm;
+	result->zone = tz;
+
+	return TimeTzADTPGetDatum(result);
+}
+
+static inline Datum
+date_to_timestamp(Datum date, bool *error)
+{
+	DateADT		dt = DatumGetDateADT(date);
+	Timestamp	ts = date2timestamp_internal(dt, error);
+
+	return TimestampGetDatum(ts);
+}
+
+static inline Datum
+date_to_timestamptz(Datum date, int tz, bool *error)
+{
+	DateADT		dt = DatumGetDateADT(date);
+	TimestampTz ts;
+
+	if (tz == PG_INT32_MIN)
+	{
+#ifdef USE_CURRENT_TZ
+		tz = get_current_tz();
+#else
+		*error = true;
+		return (Datum) 0;
+#endif
+	}
+
+	ts = date2timestamptz_internal(dt, &tz, error);
+
+	return TimestampTzGetDatum(ts);
+}
+
+static inline Datum
+timestamp_to_timestamptz(Datum val, int tz, bool *error)
+{
+	Timestamp	ts = DatumGetTimestamp(val);
+	TimestampTz tstz;
+
+	if (tz == PG_INT32_MIN)
+	{
+#ifdef USE_CURRENT_TZ
+		tz = get_current_tz();
+#else
+		*error = true;
+		return (Datum) 0;
+#endif
+	}
+
+	tstz = timestamp2timestamptz_internal(ts, &tz, error);
+
+	return TimestampTzGetDatum(tstz);
+}
+
+/*
+ * Cross-type comparison of two datetime SQL/JSON items.  If items are
+ * uncomparable, 'error' flag is set.
+ */
+static int
+compareDatetime(Datum val1, Oid typid1, int tz1,
+				Datum val2, Oid typid2, int tz2,
+				bool *error)
+{
+	PGFunction cmpfunc = NULL;
+
+	switch (typid1)
+	{
+		case DATEOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					cmpfunc = date_cmp;
+
+					break;
+
+				case TIMESTAMPOID:
+					val1 = date_to_timestamp(val1, error);
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMESTAMPTZOID:
+					val1 = date_to_timestamptz(val1, tz1, error);
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMEOID:
+				case TIMETZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMEOID:
+			switch (typid2)
+			{
+				case TIMEOID:
+					cmpfunc = time_cmp;
+
+					break;
+
+				case TIMETZOID:
+					val1 = time_to_timetz(val1, tz1, error);
+					cmpfunc = timetz_cmp;
+
+					break;
+
+				case DATEOID:
+				case TIMESTAMPOID:
+				case TIMESTAMPTZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMETZOID:
+			switch (typid2)
+			{
+				case TIMEOID:
+					val2 = time_to_timetz(val2, tz2, error);
+					cmpfunc = timetz_cmp;
+
+					break;
+
+				case TIMETZOID:
+					cmpfunc = timetz_cmp;
+
+					break;
+
+				case DATEOID:
+				case TIMESTAMPOID:
+				case TIMESTAMPTZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMESTAMPOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					val2 = date_to_timestamp(val2, error);
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMESTAMPOID:
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMESTAMPTZOID:
+					val1 = timestamp_to_timestamptz(val1, tz1, error);
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMEOID:
+				case TIMETZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		case TIMESTAMPTZOID:
+			switch (typid2)
+			{
+				case DATEOID:
+					val2 = date_to_timestamptz(val2, tz2, error);
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMESTAMPOID:
+					val2 = timestamp_to_timestamptz(val2, tz2, error);
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMESTAMPTZOID:
+					cmpfunc = timestamp_cmp;
+
+					break;
+
+				case TIMEOID:
+				case TIMETZOID:
+					*error = true;
+					return 0;
+			}
+			break;
+
+		default:
+			elog(ERROR, "unrecognized SQL/JSON datetime type oid: %d",
+				 typid1);
+	}
+
+	if (*error)
+		return 0;
+
+	if (!cmpfunc)
+		elog(ERROR, "unrecognized SQL/JSON datetime type oid: %d",
+			 typid2);
+
+	*error = false;
+
+	return DatumGetInt32(DirectFunctionCall2(cmpfunc, val1, val2));
+}
+
+/*
+ * Try to parse datetime text with the specified datetime template and
+ * default time-zone 'tzname'.
+ * Returns 'value' datum, its type 'typid' and 'typmod'.
+ * Datetime error is rethrown with SQL/JSON errcode if 'throwErrors' is true.
+ */
+static bool
+tryToParseDatetime(text *fmt, text *datetime, char *tzname, bool strict,
+				   Datum *value, Oid *typid, int32 *typmod, int *tzp,
+				   bool throwErrors)
+{
+	bool		error = false;
+	int			tz = *tzp;
+
+#if 0
+	if (throwErrors)
+	{
+		PG_TRY();
+		{
+			*value = parse_datetime(datetime, fmt, tzname, strict, typid,
+									typmod, &tz, throwErrors ? NULL : &error);
+		}
+		PG_CATCH();
+		{
+			if (/* ERRCODE_TO_CATEGORY(geterrcode()) == ERRCODE_DATA_EXCEPTION */
+				geterrcode() == ERRCODE_INVALID_DATETIME_FORMAT ||
+				geterrcode() == ERRCODE_DATETIME_VALUE_OUT_OF_RANGE)
+			{
+				/*
+				 * Save original datetime error message, details and hint, just
+				 * replace errcode with a SQL/JSON one.
+				 */
+				errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION);
+			}
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
+	else
+#endif
+
+		*value = parse_datetime(datetime, fmt, tzname, strict, typid, typmod,
+								&tz, throwErrors ? NULL : &error);
+
+	if (!error)
+		*tzp = tz;
+
+	return !error;
 }

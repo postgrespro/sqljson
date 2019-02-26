@@ -40,6 +40,15 @@
 #error -ffast-math is known to break this code
 #endif
 
+#define date_ereport(res, msg) do { \
+	if (error) \
+	{ \
+		*error = true; \
+		return (res); \
+	} \
+	else \
+		ereport(ERROR, msg); \
+} while (0)
 
 /* common code for timetypmodin and timetztypmodin */
 static int32
@@ -562,9 +571,8 @@ date_mii(PG_FUNCTION_ARGS)
  * Internal routines for promoting date to timestamp and timestamp with
  * time zone
  */
-
-static Timestamp
-date2timestamp(DateADT dateVal)
+Timestamp
+date2timestamp_internal(DateADT dateVal, bool *error)
 {
 	Timestamp	result;
 
@@ -580,9 +588,9 @@ date2timestamp(DateADT dateVal)
 		 * boundary need be checked for overflow.
 		 */
 		if (dateVal >= (TIMESTAMP_END_JULIAN - POSTGRES_EPOCH_JDATE))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("date out of range for timestamp")));
+			date_ereport(0,
+						 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						  errmsg("date out of range for timestamp")));
 
 		/* date is days since 2000, timestamp is microseconds since same... */
 		result = dateVal * USECS_PER_DAY;
@@ -592,7 +600,13 @@ date2timestamp(DateADT dateVal)
 }
 
 static TimestampTz
-date2timestamptz(DateADT dateVal)
+date2timestamp(DateADT dateVal)
+{
+	return date2timestamp_internal(dateVal, NULL);
+}
+
+TimestampTz
+date2timestamptz_internal(DateADT dateVal, int *tzp, bool *error)
 {
 	TimestampTz result;
 	struct pg_tm tt,
@@ -611,16 +625,16 @@ date2timestamptz(DateADT dateVal)
 		 * boundary need be checked for overflow.
 		 */
 		if (dateVal >= (TIMESTAMP_END_JULIAN - POSTGRES_EPOCH_JDATE))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("date out of range for timestamp")));
+			date_ereport(0,
+						 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						  errmsg("date out of range for timestamp")));
 
 		j2date(dateVal + POSTGRES_EPOCH_JDATE,
 			   &(tm->tm_year), &(tm->tm_mon), &(tm->tm_mday));
 		tm->tm_hour = 0;
 		tm->tm_min = 0;
 		tm->tm_sec = 0;
-		tz = DetermineTimeZoneOffset(tm, session_timezone);
+		tz = tzp ? *tzp : DetermineTimeZoneOffset(tm, session_timezone);
 
 		result = dateVal * USECS_PER_DAY + tz * USECS_PER_SEC;
 
@@ -629,12 +643,18 @@ date2timestamptz(DateADT dateVal)
 		 * of time zone, check for allowed timestamp range after adding tz.
 		 */
 		if (!IS_VALID_TIMESTAMP(result))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("date out of range for timestamp")));
+			date_ereport(0,
+						 (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						  errmsg("date out of range for timestamp")));
 	}
 
 	return result;
+}
+
+static TimestampTz
+date2timestamptz(DateADT dateVal)
+{
+	return date2timestamptz_internal(dateVal, NULL, NULL);
 }
 
 /*
