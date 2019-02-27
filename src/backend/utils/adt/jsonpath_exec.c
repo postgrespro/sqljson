@@ -110,13 +110,35 @@ typedef union JsonItem
 
 	struct
 	{
-		enum jbvType type;
+		int			type;
 		Datum		value;
 		Oid			typid;
 		int32		typmod;
 		int			tz;
 	}			datetime;
 } JsonItem;
+
+#define JsonItemJbv(jsi)			(&(jsi)->jbv)
+#define JsonItemBool(jsi)			(JsonItemJbv(jsi)->val.boolean)
+#define JsonItemNumeric(jsi)		(JsonItemJbv(jsi)->val.numeric)
+#define JsonItemNumericDatum(jsi)	NumericGetDatum(JsonItemNumeric(jsi))
+#define JsonItemString(jsi)			(JsonItemJbv(jsi)->val.string)
+#define JsonItemBinary(jsi)			(JsonItemJbv(jsi)->val.binary)
+#define JsonItemArray(jsi)			(JsonItemJbv(jsi)->val.array)
+#define JsonItemObject(jsi)			(JsonItemJbv(jsi)->val.object)
+#define JsonItemDatetime(jsi)		((jsi)->datetime)
+
+#define JsonItemGetType(jsi)		((jsi)->type)
+#define JsonItemIsNull(jsi)			(JsonItemGetType(jsi) == jsiNull)
+#define JsonItemIsBool(jsi)			(JsonItemGetType(jsi) == jsiBool)
+#define JsonItemIsNumeric(jsi)		(JsonItemGetType(jsi) == jsiNumeric)
+#define JsonItemIsString(jsi)		(JsonItemGetType(jsi) == jsiString)
+#define JsonItemIsBinary(jsi)		(JsonItemGetType(jsi) == jsiBinary)
+#define JsonItemIsArray(jsi)		(JsonItemGetType(jsi) == jsiArray)
+#define JsonItemIsObject(jsi)		(JsonItemGetType(jsi) == jsiObject)
+#define JsonItemIsDatetime(jsi)		(JsonItemGetType(jsi) == jsiDatetime)
+#define JsonItemIsScalar(jsi)		(IsAJsonbScalar(JsonItemJbv(jsi)) || \
+									 JsonItemIsDatetime(jsi))
 
 #define JsonbValueToJsonItem(jbv) ((JsonItem *) (jbv))
 
@@ -359,6 +381,16 @@ static JsonPathBool executeComparison(JsonPathItem *cmp, JsonItem *lv,
 									  JsonItem *rv, void *p);
 static JsonPathBool compareItems(int32 op, JsonItem *jb1, JsonItem *jb2);
 static int	compareNumeric(Numeric a, Numeric b);
+
+static void JsonItemInitNull(JsonItem *item);
+static void JsonItemInitBool(JsonItem *item, bool val);
+static void JsonItemInitNumeric(JsonItem *item, Numeric val);
+#define JsonItemInitNumericDatum(item, val) \
+		JsonItemInitNumeric(item, DatumGetNumeric(val))
+static void JsonItemInitString(JsonItem *item, char *str, int len);
+static void JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid,
+					 int32 typmod, int tz);
+
 static JsonItem *copyJsonItem(JsonItem *src);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
 static Jsonb *JsonItemToJsonb(JsonItem *jsi);
@@ -479,12 +511,12 @@ jsonx_path_match(PG_FUNCTION_ARGS, bool isJsonb)
 
 	if (JsonValueListLength(&cxt.found) == 1)
 	{
-		JsonItem   *jsi = JsonValueListHead(&cxt.found);
+		JsonItem   *res = JsonValueListHead(&cxt.found);
 
-		if (jsi->type == jbvBool)
-			PG_RETURN_BOOL(jsi->jbv.val.boolean);
+		if (JsonItemIsBool(res))
+			PG_RETURN_BOOL(JsonItemBool(res));
 
-		if (jsi->type == jbvNull)
+		if (JsonItemIsNull(res))
 			PG_RETURN_NULL();
 	}
 
@@ -811,19 +843,20 @@ executeJsonPath(JsonPath *path, void *vars, JsonPathVarCallback getVar,
 	JsonPathExecResult res;
 	JsonPathItem jsp;
 	JsonItem	jsi;
+	JsonbValue *jbv = JsonItemJbv(&jsi);
 	JsonItemStackEntry root;
 
 	jspInit(&jsp, path);
 
 	if (isJsonb)
 	{
-		if (!JsonbExtractScalar(&json->jb.root, &jsi.jbv))
-			JsonbInitBinary(&jsi.jbv, &json->jb);
+		if (!JsonbExtractScalar(&json->jb.root, jbv))
+			JsonbInitBinary(jbv, &json->jb);
 	}
 	else
 	{
-		if (!JsonExtractScalar(&json->js.root, &jsi.jbv))
-			JsonInitBinary(&jsi.jbv, &json->js);
+		if (!JsonExtractScalar(&json->js.root, jbv))
+			JsonInitBinary(jbv, &json->js);
 	}
 
 	cxt.vars = vars;
@@ -1108,10 +1141,9 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				lastjsi = hasNext ? &tmpjsi : palloc(sizeof(*lastjsi));
 
-				lastjsi->jbv.type = jbvNumeric;
-				lastjsi->jbv.val.numeric =
-					DatumGetNumeric(DirectFunctionCall1(int4_numeric,
-														Int32GetDatum(last)));
+				JsonItemInitNumericDatum(lastjsi,
+										 DirectFunctionCall1(int4_numeric,
+															 Int32GetDatum(last)));
 
 				res = executeNextItem(cxt, jsp, &elem, lastjsi, found, hasNext);
 			}
@@ -1127,7 +1159,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				return executeAnyItem
 					(cxt, hasNext ? &elem : NULL,
-					 jb->jbv.val.binary.data, found, 1, 1, 1,
+					 JsonItemBinary(jb).data, found, 1, 1, 1,
 					 false, jspAutoUnwrap(cxt));
 			}
 			else if (unwrap && JsonbType(jb) == jbvArray)
@@ -1205,10 +1237,10 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						break;
 				}
 
-				if (jb->type == jbvBinary)
+				if (JsonItemIsBinary(jb))
 					res = executeAnyItem
 						(cxt, hasNext ? &elem : NULL,
-						 jb->jbv.val.binary.data, found,
+						 JsonItemBinary(jb).data, found,
 						 1,
 						 jsp->content.anybounds.first,
 						 jsp->content.anybounds.last,
@@ -1245,10 +1277,9 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiType:
 			{
 				JsonItem	jsi;
+				const char *typname = JsonItemTypeName(jb);
 
-				jsi.jbv.type = jbvString;
-				jsi.jbv.val.string.val = pstrdup(JsonItemTypeName(jb));
-				jsi.jbv.val.string.len = strlen(jsi.jbv.val.string.val);
+				JsonItemInitString(&jsi, pstrdup(typname), strlen(typname));
 
 				res = executeNextItem(cxt, jsp, NULL, &jsi, found, true);
 			}
@@ -1275,10 +1306,8 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				jb = palloc(sizeof(*jb));
 
-				jb->jbv.type = jbvNumeric;
-				jb->jbv.val.numeric =
-					DatumGetNumeric(DirectFunctionCall1(int4_numeric,
-														Int32GetDatum(size)));
+				JsonItemInitNumericDatum(jb, DirectFunctionCall1(int4_numeric,
+																 Int32GetDatum(size)));
 
 				res = executeNextItem(cxt, jsp, NULL, jb, found, false);
 			}
@@ -1304,10 +1333,10 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					return executeItemUnwrapTargetArray(cxt, jsp, jb, found,
 														false);
 
-				if (jb->type == jbvNumeric)
+				if (JsonItemIsNumeric(jb))
 				{
 					char	   *tmp = DatumGetCString(DirectFunctionCall1(numeric_out,
-																		  NumericGetDatum(jb->jbv.val.numeric)));
+																		  JsonItemNumericDatum(jb)));
 					bool		have_error = false;
 
 					(void) float8in_internal_opt_error(tmp,
@@ -1323,12 +1352,12 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 													 jspOperationName(jsp->type)))));
 					res = jperOk;
 				}
-				else if (jb->type == jbvString)
+				else if (JsonItemIsString(jb))
 				{
 					/* cast string as double */
 					double		val;
-					char	   *tmp = pnstrdup(jb->jbv.val.string.val,
-											   jb->jbv.val.string.len);
+					char	   *tmp = pnstrdup(JsonItemString(jb).val,
+											   JsonItemString(jb).len);
 					bool		have_error = false;
 
 					val = float8in_internal_opt_error(tmp,
@@ -1344,9 +1373,8 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 													 jspOperationName(jsp->type)))));
 
 					jb = &jsi;
-					jb->jbv.type = jbvNumeric;
-					jb->jbv.val.numeric = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
-																			  Float8GetDatum(val)));
+					JsonItemInitNumericDatum(jb, DirectFunctionCall1(float8_numeric,
+																	 Float8GetDatum(val)));
 					res = jperOk;
 				}
 
@@ -1381,8 +1409,8 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										  errmsg("jsonpath item method .%s() can only be applied to a string value",
 												 jspOperationName(jsp->type)))));
 
-				datetime = cstring_to_text_with_len(jb->jbv.val.string.val,
-													jb->jbv.val.string.len);
+				datetime = cstring_to_text_with_len(JsonItemString(jb).val,
+													JsonItemString(jb).len);
 
 				if (jsp->content.args.left)
 				{
@@ -1409,21 +1437,21 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							return tzres;
 
 						if (JsonValueListLength(&tzlist) != 1 ||
-							((tzjsi = JsonValueListHead(&tzlist))->type != jbvString &&
-							 tzjsi->type != jbvNumeric))
+							(!JsonItemIsString((tzjsi = JsonValueListHead(&tzlist))) &&
+							 !JsonItemIsNumeric(tzjsi)))
 							RETURN_ERROR(ereport(ERROR,
 												 (errcode(ERRCODE_INVALID_ARGUMENT_FOR_JSON_DATETIME_FUNCTION),
 												  errmsg("timezone argument of jsonpath item method .%s() is not a singleton string or number",
 														 jspOperationName(jsp->type)))));
 
-						if (tzjsi->type == jbvString)
-							tzname = pnstrdup(tzjsi->jbv.val.string.val,
-											  tzjsi->jbv.val.string.len);
+						if (JsonItemIsString(tzjsi))
+							tzname = pnstrdup(JsonItemString(tzjsi).val,
+											  JsonItemString(tzjsi).len);
 						else
 						{
 							bool		error = false;
 
-							tz = numeric_int4_opt_error(tzjsi->jbv.val.numeric,
+							tz = numeric_int4_opt_error(JsonItemNumeric(tzjsi),
 														&error);
 
 							if (error || tz == PG_INT32_MIN)
@@ -1510,11 +1538,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 				jb = hasNext ? &jbvbuf : palloc(sizeof(*jb));
 
-				jb->type = jsiDatetime;
-				jb->datetime.value = value;
-				jb->datetime.typid = typid;
-				jb->datetime.typmod = typmod;
-				jb->datetime.tz = tz;
+				JsonItemInitDatetime(jb, value, typid, typmod, tz);
 
 				res = executeNextItem(cxt, jsp, &elem, jb, found, hasNext);
 			}
@@ -1541,14 +1565,14 @@ executeItemUnwrapTargetArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							 JsonItem *jb, JsonValueList *found,
 							 bool unwrapElements)
 {
-	if (jb->type != jbvBinary)
+	if (!JsonItemIsBinary(jb))
 	{
 		Assert(jb->type != jbvArray);
 		elog(ERROR, "invalid jsonb array value type: %d", jb->type);
 	}
 
 	return executeAnyItem
-		(cxt, jsp, jb->jbv.val.binary.data, found, 1, 1, 1,
+		(cxt, jsp, JsonItemBinary(jb).data, found, 1, 1, 1,
 		 false, unwrapElements);
 }
 
@@ -1623,7 +1647,7 @@ executeItemOptUnwrapResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		JsonValueListInitIterator(&seq, &it);
 		while ((item = JsonValueListNext(&seq, &it)))
 		{
-			Assert(item->type != jbvArray);
+			Assert(!JsonItemIsArray(item));
 
 			if (JsonbType(item) == jbvArray)
 				executeItemUnwrapTargetArray(cxt, NULL, item, found, false);
@@ -1831,11 +1855,11 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 	/*
 	 * Recursively iterate over jsonb objects/arrays
 	 */
-	while ((r = JsonxIteratorNext(&it, &v.jbv, true)) != WJB_DONE)
+	while ((r = JsonxIteratorNext(&it, JsonItemJbv(&v), true)) != WJB_DONE)
 	{
 		if (r == WJB_KEY)
 		{
-			r = JsonxIteratorNext(&it, &v.jbv, true);
+			r = JsonxIteratorNext(&it, JsonItemJbv(&v), true);
 			Assert(r == WJB_VALUE);
 		}
 
@@ -1844,7 +1868,7 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 
 			if (level >= first ||
 				(first == PG_UINT32_MAX && last == PG_UINT32_MAX &&
-				 v.type != jbvBinary))	/* leaves only requested */
+				 !JsonItemIsBinary(&v)))	/* leaves only requested */
 			{
 				/* check expression */
 				if (jsp)
@@ -1873,10 +1897,10 @@ executeAnyItem(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonbContainer *jbc,
 					return jperOk;
 			}
 
-			if (level < last && v.type == jbvBinary)
+			if (level < last && JsonItemIsBinary(&v))
 			{
 				res = executeAnyItem
-					(cxt, jsp, v.jbv.val.binary.data, found,
+					(cxt, jsp, JsonItemBinary(&v).data, found,
 					 level + 1, first, last,
 					 ignoreStructuralErrors, unwrapNext);
 
@@ -2027,13 +2051,13 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 	if (jspThrowErrors(cxt))
 	{
-		res = func(lval->jbv.val.numeric, rval->jbv.val.numeric, NULL);
+		res = func(JsonItemNumeric(lval), JsonItemNumeric(rval), NULL);
 	}
 	else
 	{
 		bool		error = false;
 
-		res = func(lval->jbv.val.numeric, rval->jbv.val.numeric, &error);
+		res = func(JsonItemNumeric(lval), JsonItemNumeric(rval), &error);
 
 		if (error)
 			return jperError;
@@ -2043,8 +2067,7 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		return jperOk;
 
 	lval = palloc(sizeof(*lval));
-	lval->jbv.type = jbvNumeric;
-	lval->jbv.val.numeric = res;
+	JsonItemInitNumeric(lval, res);
 
 	return executeNextItem(cxt, jsp, &elem, lval, found, false);
 }
@@ -2095,9 +2118,9 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		}
 
 		if (func)
-			val->jbv.val.numeric =
+			JsonItemNumeric(val) =
 				DatumGetNumeric(DirectFunctionCall1(func,
-													NumericGetDatum(val->jbv.val.numeric)));
+													NumericGetDatum(JsonItemNumeric(val))));
 
 		jper2 = executeNextItem(cxt, jsp, &elem, val, found, false);
 
@@ -2130,10 +2153,10 @@ executeStartsWith(JsonPathItem *jsp, JsonItem *whole, JsonItem *initial,
 	if (!(initial = getScalar(initial, jbvString)))
 		return jpbUnknown;		/* error */
 
-	if (whole->jbv.val.string.len >= initial->jbv.val.string.len &&
-		!memcmp(whole->jbv.val.string.val,
-				initial->jbv.val.string.val,
-				initial->jbv.val.string.len))
+	if (JsonItemString(whole).len >= JsonItemString(initial).len &&
+		!memcmp(JsonItemString(whole).val,
+				JsonItemString(initial).val,
+				JsonItemString(initial).len))
 		return jpbTrue;
 
 	return jpbFalse;
@@ -2181,8 +2204,8 @@ executeLikeRegex(JsonPathItem *jsp, JsonItem *str, JsonItem *rarg,
 		}
 	}
 
-	if (RE_compile_and_execute(cxt->regex, str->jbv.val.string.val,
-							   str->jbv.val.string.len,
+	if (RE_compile_and_execute(cxt->regex, JsonItemString(str).val,
+							   JsonItemString(str).len,
 							   cxt->cflags, DEFAULT_COLLATION_OID, 0, NULL))
 		return jpbTrue;
 
@@ -2210,14 +2233,13 @@ executeNumericItemMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							  errmsg("jsonpath item method .%s() can only be applied to a numeric value",
 									 jspOperationName(jsp->type)))));
 
-	datum = DirectFunctionCall1(func, NumericGetDatum(jb->jbv.val.numeric));
+	datum = DirectFunctionCall1(func, JsonItemNumericDatum(jb));
 
 	if (!jspGetNext(jsp, &next) && !found)
 		return jperOk;
 
 	jb = palloc(sizeof(*jb));
-	jb->jbv.type = jbvNumeric;
-	jb->jbv.val.numeric = DatumGetNumeric(datum);
+	JsonItemInitNumericDatum(jb, datum);
 
 	return executeNextItem(cxt, jsp, &next, jb, found, false);
 }
@@ -2270,7 +2292,7 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							  errmsg("jsonpath item method .%s() can only be applied to an object",
 									 jspOperationName(jsp->type)))));
 
-	jbc = jb->jbv.val.binary.data;
+	jbc = JsonItemBinary(jb).data;
 
 	if (!JsonContainerSize(jbc))
 		return jperNotFound;	/* no key-value pairs */
@@ -2342,9 +2364,9 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		jsonx = JsonbValueToJsonx(keyval, cxt->isJsonb);
 
 		if (cxt->isJsonb)
-			JsonbInitBinary(&obj.jbv, &jsonx->jb);
+			JsonbInitBinary(JsonItemJbv(&obj), &jsonx->jb);
 		else
-			JsonInitBinary(&obj.jbv, &jsonx->js);
+			JsonInitBinary(JsonItemJbv(&obj), &jsonx->js);
 
 		baseObject = setBaseObject(cxt, &obj, cxt->lastGeneratedObjectId++);
 
@@ -2377,14 +2399,9 @@ appendBoolResult(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		return jperOk;			/* found singleton boolean value */
 
 	if (res == jpbUnknown)
-	{
-		jsi.jbv.type = jbvNull;
-	}
+		JsonItemInitNull(&jsi);
 	else
-	{
-		jsi.jbv.type = jbvBool;
-		jsi.jbv.val.boolean = res == jpbTrue;
-	}
+		JsonItemInitBool(&jsi, res == jpbTrue);
 
 	return executeNextItem(cxt, jsp, &next, &jsi, found, true);
 }
@@ -2401,21 +2418,22 @@ getJsonPathItem(JsonPathExecContext *cxt, JsonPathItem *item,
 	switch (item->type)
 	{
 		case jpiNull:
-			value->type = jbvNull;
+			JsonItemInitNull(value);
 			break;
 		case jpiBool:
-			value->type = jbvBool;
-			value->jbv.val.boolean = jspGetBool(item);
+			JsonItemInitBool(value, jspGetBool(item));
 			break;
 		case jpiNumeric:
-			value->type = jbvNumeric;
-			value->jbv.val.numeric = jspGetNumeric(item);
+			JsonItemInitNumeric(value, jspGetNumeric(item));
 			break;
 		case jpiString:
-			value->type = jbvString;
-			value->jbv.val.string.val = jspGetString(item,
-													 &value->jbv.val.string.len);
-			break;
+			{
+				int			len;
+				char	   *str = jspGetString(item, &len);
+
+				JsonItemInitString(value, str, len);
+				break;
+			}
 		case jpiVariable:
 			getJsonPathVariable(cxt, item, value);
 			return;
@@ -2440,8 +2458,9 @@ getJsonPathVariable(JsonPathExecContext *cxt, JsonPathItem *variable,
 	varName = jspGetString(variable, &varNameLength);
 
 	if (!cxt->vars ||
-		(baseObjectId = cxt->getVar(cxt->vars, cxt->isJsonb, varName,
-									varNameLength, value, &baseObject.jbv)) < 0)
+		(baseObjectId = cxt->getVar(cxt->vars, cxt->isJsonb,
+									varName, varNameLength,
+									value, JsonItemJbv(&baseObject))) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("could not find jsonpath variable \"%s\"",
@@ -2518,20 +2537,20 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 static int
 JsonxArraySize(JsonItem *jb, bool isJsonb)
 {
-	Assert(jb->type != jbvArray);
+	Assert(!JsonItemIsArray(jb));
 
-	if (jb->type == jbvBinary)
+	if (JsonItemIsBinary(jb))
 	{
 		if (isJsonb)
 		{
-			JsonbContainer *jbc = jb->jbv.val.binary.data;
+			JsonbContainer *jbc = JsonItemBinary(jb).data;
 
 			if (JsonContainerIsArray(jbc) && !JsonContainerIsScalar(jbc))
 				return JsonContainerSize(jbc);
 		}
 		else
 		{
-			JsonContainer *jc = (JsonContainer *) jb->jbv.val.binary.data;
+			JsonContainer *jc = (JsonContainer *) JsonItemBinary(jb).data;
 
 			if (JsonContainerIsArray(jc) && !JsonContainerIsScalar(jc))
 				return JsonTextContainerSize(jc);
@@ -2554,14 +2573,14 @@ executeComparison(JsonPathItem *cmp, JsonItem *lv, JsonItem *rv, void *p)
 static JsonPathBool
 compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 {
-	JsonbValue *jb1 = &jsi1->jbv;
-	JsonbValue *jb2 = &jsi2->jbv;
+	JsonbValue *jb1 = JsonItemJbv(jsi1);
+	JsonbValue *jb2 = JsonItemJbv(jsi2);
 	int			cmp;
 	bool		res;
 
-	if (jb1->type != jb2->type)
+	if (JsonItemGetType(jsi1) != JsonItemGetType(jsi2))
 	{
-		if (jb1->type == jbvNull || jb2->type == jbvNull)
+		if (JsonItemIsNull(jsi1) || JsonItemIsNull(jsi2))
 
 			/*
 			 * Equality and order comparison of nulls to non-nulls returns
@@ -2573,7 +2592,7 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 		return jpbUnknown;
 	}
 
-	switch (jsi1->type)
+	switch (JsonItemGetType(jsi1))
 	{
 		case jbvNull:
 			cmp = 0;
@@ -2600,12 +2619,12 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 			{
 				bool		error = false;
 
-				cmp = compareDatetime(jsi1->datetime.value,
-									  jsi1->datetime.typid,
-									  jsi1->datetime.tz,
-									  jsi2->datetime.value,
-									  jsi2->datetime.typid,
-									  jsi2->datetime.tz,
+				cmp = compareDatetime(JsonItemDatetime(jsi1).value,
+									  JsonItemDatetime(jsi1).typid,
+									  JsonItemDatetime(jsi1).tz,
+									  JsonItemDatetime(jsi2).value,
+									  JsonItemDatetime(jsi2).typid,
+									  JsonItemDatetime(jsi2).tz,
 									  &error);
 
 				if (error)
@@ -2619,7 +2638,7 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 			return jpbUnknown;	/* non-scalars are not comparable */
 
 		default:
-			elog(ERROR, "invalid jsonb value type %d", jb1->type);
+			elog(ERROR, "invalid jsonb value type %d", JsonItemGetType(jsi1));
 	}
 
 	switch (op)
@@ -2672,19 +2691,19 @@ copyJsonItem(JsonItem *src)
 static JsonbValue *
 JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv)
 {
-	switch (jsi->type)
+	switch (JsonItemGetType(jsi))
 	{
 		case jsiDatetime:
 			jbv->type = jbvString;
 			jbv->val.string.val = JsonEncodeDateTime(NULL,
-													 jsi->datetime.value,
-													 jsi->datetime.typid,
-													 &jsi->datetime.tz);
+													 JsonItemDatetime(jsi).value,
+													 JsonItemDatetime(jsi).typid,
+													 &JsonItemDatetime(jsi).tz);
 			jbv->val.string.len = strlen(jbv->val.string.val);
 			return jbv;
 
 		default:
-			return &jsi->jbv;
+			return JsonItemJbv(jsi);
 	}
 }
 
@@ -2699,10 +2718,10 @@ JsonItemToJsonb(JsonItem *jsi)
 static const char *
 JsonItemTypeName(JsonItem *jsi)
 {
-	switch (jsi->type)
+	switch (JsonItemGetType(jsi))
 	{
 		case jsiDatetime:
-			switch (jsi->datetime.typid)
+			switch (JsonItemDatetime(jsi).typid)
 			{
 				case DATEOID:
 					return "date";
@@ -2716,12 +2735,12 @@ JsonItemTypeName(JsonItem *jsi)
 					return "timestamp with time zone";
 				default:
 					elog(ERROR, "unrecognized jsonb value datetime type: %d",
-						 jsi->datetime.typid);
+						 JsonItemDatetime(jsi).typid);
 					return "unknown";
 			}
 
 		default:
-			return JsonbTypeName(&jsi->jbv);
+			return JsonbTypeName(JsonItemJbv(jsi));
 	}
 }
 
@@ -2749,7 +2768,7 @@ getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonItem *jb,
 							  errmsg("jsonpath array subscript is not a single numeric value"))));
 
 	numeric_index = DirectFunctionCall2(numeric_trunc,
-										NumericGetDatum(jbv->jbv.val.numeric),
+										NumericGetDatum(JsonItemNumeric(jbv)),
 										Int32GetDatum(0));
 
 	*index = numeric_int4_opt_error(DatumGetNumeric(numeric_index),
@@ -2769,8 +2788,8 @@ setBaseObject(JsonPathExecContext *cxt, JsonItem *jbv, int32 id)
 {
 	JsonBaseObjectInfo baseObject = cxt->baseObject;
 
-	cxt->baseObject.jbc = jbv->type != jbvBinary ? NULL :
-		(JsonbContainer *) jbv->jbv.val.binary.data;
+	cxt->baseObject.jbc = !JsonItemIsBinary(jbv) ? NULL :
+		(JsonbContainer *) JsonItemBinary(jbv).data;
 	cxt->baseObject.id = id;
 
 	return baseObject;
@@ -2890,11 +2909,11 @@ JsonInitBinary(JsonbValue *jbv, Json *js)
 static int
 JsonbType(JsonItem *jb)
 {
-	int			type = jb->type;
+	int			type = JsonItemGetType(jb);
 
-	if (jb->type == jbvBinary)
+	if (type == jbvBinary)
 	{
-		JsonbContainer *jbc = (void *) jb->jbv.val.binary.data;
+		JsonbContainer *jbc = (void *) JsonItemBinary(jb).data;
 
 		/* Scalars should be always extracted during jsonpath execution. */
 		Assert(!JsonContainerIsScalar(jbc));
@@ -2959,17 +2978,17 @@ JsonbValueUnquote(JsonbValue *jbv, int *len, bool isJsonb)
 static char *
 JsonItemUnquote(JsonItem *jsi, int *len, bool isJsonb)
 {
-	switch (jsi->type)
+	switch (JsonItemGetType(jsi))
 	{
 		case jsiDatetime:
 			*len = -1;
 			return JsonEncodeDateTime(NULL,
-									  jsi->datetime.value,
-									  jsi->datetime.typid,
-									  &jsi->datetime.tz);
+									  JsonItemDatetime(jsi).value,
+									  JsonItemDatetime(jsi).typid,
+									  &JsonItemDatetime(jsi).tz);
 
 		default:
-			return JsonbValueUnquote(&jsi->jbv, len, isJsonb);
+			return JsonbValueUnquote(JsonItemJbv(jsi), len, isJsonb);
 	}
 }
 
@@ -3006,7 +3025,7 @@ getJsonObjectKey(JsonItem *jsi, char *keystr, int keylen, bool isJsonb)
 static JsonItem *
 getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb)
 {
-	JsonbContainer *jbc = jb->jbv.val.binary.data;
+	JsonbContainer *jbc = JsonItemBinary(jb).data;
 	JsonbValue *elem = isJsonb ?
 		getIthJsonbValueFromContainer(jbc, index) :
 		getIthJsonValueFromContainer((JsonContainer *) jbc, index);
@@ -3069,10 +3088,10 @@ static JsonItem *
 getScalar(JsonItem *scalar, enum jbvType type)
 {
 	/* Scalars should be always extracted during jsonpath execution. */
-	Assert(scalar->type != jbvBinary ||
-		   !JsonContainerIsScalar(scalar->jbv.val.binary.data));
+	Assert(!JsonItemIsBinary(scalar) ||
+		   !JsonContainerIsScalar(JsonItemBinary(scalar).data));
 
-	return scalar->type == type ? scalar : NULL;
+	return JsonItemGetType(scalar) == type ? scalar : NULL;
 }
 
 /* Construct a JSON array from the item list */
@@ -3346,4 +3365,44 @@ tryToParseDatetime(text *fmt, text *datetime, char *tzname, bool strict,
 		*tzp = tz;
 
 	return !error;
+}
+
+static void
+JsonItemInitNull(JsonItem *item)
+{
+	item->type = jbvNull;
+}
+
+static void
+JsonItemInitBool(JsonItem *item, bool val)
+{
+	item->type = jbvBool;
+	JsonItemBool(item) = val;
+}
+
+static void
+JsonItemInitNumeric(JsonItem *item, Numeric val)
+{
+	item->type = jbvNumeric;
+	JsonItemNumeric(item) = val;
+}
+
+#define JsonItemInitNumericDatum(item, val) JsonItemInitNumeric(item, DatumGetNumeric(val))
+
+static void
+JsonItemInitString(JsonItem *item, char *str, int len)
+{
+	item->type = jbvString;
+	JsonItemString(item).val = str;
+	JsonItemString(item).len = len;
+}
+
+static void
+JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid, int32 typmod, int tz)
+{
+	item->type = jsiDatetime;
+	JsonItemDatetime(item).value = val;
+	JsonItemDatetime(item).typid = typid;
+	JsonItemDatetime(item).typmod = typmod;
+	JsonItemDatetime(item).tz = tz;
 }
