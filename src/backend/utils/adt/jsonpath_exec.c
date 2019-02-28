@@ -102,23 +102,28 @@ typedef enum JsonItemType
 } JsonItemType;
 
 /* SQL/JSON item */
-typedef union JsonItem
+typedef struct JsonItem
 {
-	int			type;	/* XXX JsonItemType */
+	struct JsonItem *next;
 
-	JsonbValue	jbv;
-
-	struct
+	union
 	{
-		int			type;
-		Datum		value;
-		Oid			typid;
-		int32		typmod;
-		int			tz;
-	}			datetime;
+		int			type;	/* XXX JsonItemType */
+
+		JsonbValue	jbv;
+
+		struct
+		{
+			int			type;
+			Datum		value;
+			Oid			typid;
+			int32		typmod;
+			int			tz;
+		}			datetime;
+	} val;
 } JsonItem;
 
-#define JsonItemJbv(jsi)			(&(jsi)->jbv)
+#define JsonItemJbv(jsi)			(&(jsi)->val.jbv)
 #define JsonItemBool(jsi)			(JsonItemJbv(jsi)->val.boolean)
 #define JsonItemNumeric(jsi)		(JsonItemJbv(jsi)->val.numeric)
 #define JsonItemNumericDatum(jsi)	NumericGetDatum(JsonItemNumeric(jsi))
@@ -126,9 +131,9 @@ typedef union JsonItem
 #define JsonItemBinary(jsi)			(JsonItemJbv(jsi)->val.binary)
 #define JsonItemArray(jsi)			(JsonItemJbv(jsi)->val.array)
 #define JsonItemObject(jsi)			(JsonItemJbv(jsi)->val.object)
-#define JsonItemDatetime(jsi)		((jsi)->datetime)
+#define JsonItemDatetime(jsi)		((jsi)->val.datetime)
 
-#define JsonItemGetType(jsi)		((jsi)->type)
+#define JsonItemGetType(jsi)		((jsi)->val.type)
 #define JsonItemIsNull(jsi)			(JsonItemGetType(jsi) == jsiNull)
 #define JsonItemIsBool(jsi)			(JsonItemGetType(jsi) == jsiBool)
 #define JsonItemIsNumeric(jsi)		(JsonItemGetType(jsi) == jsiNumeric)
@@ -139,8 +144,6 @@ typedef union JsonItem
 #define JsonItemIsDatetime(jsi)		(JsonItemGetType(jsi) == jsiDatetime)
 #define JsonItemIsScalar(jsi)		(IsAJsonbScalar(JsonItemJbv(jsi)) || \
 									 JsonItemIsDatetime(jsi))
-
-#define JsonbValueToJsonItem(jbv) ((JsonItem *) (jbv))
 
 typedef union Jsonx
 {
@@ -162,8 +165,6 @@ typedef struct JsonxIterator
 		JsonIterator *js;
 	}			it;
 } JsonxIterator;
-
-#define JsonbValueToJsonItem(jbv) ((JsonItem *) (jbv))
 
 /*
  * Represents "base object" and it's "id" for .keyvalue() evaluation.
@@ -246,14 +247,14 @@ typedef enum JsonPathExecResult
  */
 typedef struct JsonValueList
 {
-	JsonItem   *singleton;
-	List	   *list;
+	JsonItem   *head;
+	JsonItem   *tail;
+	int			length;
 } JsonValueList;
 
 typedef struct JsonValueListIterator
 {
-	JsonItem   *value;
-	ListCell   *next;
+	JsonItem   *next;
 } JsonValueListIterator;
 
 /*
@@ -392,6 +393,7 @@ static void JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid,
 					 int32 typmod, int tz);
 
 static JsonItem *copyJsonItem(JsonItem *src);
+static JsonItem *JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi);
 static JsonbValue *JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv);
 static Jsonb *JsonItemToJsonb(JsonItem *jsi);
 static const char *JsonItemTypeName(JsonItem *jsi);
@@ -417,8 +419,9 @@ static JsonbValue *wrapItemsInArray(const JsonValueList *items, bool isJsonb);
 static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
 
 static JsonItem *getJsonObjectKey(JsonItem *jb, char *keystr, int keylen,
-				 bool isJsonb);
-static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb);
+				 bool isJsonb, JsonItem *val);
+static JsonItem *getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb,
+					JsonItem *elem);
 
 static void JsonxIteratorInit(JsonxIterator *it, JsonxContainer *jxc,
 				  bool isJsonb);
@@ -950,18 +953,15 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		case jpiKey:
 			if (JsonbType(jb) == jbvObject)
 			{
+				JsonItem	val;
 				int			keylen;
 				char	   *key = jspGetString(jsp, &keylen);
 
-				jb = getJsonObjectKey(jb, key, keylen, cxt->isJsonb);
+				jb = getJsonObjectKey(jb, key, keylen, cxt->isJsonb, &val);
 
 				if (jb != NULL)
 				{
-					res = executeNextItem(cxt, jsp, NULL, jb, found, false);
-
-					/* free value if it was not added to found list */
-					if (jspHasNext(jsp) || !found)
-						pfree(jb);
+					res = executeNextItem(cxt, jsp, NULL, jb, found, true);
 				}
 				else if (!jspIgnoreStructuralErrors(cxt))
 				{
@@ -1072,30 +1072,27 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 					for (index = index_from; index <= index_to; index++)
 					{
+						JsonItem	jsibuf;
 						JsonItem   *jsi;
-						bool		copy;
 
 						if (singleton)
 						{
 							jsi = jb;
-							copy = true;
 						}
 						else
 						{
 							jsi = getJsonArrayElement(jb, (uint32) index,
-													  cxt->isJsonb);
+													  cxt->isJsonb, &jsibuf);
 
 							if (jsi == NULL)
 								continue;
-
-							copy = false;
 						}
 
 						if (!hasNext && !found)
 							return jperOk;
 
 						res = executeNextItem(cxt, jsp, &elem, jsi, found,
-											  copy);
+											  true);
 
 						if (jperIsError(res))
 							break;
@@ -1154,8 +1151,9 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			{
 				bool		hasNext = jspGetNext(jsp, &elem);
 
-				if (jb->type != jbvBinary)
-					elog(ERROR, "invalid jsonb object type: %d", jb->type);
+				if (!JsonItemIsBinary(jb))
+					elog(ERROR, "invalid jsonb object type: %d",
+						 JsonItemGetType(jb));
 
 				return executeAnyItem
 					(cxt, hasNext ? &elem : NULL,
@@ -1567,8 +1565,8 @@ executeItemUnwrapTargetArray(JsonPathExecContext *cxt, JsonPathItem *jsp,
 {
 	if (!JsonItemIsBinary(jb))
 	{
-		Assert(jb->type != jbvArray);
-		elog(ERROR, "invalid jsonb array value type: %d", jb->type);
+		Assert(!JsonItemIsArray(jb));
+		elog(ERROR, "invalid jsonb array value type: %d", JsonItemGetType(jb));
 	}
 
 	return executeAnyItem
@@ -2286,7 +2284,7 @@ executeKeyValueMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	int64		id;
 	bool		hasNext;
 
-	if (JsonbType(jb) != jbvObject || jb->type != jbvBinary)
+	if (JsonbType(jb) != jbvObject || !JsonItemIsBinary(jb))
 		RETURN_ERROR(ereport(ERROR,
 							 (errcode(ERRCODE_JSON_OBJECT_NOT_FOUND),
 							  errmsg("jsonpath item method .%s() can only be applied to an object",
@@ -2523,7 +2521,7 @@ getJsonPathVariableFromJsonx(void *varsJsonx, bool isJsonb,
 		JsonInitBinary(baseObject, js);
 	}
 
-	value->jbv = *val;
+	*JsonItemJbv(value) = *val;
 	pfree(val);
 
 	return 1;
@@ -2688,6 +2686,13 @@ copyJsonItem(JsonItem *src)
 	return dst;
 }
 
+static JsonItem *
+JsonbValueToJsonItem(JsonbValue *jbv, JsonItem *jsi)
+{
+	*JsonItemJbv(jsi) = *jbv;
+	return jsi;
+}
+
 static JsonbValue *
 JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv)
 {
@@ -2796,64 +2801,58 @@ setBaseObject(JsonPathExecContext *cxt, JsonItem *jbv, int32 id)
 }
 
 static void
-JsonValueListAppend(JsonValueList *jvl, JsonItem *jbv)
+JsonValueListAppend(JsonValueList *jvl, JsonItem *jsi)
 {
-	if (jvl->singleton)
+	jsi->next = NULL;
+
+	if (jvl->tail)
 	{
-		jvl->list = list_make2(jvl->singleton, jbv);
-		jvl->singleton = NULL;
+		jvl->tail->next = jsi;
+		jvl->tail = jsi;
 	}
-	else if (!jvl->list)
-		jvl->singleton = jbv;
 	else
-		jvl->list = lappend(jvl->list, jbv);
+	{
+		Assert(!jvl->head);
+		jvl->head = jvl->tail = jsi;
+	}
+
+	jvl->length++;
 }
 
 static int
 JsonValueListLength(const JsonValueList *jvl)
 {
-	return jvl->singleton ? 1 : list_length(jvl->list);
+	return jvl->length;
 }
 
 static bool
 JsonValueListIsEmpty(JsonValueList *jvl)
 {
-	return !jvl->singleton && list_length(jvl->list) <= 0;
+	return !jvl->length;
 }
 
 static JsonItem *
 JsonValueListHead(JsonValueList *jvl)
 {
-	return jvl->singleton ? jvl->singleton : linitial(jvl->list);
+	return jvl->head;
 }
 
 static List *
 JsonValueListGetList(JsonValueList *jvl)
 {
-	if (jvl->singleton)
-		return list_make1(jvl->singleton);
+	List	   *list = NIL;
+	JsonItem   *jsi;
 
-	return jvl->list;
+	for (jsi = jvl->head; jsi; jsi = jsi->next)
+		list = lappend(list, jsi);
+
+	return list;
 }
 
 static void
 JsonValueListInitIterator(const JsonValueList *jvl, JsonValueListIterator *it)
 {
-	if (jvl->singleton)
-	{
-		it->value = jvl->singleton;
-		it->next = NULL;
-	}
-	else if (list_head(jvl->list) != NULL)
-	{
-		it->value = (JsonItem *) linitial(jvl->list);
-		it->next = lnext(list_head(jvl->list));
-	}
-	else
-	{
-		it->value = NULL;
-		it->next = NULL;
-	}
+	it->next = jvl->head;
 }
 
 /*
@@ -2862,17 +2861,10 @@ JsonValueListInitIterator(const JsonValueList *jvl, JsonValueListIterator *it)
 static JsonItem *
 JsonValueListNext(const JsonValueList *jvl, JsonValueListIterator *it)
 {
-	JsonItem *result = it->value;
+	JsonItem   *result = it->next;
 
-	if (it->next)
-	{
-		it->value = lfirst(it->next);
-		it->next = lnext(it->next);
-	}
-	else
-	{
-		it->value = NULL;
-	}
+	if (result)
+		it->next = result->next;
 
 	return result;
 }
@@ -3005,9 +2997,10 @@ JsonItemUnquoteText(JsonItem *jsi, bool isJsonb)
 }
 
 static JsonItem *
-getJsonObjectKey(JsonItem *jsi, char *keystr, int keylen, bool isJsonb)
+getJsonObjectKey(JsonItem *jsi, char *keystr, int keylen, bool isJsonb,
+				 JsonItem *res)
 {
-	JsonbContainer *jbc = jsi->jbv.val.binary.data;
+	JsonbContainer *jbc = JsonItemBinary(jsi).data;
 	JsonbValue *val;
 	JsonbValue	key;
 
@@ -3019,18 +3012,18 @@ getJsonObjectKey(JsonItem *jsi, char *keystr, int keylen, bool isJsonb)
 		findJsonbValueFromContainer(jbc, JB_FOBJECT, &key) :
 		findJsonValueFromContainer((JsonContainer *) jbc, JB_FOBJECT, &key);
 
-	return val ? JsonbValueToJsonItem(val) : NULL;
+	return val ? JsonbValueToJsonItem(val, res) : NULL;
 }
 
 static JsonItem *
-getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb)
+getJsonArrayElement(JsonItem *jb, uint32 index, bool isJsonb, JsonItem *res)
 {
 	JsonbContainer *jbc = JsonItemBinary(jb).data;
 	JsonbValue *elem = isJsonb ?
 		getIthJsonbValueFromContainer(jbc, index) :
 		getIthJsonValueFromContainer((JsonContainer *) jbc, index);
 
-	return elem ? JsonbValueToJsonItem(elem) : NULL;
+	return elem ? JsonbValueToJsonItem(elem, res) : NULL;
 }
 
 static inline void
@@ -3370,20 +3363,20 @@ tryToParseDatetime(text *fmt, text *datetime, char *tzname, bool strict,
 static void
 JsonItemInitNull(JsonItem *item)
 {
-	item->type = jbvNull;
+	item->val.type = jbvNull;
 }
 
 static void
 JsonItemInitBool(JsonItem *item, bool val)
 {
-	item->type = jbvBool;
+	item->val.type = jbvBool;
 	JsonItemBool(item) = val;
 }
 
 static void
 JsonItemInitNumeric(JsonItem *item, Numeric val)
 {
-	item->type = jbvNumeric;
+	item->val.type = jbvNumeric;
 	JsonItemNumeric(item) = val;
 }
 
@@ -3392,7 +3385,7 @@ JsonItemInitNumeric(JsonItem *item, Numeric val)
 static void
 JsonItemInitString(JsonItem *item, char *str, int len)
 {
-	item->type = jbvString;
+	item->val.type = jbvString;
 	JsonItemString(item).val = str;
 	JsonItemString(item).len = len;
 }
@@ -3400,7 +3393,7 @@ JsonItemInitString(JsonItem *item, char *str, int len)
 static void
 JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid, int32 typmod, int tz)
 {
-	item->type = jsiDatetime;
+	item->val.type = jsiDatetime;
 	JsonItemDatetime(item).value = val;
 	JsonItemDatetime(item).typid = typid;
 	JsonItemDatetime(item).typmod = typmod;
