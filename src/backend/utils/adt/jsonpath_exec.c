@@ -411,14 +411,8 @@ static void popJsonItem(JsonItemStack *stack);
 
 /****************** User interface to JsonPath executor ********************/
 
-#define DefineJsonPathFunc(funcname) \
-static Datum jsonx_ ## funcname(FunctionCallInfo fcinfo, bool isJsonb); \
-Datum jsonb_ ## funcname(PG_FUNCTION_ARGS) { return jsonx_ ## funcname(fcinfo, true); } \
-Datum json_  ## funcname(PG_FUNCTION_ARGS) { return jsonx_ ## funcname(fcinfo, false); } \
-static Datum jsonx_ ## funcname(FunctionCallInfo fcinfo, bool isJsonb)
-
 /*
- * jsonb_path_exists
+ * json[b]_path_exists
  *		Returns true if jsonpath returns at least one item for the specified
  *		jsonb value.  This function and jsonb_path_match() are used to
  *		implement @? and @@ operators, which in turn are intended to have an
@@ -429,7 +423,8 @@ static Datum jsonx_ ## funcname(FunctionCallInfo fcinfo, bool isJsonb)
  *		SQL/JSON.  Regarding jsonb_path_match(), this function doesn't have
  *		an analogy in SQL/JSON, so we define its behavior on our own.
  */
-DefineJsonPathFunc(path_exists)
+static Datum
+jsonx_path_exists(PG_FUNCTION_ARGS, bool isJsonb)
 {
 	JsonPathExecResult res = executeUserFunc(fcinfo, NULL, isJsonb, false);
 
@@ -439,23 +434,42 @@ DefineJsonPathFunc(path_exists)
 	PG_RETURN_BOOL(res == jperOk);
 }
 
-/*
- * jsonb_path_exists_opr
- *		Implementation of operator "jsonb @? jsonpath" (2-argument version of
- *		jsonb_path_exists()).
- */
-DefineJsonPathFunc(path_exists_opr)
+Datum
+jsonb_path_exists(PG_FUNCTION_ARGS)
 {
-	/* just call the other one -- it can handle both cases */
-	return jsonx_path_exists(fcinfo, isJsonb);
+	return jsonx_path_exists(fcinfo, true);
+}
+
+Datum
+json_path_exists(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_exists(fcinfo, false);
 }
 
 /*
- * jsonb_path_match
+ * json[b]_path_exists_opr
+ *		Implementation of operator "json[b] @? jsonpath" (2-argument version of
+ *		json[b]_path_exists()).
+ */
+Datum
+jsonb_path_exists_opr(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_exists(fcinfo, true);
+}
+
+Datum
+json_path_exists_opr(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_exists(fcinfo, false);
+}
+
+/*
+ * json[b]_path_match
  *		Returns jsonpath predicate result item for the specified jsonb value.
  *		See jsonb_path_exists() comment for details regarding error handling.
  */
-DefineJsonPathFunc(path_match)
+static Datum
+jsonx_path_match(PG_FUNCTION_ARGS, bool isJsonb)
 {
 	JsonPathUserFuncContext cxt;
 
@@ -482,23 +496,44 @@ DefineJsonPathFunc(path_match)
 	PG_RETURN_NULL();
 }
 
-/*
- * jsonb_path_match_opr
- *		Implementation of operator "jsonb @@ jsonpath" (2-argument version of
- *		jsonb_path_match()).
- */
-DefineJsonPathFunc(path_match_opr)
+Datum
+jsonb_path_match(PG_FUNCTION_ARGS)
 {
-	/* just call the other one -- it can handle both cases */
-	return jsonx_path_match(fcinfo, isJsonb);
+	return jsonx_path_match(fcinfo, true);
+}
+
+Datum
+json_path_match(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_match(fcinfo, false);
 }
 
 /*
- * jsonb_path_query
+ * json[b]_path_match_opr
+ *		Implementation of operator "json[b] @@ jsonpath" (2-argument version of
+ *		json[b]_path_match()).
+ */
+Datum
+jsonb_path_match_opr(PG_FUNCTION_ARGS)
+{
+	/* just call the other one -- it can handle both cases */
+	return jsonx_path_match(fcinfo, true);
+}
+
+Datum
+json_path_match_opr(PG_FUNCTION_ARGS)
+{
+	/* just call the other one -- it can handle both cases */
+	return jsonx_path_match(fcinfo, false);
+}
+
+/*
+ * json[b]_path_query
  *		Executes jsonpath for given jsonb document and returns result as
  *		rowset.
  */
-DefineJsonPathFunc(path_query)
+static Datum
+jsonx_path_query(PG_FUNCTION_ARGS, bool isJsonb)
 {
 	FuncCallContext *funcctx;
 	List	   *found;
@@ -544,12 +579,25 @@ DefineJsonPathFunc(path_query)
 	SRF_RETURN_NEXT(funcctx, res);
 }
 
+Datum
+jsonb_path_query(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query(fcinfo, true);
+}
+
+Datum
+json_path_query(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query(fcinfo, false);
+}
+
 /*
- * jsonb_path_query_array
+ * json[b]_path_query_array
  *		Executes jsonpath for given jsonb document and returns result as
  *		jsonb array.
  */
-DefineJsonPathFunc(path_query_array)
+static Datum
+jsonx_path_query_array(PG_FUNCTION_ARGS, bool isJsonb)
 {
 	JsonPathUserFuncContext cxt;
 	Datum		res;
@@ -563,12 +611,25 @@ DefineJsonPathFunc(path_query_array)
 	PG_RETURN_DATUM(res);
 }
 
+Datum
+jsonb_path_query_array(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query_array(fcinfo, true);
+}
+
+Datum
+json_path_query_array(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query_array(fcinfo, false);
+}
+
 /*
- * jsonb_path_query_first
+ * json[b]_path_query_first
  *		Executes jsonpath for given jsonb document and returns first result
  *		item.  If there are no items, NULL returned.
  */
-DefineJsonPathFunc(path_query_first)
+static Datum
+jsonx_path_query_first(PG_FUNCTION_ARGS, bool isJsonb)
 {
 	JsonPathUserFuncContext cxt;
 	Datum		res;
@@ -588,12 +649,25 @@ DefineJsonPathFunc(path_query_first)
 		PG_RETURN_NULL();
 }
 
+Datum
+jsonb_path_query_first(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query_first(fcinfo, true);
+}
+
+Datum
+json_path_query_first(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query_first(fcinfo, false);
+}
+
 /*
- * jsonb_path_query_first_text
+ * json[b]_path_query_first_text
  *		Executes jsonpath for given jsonb document and returns first result
  *		item as text.  If there are no items, NULL returned.
  */
-DefineJsonPathFunc(path_query_first_text)
+static Datum
+jsonx_path_query_first_text(PG_FUNCTION_ARGS, bool isJsonb)
 {
 	JsonPathUserFuncContext cxt;
 	text	   *txt;
@@ -611,6 +685,18 @@ DefineJsonPathFunc(path_query_first_text)
 		PG_RETURN_TEXT_P(txt);
 	else
 		PG_RETURN_NULL();
+}
+
+Datum
+jsonb_path_query_first_text(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query_first_text(fcinfo, true);
+}
+
+Datum
+json_path_query_first_text(PG_FUNCTION_ARGS)
+{
+	return jsonx_path_query_first_text(fcinfo, false);
 }
 
 /* Free untoasted copies of jsonb and jsonpath arguments. */
