@@ -1331,6 +1331,7 @@ typedef struct JsonItemCoercions
 	JsonCoercion *null;
 	JsonCoercion *string;
 	JsonCoercion *numeric;
+	JsonCoercion *dbl;
 	JsonCoercion *boolean;
 	JsonCoercion *date;
 	JsonCoercion *time;

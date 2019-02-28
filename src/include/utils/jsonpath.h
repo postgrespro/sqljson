@@ -317,9 +317,10 @@ typedef enum JsonItemType
 	 * Virtual types.
 	 *
 	 * These types are used only for in-memory JSON processing and serialized
-	 * into JSON strings when outputted to json/jsonb.
+	 * into JSON strings/numbers when outputted to json/jsonb.
 	 */
-	jsiDatetime = 0x20
+	jsiDatetime = 0x20,
+	jsiDouble = 0x21
 } JsonItemType;
 
 /* SQL/JSON item */
@@ -341,6 +342,12 @@ typedef struct JsonItem
 			int32		typmod;
 			int			tz;
 		}			datetime;
+
+		struct
+		{
+			int			type;
+			double		val;
+		}			dbl;
 	} val;
 } JsonItem;
 
@@ -353,6 +360,8 @@ typedef struct JsonItem
 #define JsonItemArray(jsi)			(JsonItemJbv(jsi)->val.array)
 #define JsonItemObject(jsi)			(JsonItemJbv(jsi)->val.object)
 #define JsonItemDatetime(jsi)		((jsi)->val.datetime)
+#define JsonItemDouble(jsi)			((jsi)->val.dbl.val)
+#define JsonItemDoubleDatum(jsi)	Float8GetDatum(JsonItemDouble(jsi))
 
 #define JsonItemGetType(jsi)		((jsi)->val.type)
 #define JsonItemIsNull(jsi)			(JsonItemGetType(jsi) == jsiNull)
@@ -363,8 +372,12 @@ typedef struct JsonItem
 #define JsonItemIsArray(jsi)		(JsonItemGetType(jsi) == jsiArray)
 #define JsonItemIsObject(jsi)		(JsonItemGetType(jsi) == jsiObject)
 #define JsonItemIsDatetime(jsi)		(JsonItemGetType(jsi) == jsiDatetime)
+#define JsonItemIsDouble(jsi)		(JsonItemGetType(jsi) == jsiDouble)
 #define JsonItemIsScalar(jsi)		(IsAJsonbScalar(JsonItemJbv(jsi)) || \
-									 JsonItemIsDatetime(jsi))
+									 JsonItemIsDatetime(jsi) || \
+									 JsonItemIsDouble(jsi))
+#define JsonItemIsNumber(jsi)		(JsonItemIsNumeric(jsi) || \
+									 JsonItemIsDouble(jsi))
 
 extern Jsonb *JsonItemToJsonb(JsonItem *jsi);
 extern Json *JsonItemToJson(JsonItem *jsi);

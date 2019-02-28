@@ -284,11 +284,15 @@ typedef JsonPathBool (*JsonPathPredicateCallback) (JsonPathItem *jsp,
 												   JsonItem *larg,
 												   JsonItem *rarg,
 												   void *param);
-typedef Numeric (*BinaryArithmFunc) (Numeric num1, Numeric num2, bool *error);
+
+typedef Numeric (*BinaryNumericFunc) (Numeric num1, Numeric num2, bool *error);
+typedef float8 (*BinaryDoubleFunc) (float8 num1, float8 num2, bool *error);
 
 typedef JsonbValue *(*JsonBuilderFunc) (JsonbParseState **,
 										JsonbIteratorToken,
 										JsonbValue *);
+
+static float8 float8_mod_error(float8 val1, float8 val2, bool *error);
 
 static void freeUserFuncContext(JsonPathUserFuncContext *cxt);
 static JsonPathExecResult executeUserFunc(FunctionCallInfo fcinfo,
@@ -342,11 +346,14 @@ static JsonPathBool executePredicate(JsonPathExecContext *cxt,
 static JsonPathExecResult executeBinaryArithmExpr(JsonPathExecContext *cxt,
 												  JsonPathItem *jsp,
 												  JsonItem *jb,
-												  BinaryArithmFunc func,
+												  BinaryNumericFunc numFunc,
+												  BinaryDoubleFunc dblFunc,
 												  JsonValueList *found);
 static JsonPathExecResult executeUnaryArithmExpr(JsonPathExecContext *cxt,
 												 JsonPathItem *jsp,
-												 JsonItem *jb, PGFunction func,
+												 JsonItem *jb,
+												 PGFunction numFunc,
+												 PGFunction dblFunc,
 												 JsonValueList *found);
 static JsonPathBool executeStartsWith(JsonPathItem *jsp, JsonItem *whole,
 									  JsonItem *initial, void *param);
@@ -355,7 +362,8 @@ static JsonPathBool executeLikeRegex(JsonPathItem *jsp, JsonItem *str,
 static JsonPathExecResult executeNumericItemMethod(JsonPathExecContext *cxt,
 												   JsonPathItem *jsp,
 												   JsonItem *jb, bool unwrap,
-												   PGFunction func,
+												   PGFunction numericFunc,
+												   PGFunction doubleFunc,
 												   JsonValueList *found);
 static JsonPathExecResult executeKeyValueMethod(JsonPathExecContext *cxt,
 												JsonPathItem *jsp, JsonItem *jb,
@@ -380,6 +388,7 @@ static void JsonItemInitBool(JsonItem *item, bool val);
 static void JsonItemInitNumeric(JsonItem *item, Numeric val);
 #define JsonItemInitNumericDatum(item, val) \
 		JsonItemInitNumeric(item, DatumGetNumeric(val))
+static void JsonItemInitDouble(JsonItem *item, float8 val);
 static void JsonItemInitString(JsonItem *item, char *str, int len);
 static void JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid,
 					 int32 typmod, int tz);
@@ -407,6 +416,8 @@ static int	JsonbType(JsonItem *jb);
 static JsonbValue *JsonbInitBinary(JsonbValue *jbv, Jsonb *jb);
 static inline JsonbValue *JsonInitBinary(JsonbValue *jbv, Json *js);
 static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
+static JsonItem *getNumber(JsonItem *scalar);
+static bool convertJsonDoubleToNumeric(JsonItem *dbl, JsonItem *num);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items, bool isJsonb);
 static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
 static JsonItem *wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf,
@@ -1307,30 +1318,35 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		case jpiAdd:
 			return executeBinaryArithmExpr(cxt, jsp, jb,
-										   numeric_add_opt_error, found);
+										   numeric_add_opt_error,
+										   float8_pl_error, found);
 
 		case jpiSub:
 			return executeBinaryArithmExpr(cxt, jsp, jb,
-										   numeric_sub_opt_error, found);
+										   numeric_sub_opt_error,
+										   float8_mi_error, found);
 
 		case jpiMul:
 			return executeBinaryArithmExpr(cxt, jsp, jb,
-										   numeric_mul_opt_error, found);
+										   numeric_mul_opt_error,
+										   float8_mul_error, found);
 
 		case jpiDiv:
 			return executeBinaryArithmExpr(cxt, jsp, jb,
-										   numeric_div_opt_error, found);
+										   numeric_div_opt_error,
+										   float8_div_error, found);
 
 		case jpiMod:
 			return executeBinaryArithmExpr(cxt, jsp, jb,
-										   numeric_mod_opt_error, found);
+										   numeric_mod_opt_error,
+										   float8_mod_error, found);
 
 		case jpiPlus:
-			return executeUnaryArithmExpr(cxt, jsp, jb, NULL, found);
+			return executeUnaryArithmExpr(cxt, jsp, jb, NULL, NULL, found);
 
 		case jpiMinus:
 			return executeUnaryArithmExpr(cxt, jsp, jb, numeric_uminus,
-										  found);
+										  float8um, found);
 
 		case jpiFilter:
 			{
@@ -1450,15 +1466,15 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		case jpiAbs:
 			return executeNumericItemMethod(cxt, jsp, jb, unwrap, numeric_abs,
-											found);
+											float8abs, found);
 
 		case jpiFloor:
 			return executeNumericItemMethod(cxt, jsp, jb, unwrap, numeric_floor,
-											found);
+											dfloor, found);
 
 		case jpiCeiling:
 			return executeNumericItemMethod(cxt, jsp, jb, unwrap, numeric_ceil,
-											found);
+											dceil, found);
 
 		case jpiDouble:
 			{
@@ -1468,29 +1484,36 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					return executeItemUnwrapTargetArray(cxt, jsp, jb, found,
 														false);
 
-				if (JsonItemIsNumeric(jb))
+				if (JsonItemIsDouble(jb))
+				{
+					/* nothing to do */
+				}
+				else if (JsonItemIsNumeric(jb))
 				{
 					char	   *tmp = DatumGetCString(DirectFunctionCall1(numeric_out,
 																		  JsonItemNumericDatum(jb)));
 					bool		have_error = false;
+					float8		val;
 
-					(void) float8in_internal_opt_error(tmp,
-													   NULL,
-													   "double precision",
-													   tmp,
-													   &have_error);
+					val = float8in_internal_opt_error(tmp,
+													  NULL,
+													  "double precision",
+													  tmp,
+													  &have_error);
 
 					if (have_error)
 						RETURN_ERROR(ereport(ERROR,
 											 (errcode(ERRCODE_NON_NUMERIC_JSON_ITEM),
 											  errmsg("jsonpath item method .%s() can only be applied to a numeric value",
 													 jspOperationName(jsp->type)))));
-					res = jperOk;
+
+					jb = &jsi;
+					JsonItemInitDouble(jb, val);
 				}
 				else if (JsonItemIsString(jb))
 				{
 					/* cast string as double */
-					double		val;
+					float8		val;
 					char	   *tmp = pnstrdup(JsonItemString(jb).val,
 											   JsonItemString(jb).len);
 					bool		have_error = false;
@@ -1501,19 +1524,16 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 													  tmp,
 													  &have_error);
 
-					if (have_error || isinf(val))
+					if (have_error)
 						RETURN_ERROR(ereport(ERROR,
 											 (errcode(ERRCODE_NON_NUMERIC_JSON_ITEM),
 											  errmsg("jsonpath item method .%s() can only be applied to a numeric value",
 													 jspOperationName(jsp->type)))));
 
 					jb = &jsi;
-					JsonItemInitNumericDatum(jb, DirectFunctionCall1(float8_numeric,
-																	 Float8GetDatum(val)));
-					res = jperOk;
+					JsonItemInitDouble(jb, val);
 				}
-
-				if (res == jperNotFound)
+				else
 					RETURN_ERROR(ereport(ERROR,
 										 (errcode(ERRCODE_NON_NUMERIC_JSON_ITEM),
 										  errmsg("jsonpath item method .%s() can only be applied to a string or numeric value",
@@ -1538,14 +1558,26 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					return executeItemUnwrapTargetArray(cxt, jsp, jb, found,
 														false);
 
-				if (JsonItemIsNumeric(jb))
+				if (JsonItemIsNumber(jb))
 				{
 					bool		error = false;
-					float8		unix_epoch =
-						DatumGetFloat8(DirectFunctionCall1(numeric_float8_no_overflow,
-														   JsonItemNumericDatum(jb)));
-					TimestampTz	tstz = float8_timestamptz_internal(unix_epoch,
-																   &error);
+					float8		unix_epoch;
+					TimestampTz	tstz;
+
+					if (JsonItemIsNumeric(jb))
+					{
+						Datum		flt = DirectFunctionCall1(numeric_float8_no_overflow,
+															  JsonItemNumericDatum(jb));
+
+						unix_epoch = DatumGetFloat8(flt);
+					}
+					else
+					{
+						Assert(JsonItemIsDouble(jb));
+						unix_epoch = JsonItemDouble(jb);
+					}
+
+					tstz = float8_timestamptz_internal(unix_epoch, &error);
 
 					if (error)
 						RETURN_ERROR(ereport(ERROR,
@@ -2323,14 +2355,39 @@ executePredicate(JsonPathExecContext *cxt, JsonPathItem *pred,
 	return jpbFalse;
 }
 
+static float8
+float8_mod_error(float8 val1, float8 val2, bool *error)
+{
+	float8		res;
+
+	if (error)
+	{
+		res = float8_div_error(val1, val2, error);
+		if (!*error)
+		{
+			res = float8_mul_error(trunc(res), val1, error);
+			if (!*error)
+				res = float8_mi_error(val1, res, error);
+		}
+	}
+	else
+	{
+		res = float8_div(val1, val2);
+		res = float8_mul(trunc(res), val1);
+		res = float8_mi(val1, res);
+	}
+
+	return res;
+}
+
 /*
  * Execute binary arithmetic expression on singleton numeric operands.
  * Array operands are automatically unwrapped in lax mode.
  */
 static JsonPathExecResult
 executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
-						JsonItem *jb, BinaryArithmFunc func,
-						JsonValueList *found)
+						JsonItem *jb, BinaryNumericFunc numFunc,
+						BinaryDoubleFunc dblFunc, JsonValueList *found)
 {
 	JsonPathExecResult jper;
 	JsonPathItem elem;
@@ -2357,28 +2414,71 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		return jper;
 
 	if (JsonValueListLength(&lseq) != 1 ||
-		!(lval = getScalar(JsonValueListHead(&lseq), jbvNumeric)))
+		!(lval = getNumber(JsonValueListHead(&lseq))))
 		RETURN_ERROR(ereport(ERROR,
 							 (errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
 							  errmsg("left operand of jsonpath operator %s is not a single numeric value",
 									 jspOperationName(jsp->type)))));
 
 	if (JsonValueListLength(&rseq) != 1 ||
-		!(rval = getScalar(JsonValueListHead(&rseq), jbvNumeric)))
+		!(rval = getNumber(JsonValueListHead(&rseq))))
 		RETURN_ERROR(ereport(ERROR,
 							 (errcode(ERRCODE_SINGLETON_JSON_ITEM_REQUIRED),
 							  errmsg("right operand of jsonpath operator %s is not a single numeric value",
 									 jspOperationName(jsp->type)))));
 
+	if (JsonItemIsDouble(lval) && JsonItemIsDouble(rval))
+	{
+		float8	ld = JsonItemDouble(lval);
+		float8	rd = JsonItemDouble(rval);
+		float8	r;
+
+		if (jspThrowErrors(cxt))
+		{
+			r = dblFunc(ld, rd, NULL);
+		}
+		else
+		{
+			bool	error = false;
+
+			r = dblFunc(ld, rd, &error);
+
+			if (error)
+				return jperError;
+		}
+
+		if (!jspGetNext(jsp, &elem) && !found)
+			return jperOk;
+
+		lval = palloc(sizeof(*lval));
+		JsonItemInitDouble(lval, r);
+
+		return executeNextItem(cxt, jsp, &elem, lval, found, false);
+	}
+	else if (JsonItemIsDouble(lval))
+	{
+		if (!convertJsonDoubleToNumeric(lval, lval))
+			RETURN_ERROR(ereport(ERROR,
+						 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						  errmsg("cannot convert infinity to numeric"))));
+	}
+	else if (JsonItemIsDouble(rval))
+	{
+		if (!convertJsonDoubleToNumeric(rval, rval))
+			RETURN_ERROR(ereport(ERROR,
+						 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						  errmsg("cannot convert infinity to numeric"))));
+	}
+
 	if (jspThrowErrors(cxt))
 	{
-		res = func(JsonItemNumeric(lval), JsonItemNumeric(rval), NULL);
+		res = numFunc(JsonItemNumeric(lval), JsonItemNumeric(rval), NULL);
 	}
 	else
 	{
 		bool		error = false;
 
-		res = func(JsonItemNumeric(lval), JsonItemNumeric(rval), &error);
+		res = numFunc(JsonItemNumeric(lval), JsonItemNumeric(rval), &error);
 
 		if (error)
 			return jperError;
@@ -2399,7 +2499,8 @@ executeBinaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
  */
 static JsonPathExecResult
 executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
-					   JsonItem *jb, PGFunction func, JsonValueList *found)
+					   JsonItem *jb, PGFunction numFunc, PGFunction dblFunc,
+					   JsonValueList *found)
 {
 	JsonPathExecResult jper;
 	JsonPathExecResult jper2;
@@ -2422,7 +2523,7 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonValueListInitIterator(&seq, &it);
 	while ((val = JsonValueListNext(&seq, &it)))
 	{
-		if ((val = getScalar(val, jbvNumeric)))
+		if ((val = getNumber(val)))
 		{
 			if (!found && !hasNext)
 				return jperOk;
@@ -2438,10 +2539,21 @@ executeUnaryArithmExpr(JsonPathExecContext *cxt, JsonPathItem *jsp,
 										 jspOperationName(jsp->type)))));
 		}
 
-		if (func)
-			JsonItemNumeric(val) =
-				DatumGetNumeric(DirectFunctionCall1(func,
-													NumericGetDatum(JsonItemNumeric(val))));
+		if (JsonItemIsNumeric(val))
+		{
+			if (numFunc)
+				JsonItemNumeric(val) =
+					DatumGetNumeric(DirectFunctionCall1(numFunc,
+														JsonItemNumericDatum(val)));
+		}
+		else
+		{
+			Assert(JsonItemIsDouble(val));
+			if (dblFunc)
+				JsonItemDouble(val) =
+					DatumGetFloat8(DirectFunctionCall1(dblFunc,
+													   JsonItemDoubleDatum(val)));
+		}
 
 		jper2 = executeNextItem(cxt, jsp, &elem, val, found, false);
 
@@ -2539,30 +2651,41 @@ executeLikeRegex(JsonPathItem *jsp, JsonItem *str, JsonItem *rarg,
  */
 static JsonPathExecResult
 executeNumericItemMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
-						 JsonItem *jb, bool unwrap, PGFunction func,
-						 JsonValueList *found)
+						 JsonItem *jb, bool unwrap, PGFunction numericFunc,
+						 PGFunction doubleFunc, JsonValueList *found)
 {
 	JsonPathItem next;
+	JsonItem	res;
 	Datum		datum;
 
 	if (unwrap && JsonbType(jb) == jbvArray)
 		return executeItemUnwrapTargetArray(cxt, jsp, jb, found, false);
 
-	if (!(jb = getScalar(jb, jbvNumeric)))
+	if (!(jb = getNumber(jb)))
 		RETURN_ERROR(ereport(ERROR,
 							 (errcode(ERRCODE_NON_NUMERIC_JSON_ITEM),
 							  errmsg("jsonpath item method .%s() can only be applied to a numeric value",
 									 jspOperationName(jsp->type)))));
 
-	datum = DirectFunctionCall1(func, JsonItemNumericDatum(jb));
+	if (JsonItemIsNumeric(jb))
+	{
+		datum = DirectFunctionCall1(numericFunc, JsonItemNumericDatum(jb));
+	}
+	else
+	{
+		Assert(JsonItemIsDouble(jb));
+		datum = DirectFunctionCall1(doubleFunc, JsonItemDoubleDatum(jb));
+	}
 
 	if (!jspGetNext(jsp, &next) && !found)
 		return jperOk;
 
-	jb = palloc(sizeof(*jb));
-	JsonItemInitNumericDatum(jb, datum);
+	if (JsonItemIsNumeric(jb))
+		JsonItemInitNumericDatum(&res, datum);
+	else
+		JsonItemInitDouble(&res, DatumGetFloat8(datum));
 
-	return executeNextItem(cxt, jsp, &next, jb, found, false);
+	return executeNextItem(cxt, jsp, &next, &res, found, true);
 }
 
 /*
@@ -2899,6 +3022,7 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 {
 	JsonbValue *jb1 = JsonItemJbv(jsi1);
 	JsonbValue *jb2 = JsonItemJbv(jsi2);
+	JsonItem	jsibuf;
 	int			cmp;
 	bool		res;
 
@@ -2912,8 +3036,24 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 			 */
 			return op == jpiNotEqual ? jpbTrue : jpbFalse;
 
-		/* Non-null items of different types are not comparable. */
-		return jpbUnknown;
+		if (!JsonItemIsNumber(jsi1) || !JsonItemIsNumber(jsi2))
+			/* Non-null items of different not-number types are not comparable. */
+			return jpbUnknown;
+
+		if (JsonItemIsDouble(jsi1))
+		{
+			if (!convertJsonDoubleToNumeric(jsi1, &jsibuf))
+				return jpbUnknown;
+			jsi1 = &jsibuf;
+			jb1 = JsonItemJbv(jsi1);
+		}
+		else if (JsonItemIsDouble(jsi2))
+		{
+			if (!convertJsonDoubleToNumeric(jsi2, &jsibuf))
+				return jpbUnknown;
+			jsi2 = &jsibuf;
+			jb2 = JsonItemJbv(jsi2);
+		}
 	}
 
 	switch (JsonItemGetType(jsi1))
@@ -2927,6 +3067,10 @@ compareItems(int32 op, JsonItem *jsi1, JsonItem *jsi2)
 			break;
 		case jbvNumeric:
 			cmp = compareNumeric(jb1->val.numeric, jb2->val.numeric);
+			break;
+		case jsiDouble:
+			cmp = float8_cmp_internal(JsonItemDouble(jsi1),
+									  JsonItemDouble(jsi2));
 			break;
 		case jbvString:
 			if (op == jpiEqual)
@@ -3033,6 +3177,26 @@ JsonItemToJsonbValue(JsonItem *jsi, JsonbValue *jbv)
 			jbv->val.string.len = strlen(jbv->val.string.val);
 			return jbv;
 
+		case jsiDouble:
+			{
+				float8		val = JsonItemDouble(jsi);
+
+				if (isinf(val))	/* numeric can be NaN but not Inf */
+				{
+					jbv->type = jbvString;
+					jbv->val.string.val = float8out_internal(val);
+					jbv->val.string.len = strlen(jbv->val.string.val);
+				}
+				else
+				{
+					jbv->type = jbvNumeric;
+					jbv->val.numeric =
+						DatumGetNumeric(DirectFunctionCall1(float8_numeric,
+															Float8GetDatum(val)));
+				}
+				return jbv;
+			}
+
 		default:
 			return JsonItemJbv(jsi);
 	}
@@ -3093,17 +3257,35 @@ getArrayIndex(JsonPathExecContext *cxt, JsonPathItem *jsp, JsonItem *jb,
 		return res;
 
 	if (JsonValueListLength(&found) != 1 ||
-		!(jbv = getScalar(JsonValueListHead(&found), jbvNumeric)))
+		!(jbv = getNumber(JsonValueListHead(&found))))
 		RETURN_ERROR(ereport(ERROR,
 							 (errcode(ERRCODE_INVALID_JSON_SUBSCRIPT),
 							  errmsg("jsonpath array subscript is not a single numeric value"))));
 
-	numeric_index = DirectFunctionCall2(numeric_trunc,
-										NumericGetDatum(JsonItemNumeric(jbv)),
-										Int32GetDatum(0));
+	if (JsonItemIsNumeric(jbv))
+	{
+		numeric_index = DirectFunctionCall2(numeric_trunc,
+											JsonItemNumericDatum(jbv),
+											Int32GetDatum(0));
 
-	*index = numeric_int4_opt_error(DatumGetNumeric(numeric_index),
-									&have_error);
+		*index = numeric_int4_opt_error(DatumGetNumeric(numeric_index),
+										&have_error);
+	}
+	else
+	{
+		float8		val;
+
+		Assert(JsonItemIsDouble(jbv));
+
+		val = floor(JsonItemDouble(jbv));
+
+		if (unlikely(val < (float8) PG_INT32_MIN ||
+					 val >= -((float8) PG_INT32_MIN) ||
+					 isnan(val)))
+			have_error = true;
+		else
+			*index = (int32) val;
+	}
 
 	if (have_error)
 		RETURN_ERROR(ereport(ERROR,
@@ -3347,6 +3529,9 @@ JsonItemUnquote(JsonItem *jsi, int *len, bool isJsonb)
 									  JsonItemDatetime(jsi).value,
 									  JsonItemDatetime(jsi).typid,
 									  &JsonItemDatetime(jsi).tz);
+		case jsiDouble:
+			*len = -1;
+			return float8out_internal(JsonItemDouble(jsi));
 
 		default:
 			return JsonbValueUnquote(JsonItemJbv(jsi), len, isJsonb);
@@ -3454,6 +3639,27 @@ getScalar(JsonItem *scalar, enum jbvType type)
 		   !JsonContainerIsScalar(JsonItemBinary(scalar).data));
 
 	return JsonItemGetType(scalar) == type ? scalar : NULL;
+}
+
+static JsonItem *
+getNumber(JsonItem *scalar)
+{
+	/* Scalars should be always extracted during jsonpath execution. */
+	Assert(!JsonItemIsBinary(scalar) ||
+		   !JsonContainerIsScalar(JsonItemBinary(scalar).data));
+
+	return JsonItemIsNumber(scalar) ? scalar : NULL;
+}
+
+bool
+convertJsonDoubleToNumeric(JsonItem *dbl, JsonItem *num)
+{
+	if (isinf(JsonItemDouble(dbl)))
+		return false;
+
+	JsonItemInitNumericDatum(num, DirectFunctionCall1(float8_numeric,
+													  JsonItemDoubleDatum(dbl)));
+	return true;
 }
 
 /* Construct a JSON array from the item list */
@@ -3774,6 +3980,13 @@ JsonItemInitDatetime(JsonItem *item, Datum val, Oid typid, int32 typmod, int tz)
 	JsonItemDatetime(item).tz = tz;
 }
 
+static void
+JsonItemInitDouble(JsonItem *item, double val)
+{
+	item->val.type = jsiDouble;
+	JsonItemDouble(item) = val;
+}
+
 /********************Interface to pgsql's executor***************************/
 
 bool
@@ -3961,10 +4174,10 @@ JsonItemFromDatum(Datum val, Oid typid, int32 typmod, JsonItem *res,
 			JsonItemInitNumericDatum(res, DirectFunctionCall1(int8_numeric, val));
 			break;
 		case FLOAT4OID:
-			JsonItemInitNumericDatum(res, DirectFunctionCall1(float4_numeric, val));
+			JsonItemInitDouble(res, DatumGetFloat4(val));
 			break;
 		case FLOAT8OID:
-			JsonItemInitNumericDatum(res, DirectFunctionCall1(float8_numeric, val));
+			JsonItemInitDouble(res, DatumGetFloat8(val));
 			break;
 		case TEXTOID:
 		case VARCHAROID:

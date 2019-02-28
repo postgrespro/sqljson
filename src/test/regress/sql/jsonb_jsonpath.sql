@@ -327,8 +327,6 @@ select jsonb_path_query('"nan"', '$.double()');
 select jsonb_path_query('"NaN"', '$.double()');
 select jsonb_path_query('"inf"', '$.double()');
 select jsonb_path_query('"-inf"', '$.double()');
-select jsonb_path_query('"inf"', '$.double()', silent => true);
-select jsonb_path_query('"-inf"', '$.double()', silent => true);
 
 select jsonb_path_query('{}', '$.abs()');
 select jsonb_path_query('true', '$.floor()');

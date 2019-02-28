@@ -148,18 +148,41 @@ check_float4_val(const float4 val, const bool inf_is_valid,
 }
 
 static inline void
-check_float8_val(const float8 val, const bool inf_is_valid,
-				 const bool zero_is_valid)
+check_float8_val_error(const float8 val, const bool inf_is_valid,
+					   const bool zero_is_valid, bool *error)
 {
 	if (!inf_is_valid && unlikely(isinf(val)))
+	{
+		if (error)
+		{
+			*error = true;
+			return;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("value out of range: overflow")));
+	}
 
 	if (!zero_is_valid && unlikely(val == 0.0))
+	{
+		if (error)
+		{
+			*error = true;
+			return;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("value out of range: underflow")));
+	}
+}
+
+static inline void
+check_float8_val(const float8 val, const bool inf_is_valid,
+				 const bool zero_is_valid)
+{
+	check_float8_val_error(val, inf_is_valid, zero_is_valid, NULL);
 }
 
 /*
@@ -184,14 +207,20 @@ float4_pl(const float4 val1, const float4 val2)
 }
 
 static inline float8
-float8_pl(const float8 val1, const float8 val2)
+float8_pl_error(const float8 val1, const float8 val2, bool *error)
 {
 	float8		result;
 
 	result = val1 + val2;
-	check_float8_val(result, isinf(val1) || isinf(val2), true);
+	check_float8_val_error(result, isinf(val1) || isinf(val2), true, error);
 
 	return result;
+}
+
+static inline float8
+float8_pl(const float8 val1, const float8 val2)
+{
+	return float8_pl_error(val1, val2, NULL);
 }
 
 static inline float4
@@ -206,14 +235,20 @@ float4_mi(const float4 val1, const float4 val2)
 }
 
 static inline float8
-float8_mi(const float8 val1, const float8 val2)
+float8_mi_error(const float8 val1, const float8 val2, bool *error)
 {
 	float8		result;
 
 	result = val1 - val2;
-	check_float8_val(result, isinf(val1) || isinf(val2), true);
+	check_float8_val_error(result, isinf(val1) || isinf(val2), true, error);
 
 	return result;
+}
+
+static inline float8
+float8_mi(const float8 val1, const float8 val2)
+{
+	return float8_mi_error(val1, val2, NULL);
 }
 
 static inline float4
@@ -229,15 +264,21 @@ float4_mul(const float4 val1, const float4 val2)
 }
 
 static inline float8
-float8_mul(const float8 val1, const float8 val2)
+float8_mul_error(const float8 val1, const float8 val2, bool *error)
 {
 	float8		result;
 
 	result = val1 * val2;
-	check_float8_val(result, isinf(val1) || isinf(val2),
-					 val1 == 0.0 || val2 == 0.0);
+	check_float8_val_error(result, isinf(val1) || isinf(val2),
+						   val1 == 0.0 || val2 == 0.0, error);
 
 	return result;
+}
+
+static inline float8
+float8_mul(const float8 val1, const float8 val2)
+{
+	return float8_mul_error(val1, val2, NULL);
 }
 
 static inline float4
@@ -257,19 +298,34 @@ float4_div(const float4 val1, const float4 val2)
 }
 
 static inline float8
-float8_div(const float8 val1, const float8 val2)
+float8_div_error(const float8 val1, const float8 val2, bool *error)
 {
 	float8		result;
 
 	if (val2 == 0.0)
+	{
+		if (error)
+		{
+			*error = true;
+			return 0.0;
+		}
+
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
+	}
 
 	result = val1 / val2;
-	check_float8_val(result, isinf(val1) || isinf(val2), val1 == 0.0);
+	check_float8_val_error(result, isinf(val1) || isinf(val2), val1 == 0.0,
+						   error);
 
 	return result;
+}
+
+static inline float8
+float8_div(const float8 val1, const float8 val2)
+{
+	return float8_div_error(val1, val2, NULL);
 }
 
 /*

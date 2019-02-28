@@ -694,6 +694,7 @@ typedef struct ExprEvalStep
 				} 			null,
 							string,
 							numeric,
+							dbl,
 							boolean,
 							date,
 							time,

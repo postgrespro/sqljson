@@ -4350,6 +4350,11 @@ ExecPrepareJsonItemCoercion(JsonItem *item, bool is_jsonb,
 			res = JsonItemNumericDatum(item);
 			break;
 
+		case jsiDouble:
+			coercion = &coercions->dbl;
+			res = JsonItemDoubleDatum(item);
+			break;
+
 		case jbvBool:
 			coercion = &coercions->boolean;
 			res = JsonItemBool(item);

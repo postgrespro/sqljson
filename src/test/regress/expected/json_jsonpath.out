@@ -1388,9 +1388,17 @@ select json_path_query('"NaN"', '$.double()');
 (1 row)
 
 select json_path_query('"inf"', '$.double()');
-ERROR:  jsonpath item method .double() can only be applied to a numeric value
+ json_path_query 
+-----------------
+ "Infinity"
+(1 row)
+
 select json_path_query('"-inf"', '$.double()');
-ERROR:  jsonpath item method .double() can only be applied to a numeric value
+ json_path_query 
+-----------------
+ "-Infinity"
+(1 row)
+
 select json_path_query('{}', '$.abs()');
 ERROR:  jsonpath item method .abs() can only be applied to a numeric value
 select json_path_query('true', '$.floor()');
