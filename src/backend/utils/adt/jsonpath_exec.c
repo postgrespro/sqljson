@@ -419,6 +419,7 @@ static JsonItem *getScalar(JsonItem *scalar, enum jbvType type);
 static JsonItem *getNumber(JsonItem *scalar);
 static bool convertJsonDoubleToNumeric(JsonItem *dbl, JsonItem *num);
 static JsonbValue *wrapItemsInArray(const JsonValueList *items, bool isJsonb);
+static JsonItem *wrapItem(JsonItem *jbv, bool isJsonb);
 static text *JsonItemUnquoteText(JsonItem *jsi, bool isJsonb);
 static JsonItem *wrapJsonObjectOrArray(JsonItem *js, JsonItem *buf,
 					  bool isJsonb);
@@ -3644,6 +3645,45 @@ convertJsonDoubleToNumeric(JsonItem *dbl, JsonItem *num)
 	JsonItemInitNumericDatum(num, DirectFunctionCall1(float8_numeric,
 													  JsonItemDoubleDatum(dbl)));
 	return true;
+}
+
+/*
+ * Wrap a non-array SQL/JSON item into an array for applying array subscription
+ * path steps in lax mode.
+ */
+static JsonItem *
+wrapItem(JsonItem *jsi, bool isJsonb)
+{
+	JsonbParseState *ps = NULL;
+	JsonItem	jsibuf;
+	JsonbValue	jbvbuf;
+
+	switch (JsonbType(jsi))
+	{
+		case jbvArray:
+			/* Simply return an array item. */
+			return jsi;
+
+		case jbvObject:
+			/*
+			 * Need to wrap object into a binary JsonbValue for its unpacking
+			 * in pushJsonbValue().
+			 */
+			if (!JsonItemIsBinary(jsi))
+				jsi = JsonxWrapInBinary(jsi, &jsibuf, isJsonb);
+			break;
+
+		default:
+			/* Ordinary scalars can be pushed directly. */
+			break;
+	}
+
+	pushJsonbValue(&ps, WJB_BEGIN_ARRAY, NULL);
+	(isJsonb ? pushJsonbValue : pushJsonValue)(&ps, WJB_ELEM,
+											   JsonItemToJsonbValue(jsi, &jbvbuf));
+	jsi = JsonbValueToJsonItem(pushJsonbValue(&ps, WJB_END_ARRAY, NULL), &jsibuf);
+
+	return JsonxWrapInBinary(jsi, NULL, isJsonb);
 }
 
 /* Construct a JSON array from the item list */
