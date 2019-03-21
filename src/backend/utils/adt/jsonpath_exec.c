@@ -603,7 +603,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						return jperError;
 
 					ereport(ERROR,
-							(errcode(ERRCODE_JSON_MEMBER_NOT_FOUND), \
+							(errcode(ERRCODE_JSON_MEMBER_NOT_FOUND),
 							 errmsg("JSON object does not contain key \"%s\"",
 									pnstrdup(key.val.string.val,
 											 key.val.string.len))));
