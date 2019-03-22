@@ -34,6 +34,7 @@ select '''\b\f\r\n\t\v\"\''\\'''::jsonpath;
 select '"\x50\u0067\u{53}\u{051}\u{00004C}"'::jsonpath;
 select '''\x50\u0067\u{53}\u{051}\u{00004C}'''::jsonpath;
 select '$.foo\x50\u0067\u{53}\u{051}\u{00004C}\t\"bar'::jsonpath;
+select '$."foo\x50\u0067\u{53}\u{051}\u{00004C}\t\"bar"'::jsonpath;
 
 select '$.g ? ($.a == 1)'::jsonpath;
 select '$.g ? (@ == 1)'::jsonpath;
@@ -153,6 +154,8 @@ select '$ ? (@.a < +10.1e+1)'::jsonpath;
 
 select '0'::jsonpath;
 select '00'::jsonpath;
+select '$.00'::jsonpath;
+select '$.0a'::jsonpath;
 select '0.0'::jsonpath;
 select '0.000'::jsonpath;
 select '0.000e1'::jsonpath;

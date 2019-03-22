@@ -63,21 +63,22 @@ fprintf_to_ereport(const char *fmt, const char *msg)
  * quoted variable names and C-tyle comments.
  * Exclusive states:
  *  <xq> - quoted strings
- *  <xnq> - non-quoted strings
  *  <xvq> - quoted variable names
  *  <xsq> - single-quoted strings
  *  <xc> - C-style comment
  */
 
 %x xq
-%x xnq
 %x xvq
 %x xsq
 %x xc
 
-special		 [\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/]
-any			[^\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\"\' \t\n\r\f]
+special		 [\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\~\`\;]
+id_start	[^\?\%\$\.\[\]\{\}\(\)\|\&\!\=\<\>\@\#\,\*:\-\+\/\\\~\`\;\"\' \t\n\r\f(0-9)]
 blank		[ \t\n\r\f]
+
+id_rest		({id_start}|[0-9])
+id			{id_start}{id_rest}*
 
 digit		[0-9]
 integer		(0|[1-9]{digit}*)
@@ -95,66 +96,37 @@ hex_fail	\\x{hex_dig}{0,1}
 
 %%
 
-<xnq>{any}+						{
-									addstring(false, yytext, yyleng);
-								}
+<xq,xvq,xsq>\\[\"\'\\]			{ addchar(false, yytext[1]); }
 
-<xnq>{blank}+					{
-									yylval->str = scanstring;
-									BEGIN INITIAL;
-									return checkKeyword();
-								}
+<xq,xvq,xsq>\\b					{ addchar(false, '\b'); }
 
+<xq,xvq,xsq>\\f					{ addchar(false, '\f'); }
 
-<xnq>\/\*						{
-									yylval->str = scanstring;
-									BEGIN xc;
-								}
+<xq,xvq,xsq>\\n					{ addchar(false, '\n'); }
 
-<xnq>({special}|\"|\')			{
-									yylval->str = scanstring;
-									yyless(0);
-									BEGIN INITIAL;
-									return checkKeyword();
-								}
+<xq,xvq,xsq>\\r					{ addchar(false, '\r'); }
 
-<xnq><<EOF>>					{
-									yylval->str = scanstring;
-									BEGIN INITIAL;
-									return checkKeyword();
-								}
+<xq,xvq,xsq>\\t					{ addchar(false, '\t'); }
 
-<xnq,xq,xvq,xsq>\\[\"\'\\]		{ addchar(false, yytext[1]); }
+<xq,xvq,xsq>\\v					{ addchar(false, '\v'); }
 
-<xnq,xq,xvq,xsq>\\b				{ addchar(false, '\b'); }
+<xq,xvq,xsq>{unicode}+			{ parseUnicode(yytext, yyleng); }
 
-<xnq,xq,xvq,xsq>\\f				{ addchar(false, '\f'); }
+<xq,xvq,xsq>{hex_char}			{ parseHexChar(yytext); }
 
-<xnq,xq,xvq,xsq>\\n				{ addchar(false, '\n'); }
+<xq,xvq,xsq>{unicode}*{unicodefail}	{ yyerror(NULL, "invalid unicode sequence"); }
 
-<xnq,xq,xvq,xsq>\\r				{ addchar(false, '\r'); }
+<xq,xvq,xsq>{hex_fail}			{ yyerror(NULL, "invalid hex character sequence"); }
 
-<xnq,xq,xvq,xsq>\\t				{ addchar(false, '\t'); }
-
-<xnq,xq,xvq,xsq>\\v				{ addchar(false, '\v'); }
-
-<xnq,xq,xvq,xsq>{unicode}+		{ parseUnicode(yytext, yyleng); }
-
-<xnq,xq,xvq,xsq>{hex_char}		{ parseHexChar(yytext); }
-
-<xnq,xq,xvq,xsq>{unicode}*{unicodefail}	{ yyerror(NULL, "invalid unicode sequence"); }
-
-<xnq,xq,xvq,xsq>{hex_fail}		{ yyerror(NULL, "invalid hex character sequence"); }
-
-<xnq,xq,xvq,xsq>{unicode}+\\	{
+<xq,xvq,xsq>{unicode}+\\		{
 									/* throw back the \\, and treat as unicode */
 									yyless(yyleng - 1);
 									parseUnicode(yytext, yyleng);
 								}
 
-<xnq,xq,xvq,xsq>\\.				{ yyerror(NULL, "escape sequence is invalid"); }
+<xq,xvq,xsq>\\.					{ yyerror(NULL, "escape sequence is invalid"); }
 
-<xnq,xq,xvq,xsq>\\				{ yyerror(NULL, "unexpected end after backslash"); }
+<xq,xvq,xsq>\\					{ yyerror(NULL, "unexpected end after backslash"); }
 
 <xq,xvq,xsq><<EOF>>				{ yyerror(NULL, "unexpected end of quoted string"); }
 
@@ -210,7 +182,7 @@ hex_fail	\\x{hex_dig}{0,1}
 
 \>								{ return GREATER_P; }
 
-\${any}+						{
+\${id}							{
 									addstring(true, yytext + 1, yyleng - 1);
 									addchar(false, '\0');
 									yylval->str = scanstring;
@@ -263,9 +235,11 @@ hex_fail	\\x{hex_dig}{0,1}
 
 ({realfail1}|{realfail2})		{ yyerror(NULL, "invalid floating point number"); }
 
-{any}+							{
+{id}							{
 									addstring(true, yytext, yyleng);
-									BEGIN xnq;
+									addchar(false, '\0');
+									yylval->str = scanstring;
+									return checkKeyword();
 								}
 
 \"								{
@@ -276,12 +250,6 @@ hex_fail	\\x{hex_dig}{0,1}
 \'								{
 									addchar(true, '\0');
 									BEGIN xsq;
-								}
-
-\\								{
-									yyless(0);
-									addchar(true, '\0');
-									BEGIN xnq;
 								}
 
 <<EOF>>							{ yyterminate(); }
