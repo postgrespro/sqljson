@@ -1664,6 +1664,12 @@ executeLikeRegex(JsonPathItem *jsp, JsonbValue *str, JsonbValue *rarg,
 			cxt->cflags &= ~REG_NEWLINE;
 		if (flags & JSP_REGEX_WSPACE)
 			cxt->cflags |= REG_EXPANDED;
+		if ((flags & JSP_REGEX_QUOTE) &&
+			!(flags & (JSP_REGEX_MLINE | JSP_REGEX_SLINE | JSP_REGEX_WSPACE)))
+		{
+			cxt->cflags &= ~REG_ADVANCED;
+			cxt->cflags |= REG_QUOTE;
+		}
 	}
 
 	if (RE_compile_and_execute(cxt->regex, str->val.string.val,
