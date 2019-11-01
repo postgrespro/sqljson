@@ -1427,6 +1427,8 @@ typedef struct JsonTableParentNode
 	NodeTag		type;
 	Const	   *path;		/* jsonpath constant */
 	Node	   *child;		/* nested columns, if any */
+	bool		outerJoin;	/* outer or inner join for nested columns? */
+	bool		unionJoin;	/* union or cross join for nested columns? */
 	int			colMin;		/* min column index in the resulting column list */
 	int			colMax;		/* max column index in the resulting column list */
 	bool		errorOnError; /* ERROR/EMPTY ON ERROR behavior */
@@ -1441,6 +1443,7 @@ typedef struct JsonTableSiblingNode
 	NodeTag		type;
 	Node	   *larg;		/* left join node */
 	Node	   *rarg;		/* right join node */
+	bool		cross;		/* cross or union join? */
 } JsonTableSiblingNode;
 
 /* ----------------

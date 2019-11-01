@@ -2630,6 +2630,7 @@ _copyJsonTable(const JsonTable *from)
 	COPY_NODE_FIELD(columns);
 	COPY_NODE_FIELD(on_error);
 	COPY_NODE_FIELD(alias);
+	COPY_SCALAR_FIELD(join_type);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
@@ -2668,6 +2669,8 @@ _copyJsonTableParentNode(const JsonTableParentNode *from)
 
 	COPY_NODE_FIELD(path);
 	COPY_NODE_FIELD(child);
+	COPY_SCALAR_FIELD(outerJoin);
+	COPY_SCALAR_FIELD(unionJoin);
 	COPY_SCALAR_FIELD(colMin);
 	COPY_SCALAR_FIELD(colMax);
 
@@ -2684,6 +2687,7 @@ _copyJsonTableSiblingNode(const JsonTableSiblingNode *from)
 
 	COPY_NODE_FIELD(larg);
 	COPY_NODE_FIELD(rarg);
+	COPY_SCALAR_FIELD(cross);
 
 	return newnode;
 }

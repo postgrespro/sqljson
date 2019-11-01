@@ -656,6 +656,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <ival>		json_encoding
 					json_encoding_clause_opt
+					json_table_plan_clause_opt
+					json_table_default_plan
+					json_table_default_plan_choices
+					json_table_default_plan_inner_outer
+					json_table_default_plan_union_cross
 					json_wrapper_clause_opt
 					json_wrapper_behavior
 					json_conditional_or_unconditional_opt
@@ -769,7 +774,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER
 
-	PARALLEL PARSER PARTIAL PARTITION PASSING PASSWORD PATH PLACING PLANS POLICY
+	PARALLEL PARSER PARTIAL PARTITION PASSING PASSWORD PATH PLACING PLAN PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
@@ -15130,13 +15135,15 @@ json_table:
 			JSON_TABLE '('
 				json_api_common_syntax
 				json_table_columns_clause
+				json_table_plan_clause_opt
 				json_table_error_clause_opt
 			')'
 				{
 					JsonTable *n = makeNode(JsonTable);
 					n->common = (JsonCommon *) $3;
 					n->columns = $4;
-					n->on_error = $5;
+					n->join_type = $5;
+					n->on_error = $6;
 					n->location = @1;
 					$$ = (Node *) n;
 				}
@@ -15271,6 +15278,34 @@ json_table_nested_columns:
 path_opt:
 			PATH									{ }
 			| /* EMPTY */							{ }
+		;
+
+json_table_plan_clause_opt:
+			json_table_default_plan					{ $$ = $1; }
+			| /* EMPTY */							{ $$ = JSTP_OUTER | JSTP_UNION; }
+		;
+
+json_table_default_plan:
+			PLAN DEFAULT '(' json_table_default_plan_choices ')' { $$ = $4; }
+		;
+
+json_table_default_plan_choices:
+			json_table_default_plan_inner_outer			{ $$ = $1 | JSTP_UNION; }
+			| json_table_default_plan_inner_outer ','
+			  json_table_default_plan_union_cross		{ $$ = $1 | $3; }
+			| json_table_default_plan_union_cross		{ $$ = $1 | JSTP_OUTER; }
+			| json_table_default_plan_union_cross ','
+			  json_table_default_plan_inner_outer		{ $$ = $1 | $3; }
+		;
+
+json_table_default_plan_inner_outer:
+			INNER_P										{ $$ = JSTP_INNER; }
+			| OUTER_P									{ $$ = JSTP_OUTER; }
+		;
+
+json_table_default_plan_union_cross:
+			UNION										{ $$ = JSTP_UNION; }
+			| CROSS										{ $$ = JSTP_CROSS; }
 		;
 
 json_returning_clause_opt:
@@ -16088,6 +16123,7 @@ unreserved_keyword:
 			| PASSING
 			| PASSWORD
 			| PATH
+			| PLAN
 			| PLANS
 			| POLICY
 			| PRECEDING

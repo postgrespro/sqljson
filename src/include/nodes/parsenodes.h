@@ -1592,6 +1592,18 @@ typedef struct JsonTableColumn
 } JsonTableColumn;
 
 /*
+ * JsonTablePlanJoinType -
+ *		flags for JSON_TABLE join types representation
+ */
+typedef enum JsonTablePlanJoinType
+{
+	JSTP_INNER = 0x01,
+	JSTP_OUTER = 0x02,
+	JSTP_CROSS = 0x04,
+	JSTP_UNION = 0x08,
+} JsonTablePlanJoinType;
+
+/*
  * JsonTable -
  *		untransformed representation of JSON_TABLE
  */
@@ -1600,6 +1612,7 @@ typedef struct JsonTable
 	NodeTag		type;
 	JsonCommon *common;					/* common JSON path syntax fields */
 	List	   *columns;				/* list of JsonTableColumn */
+	JsonTablePlanJoinType join_type;	/* DEFAULT PLAN join type */
 	JsonBehavior *on_error;				/* ON ERROR behavior, if specified */
 	Alias	   *alias;					/* table alias in FROM clause */
 	bool		lateral;				/* does it have LATERAL prefix? */

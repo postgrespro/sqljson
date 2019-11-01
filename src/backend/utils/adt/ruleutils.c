@@ -10584,7 +10584,7 @@ get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
 
 			get_rule_expr((Node *) lfirst(lc2), context, false);
 			appendStringInfo(buf, " AS %s",
-							 quote_identifier(((Value *) lfirst(lc1))->val.str));
+					quote_identifier(((Value *) lfirst(lc1))->val.str));
 		}
 
 		if (PRETTY_INDENT(context))
@@ -10592,6 +10592,15 @@ get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
 	}
 
 	get_json_table_columns(tf, root, context, showimplicit);
+
+	if (!root->outerJoin || !root->unionJoin)
+	{
+		appendStringInfoChar(buf, ' ');
+		appendContextKeyword(context, "PLAN DEFAULT", 0, 0, 0);
+		appendStringInfo(buf, "(%s, %s)",
+						 root->outerJoin ? "OUTER" : "INNER",
+						 root->unionJoin ? "UNION" : "CROSS");
+	}
 
 	if (jexpr->on_error->btype != JSON_BEHAVIOR_EMPTY)
 		get_json_behavior(jexpr->on_error, context, "ERROR");

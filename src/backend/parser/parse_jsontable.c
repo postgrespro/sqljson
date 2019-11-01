@@ -174,12 +174,13 @@ transformNestedJsonTableColumn(JsonTableContext *cxt, JsonTableColumn *jtc)
 }
 
 static Node *
-makeJsonTableSiblingJoin(Node *lnode, Node *rnode)
+makeJsonTableSiblingJoin(bool cross, Node *lnode, Node *rnode)
 {
 	JsonTableSiblingNode *join = makeNode(JsonTableSiblingNode);
 
 	join->larg = lnode;
 	join->rarg = rnode;
+	join->cross = cross;
 
 	return (Node *) join;
 }
@@ -187,7 +188,7 @@ makeJsonTableSiblingJoin(Node *lnode, Node *rnode)
 /*
  * Recursively transform child (nested) JSON_TABLE columns.
  *
- * Child columns are transformed into a binary tree of union-joined
+ * Child columns are transformed into a binary tree of union/cross-joined
  * JsonTableSiblingNodes.
  */
 static Node *
@@ -195,8 +196,9 @@ transformJsonTableChildColumns(JsonTableContext *cxt, List *columns)
 {
 	Node	   *res = NULL;
 	ListCell   *lc;
+	bool		cross = cxt->table->join_type & JSTP_CROSS;
 
-	/* transform all nested columns into union join */
+	/* transform all nested columns into union/cros join */
 	foreach(lc, columns)
 	{
 		JsonTableColumn *jtc = castNode(JsonTableColumn, lfirst(lc));
@@ -208,7 +210,7 @@ transformJsonTableChildColumns(JsonTableContext *cxt, List *columns)
 		node = transformNestedJsonTableColumn(cxt, jtc);
 
 		/* join transformed node with previous sibling nodes */
-		res = res ? makeJsonTableSiblingJoin(res, node) : node;
+		res = res ? makeJsonTableSiblingJoin(cross, res, node) : node;
 	}
 
 	return res;
@@ -385,6 +387,9 @@ transformJsonTableColumns(JsonTableContext *cxt, List *columns, char *pathSpec,
 
 	/* transform recursively nested columns */
 	node->child = transformJsonTableChildColumns(cxt, columns);
+
+	node->outerJoin = cxt->table->join_type & JSTP_OUTER;
+	node->unionJoin = cxt->table->join_type & JSTP_UNION;
 
 	return node;
 }

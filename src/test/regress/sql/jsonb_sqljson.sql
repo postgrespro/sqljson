@@ -547,6 +547,71 @@ from
 		)
 	) jt;
 
+-- default plan (outer, union)
+select
+	jt.*
+from
+	jsonb_table_test jtt,
+	json_table (
+		jtt.js,'strict $[*]'
+		columns (
+			n for ordinality,
+			a int path 'lax $.a' default -1 on empty,
+			nested path 'strict $.b[*]' columns ( b int path '$' ),
+			nested path 'strict $.c[*]' columns ( c int path '$' )
+		)
+		plan default (outer, union)
+	) jt;
+
+-- default plan (inner, union)
+select
+	jt.*
+from
+	jsonb_table_test jtt,
+	json_table (
+		jtt.js,'strict $[*]'
+		columns (
+			n for ordinality,
+			a int path 'lax $.a' default -1 on empty,
+			nested path 'strict $.b[*]' columns ( b int path '$' ),
+			nested path 'strict $.c[*]' columns ( c int path '$' )
+		)
+		plan default (inner)
+	) jt;
+
+-- default plan (inner, cross)
+select
+	jt.*
+from
+	jsonb_table_test jtt,
+	json_table (
+		jtt.js,'strict $[*]'
+		columns (
+			n for ordinality,
+			a int path 'lax $.a' default -1 on empty,
+			nested path 'strict $.b[*]' columns ( b int path '$' ),
+			nested path 'strict $.c[*]' columns ( c int path '$' )
+		)
+		plan default (cross, inner)
+	) jt;
+
+-- default plan (outer, cross)
+select
+	jt.*
+from
+	jsonb_table_test jtt,
+	json_table (
+		jtt.js,'strict $[*]'
+		columns (
+			n for ordinality,
+			a int path 'lax $.a' default -1 on empty,
+			nested path 'strict $.b[*]' columns ( b int path '$' ),
+			nested path 'strict $.c[*]' columns ( c int path '$' )
+		)
+		plan default (outer, cross)
+	) jt;
+
+
 -- Should succeed (JSON arguments are passed to root and nested paths)
 SELECT *
 FROM

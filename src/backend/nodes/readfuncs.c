@@ -1458,6 +1458,8 @@ _readJsonTableParentNode(void)
 
 	READ_NODE_FIELD(path);
 	READ_NODE_FIELD(child);
+	READ_BOOL_FIELD(outerJoin);
+	READ_BOOL_FIELD(unionJoin);
 	READ_INT_FIELD(colMin);
 	READ_INT_FIELD(colMax);
 
@@ -1471,6 +1473,7 @@ _readJsonTableSiblingNode(void)
 
 	READ_NODE_FIELD(larg);
 	READ_NODE_FIELD(rarg);
+	READ_BOOL_FIELD(cross);
 
 	READ_DONE();
 }

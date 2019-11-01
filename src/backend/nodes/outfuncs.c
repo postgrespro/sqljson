@@ -1833,6 +1833,8 @@ _outJsonTableParentNode(StringInfo str, const JsonTableParentNode *node)
 
 	WRITE_NODE_FIELD(path);
 	WRITE_NODE_FIELD(child);
+	WRITE_BOOL_FIELD(outerJoin);
+	WRITE_BOOL_FIELD(unionJoin);
 	WRITE_INT_FIELD(colMin);
 	WRITE_INT_FIELD(colMax);
 }
@@ -1844,6 +1846,7 @@ _outJsonTableSiblingNode(StringInfo str, const JsonTableSiblingNode *node)
 
 	WRITE_NODE_FIELD(larg);
 	WRITE_NODE_FIELD(rarg);
+	WRITE_BOOL_FIELD(cross);
 }
 
 /*****************************************************************************
