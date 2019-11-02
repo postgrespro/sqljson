@@ -1832,9 +1832,9 @@ _outJsonTableParentNode(StringInfo str, const JsonTableParentNode *node)
 	WRITE_NODE_TYPE("JSONTABPNODE");
 
 	WRITE_NODE_FIELD(path);
+	WRITE_STRING_FIELD(name);
 	WRITE_NODE_FIELD(child);
 	WRITE_BOOL_FIELD(outerJoin);
-	WRITE_BOOL_FIELD(unionJoin);
 	WRITE_INT_FIELD(colMin);
 	WRITE_INT_FIELD(colMax);
 }

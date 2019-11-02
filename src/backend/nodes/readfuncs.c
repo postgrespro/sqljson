@@ -1457,9 +1457,9 @@ _readJsonTableParentNode(void)
 	READ_LOCALS(JsonTableParentNode);
 
 	READ_NODE_FIELD(path);
+	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(child);
 	READ_BOOL_FIELD(outerJoin);
-	READ_BOOL_FIELD(unionJoin);
 	READ_INT_FIELD(colMin);
 	READ_INT_FIELD(colMax);
 

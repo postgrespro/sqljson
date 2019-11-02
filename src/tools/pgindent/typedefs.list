@@ -1185,7 +1185,9 @@ JsonTableColumnType
 JsonTableContext
 JsonTableJoinState
 JsonTableParentNode
+JsonTablePlan
 JsonTablePlanJoinType
+JsonTablePlanType
 JsonTableScanState
 JsonTableSiblingNode
 JsonTokenType

@@ -144,9 +144,9 @@ static bool
 _equalJsonTableParentNode(const JsonTableParentNode *a, const JsonTableParentNode *b)
 {
 	COMPARE_NODE_FIELD(path);
+	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(child);
 	COMPARE_SCALAR_FIELD(outerJoin);
-	COMPARE_SCALAR_FIELD(unionJoin);
 	COMPARE_SCALAR_FIELD(colMin);
 	COMPARE_SCALAR_FIELD(colMax);
 
