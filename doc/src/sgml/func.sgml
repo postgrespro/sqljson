@@ -18595,6 +18595,10 @@ FROM
 JSON_TABLE (
   <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional> </optional>
   COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> <optional>, ...</optional> )
+  <optional>
+    PLAN DEFAULT ( { INNER | OUTER } <optional> , { CROSS | UNION } </optional>
+                 | { CROSS | UNION } <optional> , { INNER | OUTER } </optional> )
+  </optional>
 )
 <phrase>
 where <replaceable class="parameter">json_table_column</replaceable> is:
@@ -18656,7 +18660,8 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
       The rows produced by <function>JSON_TABLE</function> are laterally
       joined to the row that generated them, so you do not have to explicitly join
       the constructed view with the original table holding <acronym>JSON</acronym>
-      data.
+      data. Optionally, you can specify how to join the columns returned
+      by <literal>NESTED PATH</literal> using the <literal>PLAN DEFAULT</literal> clause.
      </para>
 
      <para>
@@ -18667,22 +18672,6 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
       higher level, these columns are <firstterm>child</firstterm> columns.
       Sibling columns are always joined first. Once they are processed,
       the resulting rows are joined to the parent row.
-     </para>
-
-     <para>
-      Columns with parent/child relationship are joined using
-      <literal>LEFT OUTER JOIN</literal>, so that the parent row
-      is always included into the output even if it does not have any child rows
-      after joining the data returned by <literal>NESTED PATH</literal>,
-      with NULL values inserted into the child columns if the corresponding
-      values are missing.
-     </para>
-
-     <para>
-      Sibling columns are joined using
-      <literal>FULL OUTER JOIN ON FALSE</literal>, so that both parent and child
-      rows are included into the output, with NULL values inserted
-      into both child and parrent columns for all missing values.
      </para>
 
     </sect5>
@@ -18856,6 +18845,10 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      <function>JSON_TABLE</function> expressions in an SQL statement.
     </para>
 
+    <para>
+     You can use the <literal>PLAN DEFAULT</literal> clause to define how
+     to join the columns returned by <replaceable>NESTED PATH</replaceable> clauses.
+    </para>
     </listitem>
    </varlistentry>
 
@@ -18878,8 +18871,99 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     </listitem>
    </varlistentry>
 
+   <varlistentry>
+    <term>
+     <literal>PLAN DEFAULT ( <replaceable>option</replaceable> [, ... ] )</literal>
+    </term>
+    <listitem>
+     <para>
+      Defines how to join the data returned by <replaceable>NESTED PATH</replaceable>
+      clauses to the constructed view. The <literal>INNER</literal> and
+      <literal>OUTER</literal> options define the joining plan for parent/child
+      columns, while <literal>UNION</literal> and <literal>CROSS</literal>
+      affect the sibling columns. You can override the default plans for all
+      columns at once.
+     </para>
+
+    <para>
+     To join columns with parent/child relationship, you can use:
+    </para>
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal>INNER</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Use <literal>INNER JOIN</literal>, so that the parent row
+     is omitted from the output if it does not have any child rows
+     after joining the data returned by <literal>NESTED PATH</literal>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>OUTER</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Use <literal>LEFT OUTER JOIN</literal>, so that the parent row
+     is always included into the output even if it does not have any child rows
+     after joining the data returned by <literal>NESTED PATH</literal>, with NULL values
+     inserted into the child columns if the corresponding
+     values are missing.
+    </para>
+    <para>
+     This is the default option for joining columns with parent/child relationship.
+    </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
 
+     <para>
+     To join sibling columns, you can use:
+    </para>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal>UNION</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Use <literal>FULL OUTER JOIN ON FALSE</literal>, so that both parent and child
+     rows are included into the output, with NULL values inserted
+     into both child and parrent columns for all missing values.
+    </para>
+    <para>
+     This is the default option for joining sibling columns.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>CROSS</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Use <literal>CROSS JOIN</literal>, so that the output includes 
+     a row for every possible combination of rows from the left-hand
+     and the right-hand columns.
+    </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+
+    </listitem>
+   </varlistentry>
+  </variablelist>
     </sect5>
 
     <sect5>
