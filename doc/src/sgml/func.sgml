@@ -16844,6 +16844,850 @@ $ ? (@ like_regex "^\\d+$")
     </para>
    </sect3>
   </sect2>
+
+ <sect2 id="functions-sqljson">
+  <title>SQL/JSON Functions and Expressions</title>
+  <indexterm zone="functions-json">
+    <primary>SQL/JSON</primary>
+    <secondary>functions and expressions</secondary>
+  </indexterm>
+
+ <para>
+  To provide native support for JSON data types within the SQL environment,
+  <productname>PostgreSQL</productname> implements the
+  <firstterm>SQL/JSON data model</firstterm>.
+  This model comprises sequences of items. Each item can hold SQL scalar values,
+  with an additional SQL/JSON null value, and composite data structures that use JSON
+  arrays and objects.
+ </para>
+
+ <para>
+  SQL/JSON enables you to handle JSON data alongside regular SQL data,
+  with transaction support:
+ </para>
+
+ <itemizedlist>
+  <listitem>
+    <para>
+      Upload JSON data into a relational database and store it in
+      regular SQL columns as character or binary strings.
+    </para>
+  </listitem>
+  <listitem>
+    <para>
+      Generate JSON objects and arrays from relational data.
+    </para>
+  </listitem>
+  <listitem>
+    <para>
+      Query JSON data using SQL/JSON query functions and SQL/JSON path
+      language expressions.
+    </para>
+  </listitem>
+ </itemizedlist>
+
+ <sect3 id="functions-sqljson-producing">
+   <title>Producing JSON Content</title>
+
+  <para>
+    <productname>PostgreSQL</productname> provides several functions
+    that generate JSON data. Taking values of SQL types as input, these
+    functions construct JSON objects or JSON arrays represented as
+    SQL character or binary strings.
+  </para>
+
+  <itemizedlist>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonobject"/>
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonobjectagg"/>
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonarray"/>
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonarrayagg"/>
+      </para>
+    </listitem>
+  </itemizedlist>
+
+   <refentry id="functions-jsonobject">
+    <refnamediv>
+     <refname>JSON_OBJECT</refname>
+     <refpurpose>create a JSON object</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>
+JSON_OBJECT (
+  [ { <replaceable class="parameter">key_expression</replaceable> { VALUE | ':' }
+      <replaceable class="parameter">value_expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ] }[, ...] ]
+  [ { NULL | ABSENT } ON NULL ]
+  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+)
+
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_OBJECT</function> function generates a <acronym>JSON</acronym>
+      object from <acronym>SQL</acronym> or <acronym>JSON</acronym> data.
+     </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+  <variablelist>
+
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">key_expression</replaceable> { VALUE | ':' }
+              <replaceable class="parameter">value_expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+    <para>
+      The input clause that provides the data for constructing a <acronym>JSON</acronym> object:
+    </para>
+        <itemizedlist>
+          <listitem>
+            <para>
+              <replaceable class="parameter">key_expression</replaceable> is a scalar expression defining the
+              <acronym>JSON</acronym> key, which is implicitly converted
+              to the <type>text</type> type.
+              The provided expression cannot be <literal>NULL</literal> or belong to a type that has a cast to <type>json</type>.
+            </para>
+          </listitem>
+          <listitem>
+            <para>
+              <replaceable class="parameter">value_expression</replaceable> is an expression
+              that provides the input for the <acronym>JSON</acronym> value.
+            </para>
+          </listitem>
+          <listitem>
+            <para>
+              The optional <literal>FORMAT</literal> clause is provided to conform to the SQL/JSON standard.
+             </para>
+           </listitem>
+           </itemizedlist>
+      <para>
+        You must use a colon or the <literal>VALUE</literal> keyword as a delimiter between
+        the key and the value. Multiple key/value pairs are separated by commas.
+      </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>{ NULL | ABSENT } ON NULL</literal>
+    </term>
+    <listitem>
+      <para>
+        Defines whether <literal>NULL</literal> values are allowed in the constructed
+        <acronym>JSON</acronym> object:
+        </para>
+        <variablelist>
+         <varlistentry>
+           <term><literal>NULL</literal></term>
+           <listitem>
+             <para>
+              Default. <literal>NULL</literal> values are allowed.
+             </para>
+            </listitem>
+          </varlistentry>
+          <varlistentry>
+           <term><literal>ABSENT</literal></term>
+            <listitem>
+             <para>
+              If the value is <literal>NULL</literal>,
+              the corresponding key/value pair is omitted from the generated
+              <acronym>JSON</acronym> object.
+             </para>
+            </listitem>
+          </varlistentry>
+        </variablelist>
+      </listitem>
+    </varlistentry>
+
+    <varlistentry>
+    <term>
+     <literal>{ WITH | WITHOUT } UNIQUE [ KEYS ]</literal>
+    </term>
+    <listitem>
+     <para>Defines whether duplicate keys are allowed:
+     </para>
+       <variablelist>
+         <varlistentry>
+           <term><literal>WITHOUT</literal></term>
+           <listitem>
+             <para>
+              Default. The constructed
+              <acronym>JSON</acronym> object can contain duplicate keys.
+             </para>
+            </listitem>
+          </varlistentry>
+          <varlistentry>
+           <term><literal>WITH</literal></term>
+            <listitem>
+             <para>
+              Duplicate keys are not allowed.
+              If the input data contains duplicate keys, an error is returned.
+              This check is performed before removing JSON items with NULL values.
+             </para>
+            </listitem>
+          </varlistentry>
+        </variablelist>
+      <para>
+       Optionally, you can add the <literal>KEYS</literal> keyword for semantic clarity.
+      </para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the type of the generated <acronym>JSON</acronym> object.
+       For details, see <xref linkend="sqljson-output-clause"/>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   </variablelist>
+    </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+  <para>Alternatively, you can construct <acronym>JSON</acronym> objects by using
+  <productname>PostgreSQL</productname>-specific <function>json_build_object()</function>/
+  <function>jsonb_build_object()</function> functions.
+  See <xref linkend="functions-json-creation-table"/> for details.
+  </para>
+ </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+  <para>
+   Construct a JSON object from the provided key/value pairs of various types:
+  </para>
+<screen>
+SELECT JSON_OBJECT(
+-- scalar JSON types
+ 'key1': 'string',
+ 'key2': '[1, 2]',
+ 'key3' VALUE 123, -- alternative syntax for key-value delimiter
+ 'key4': NULL,
+-- other types
+ 'key5': ARRAY[1, 2, 3], -- postgres array
+ 'key6': jsonb '{"a": ["b", 1]}', -- composite json/jsonb
+ 'key7': date '2017-09-30', -- datetime type
+ 'key8': row(1, 'a'), -- row type
+ 'key9': '[1, 2]' FORMAT JSON, -- same value as for key2, but with FORMAT
+-- key can be an expression
+  'key' || 'last' : TRUE
+ABSENT ON NULL) AS json;
+                       json
+----------------------------------------------------
+{"key1" : "string", "key2" : "[1, 2]", "key3" : 123,
+ "key5" : [1,2,3], "key6" : {"a": ["b", 1]},
+ "key7" : "2017-09-30", "key8" : {"f1":1,"f2":"a"},
+ "key9" : [1, 2], "keylast" : true}
+(1 row)
+</screen>
+
+  <para>
+   From the <structname>films</structname> table, select some data
+   about the films distributed by Paramount Pictures
+   (<literal>did</literal> = 103) and return JSON objects:
+  </para>
+<screen>
+SELECT
+JSON_OBJECT(
+ 'code' VALUE f.code,
+ 'title' VALUE f.title,
+ 'did' VALUE f.did
+) AS paramount
+FROM films AS f
+WHERE f.did = 103;
+                    paramount
+----------------------------------------------------
+{"code" : "P_301", "title" : "Vertigo", "did" : 103}
+{"code" : "P_302", "title" : "Becket", "did" : 103}
+{"code" : "P_303", "title" : "48 Hrs", "did" : 103}
+(3 rows)
+</screen>
+    </refsect1>
+   </refentry>
+
+   <refentry id="functions-jsonobjectagg">
+    <refnamediv>
+     <refname>JSON_OBJECTAGG</refname>
+     <refpurpose>create a JSON object as an aggregate of the provided data</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>JSON_OBJECTAGG (
+  [ { <replaceable class="parameter">key_expression</replaceable> { VALUE | ':' } <replaceable class="parameter">value_expression</replaceable> } ]
+  [ { NULL | ABSENT } ON NULL ]
+  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+)
+
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_OBJECTAGG</function> function aggregates the provided data
+      into a <acronym>JSON</acronym> object. You can use this function to combine values
+      stored in different table columns into pairs. If you specify a <command>GROUP BY</command>
+      or an <command>ORDER BY</command> clause, this function returns a separate JSON object
+      for each table row.
+    </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">key_expression</replaceable> { VALUE | ':' } <replaceable class="parameter">value_expression</replaceable></literal>
+    </term>
+    <listitem>
+
+    <para>
+      The input clause that provides the data to be aggregated as a <acronym>JSON</acronym> object:
+    </para>
+        <itemizedlist>
+          <listitem>
+            <para>
+              <replaceable class="parameter">key_expression</replaceable> is a scalar expression defining the
+              <acronym>JSON</acronym> key, which is implicitly converted
+              to the <type>text</type> type.
+              The provided expression cannot be <literal>NULL</literal> or belong to a type that has a cast to <type>json</type>.
+            </para>
+          </listitem>
+          <listitem>
+            <para>
+              <replaceable class="parameter">value_expression</replaceable> is an expression
+              that provides the input for the <acronym>JSON</acronym> value preceded by its type.
+              For <acronym>JSON</acronym> scalar types, you can omit the type.
+            </para>
+            <note>
+              <para>
+                The input value of the <literal>bytea</literal> type must be stored in <literal>UTF8</literal>
+                and contain a valid <literal>UTF8</literal> string. Otherwise, an error occurs.
+                <productname>PostgreSQL</productname> currently supports only <literal>UTF8</literal>.
+              </para>
+            </note>
+           </listitem>
+           </itemizedlist>
+      <para>
+        You must use a colon or the <literal>VALUE</literal> keyword as a delimiter between
+        keys and values. Multiple key/value pairs are separated by commas.
+      </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>{ NULL | ABSENT } ON NULL</literal>
+    </term>
+    <listitem>
+      <para>
+        Defines whether <literal>NULL</literal> values are allowed in the constructed
+        <acronym>JSON</acronym> object:
+        </para>
+      <variablelist>
+         <varlistentry>
+           <term><literal>NULL</literal></term>
+           <listitem>
+             <para>
+              Default. <literal>NULL</literal> values are allowed.
+             </para>
+            </listitem>
+          </varlistentry>
+          <varlistentry>
+           <term><literal>ABSENT</literal></term>
+            <listitem>
+             <para>
+              If the value is <literal>NULL</literal>,
+              the corresponding key/value pair is omitted from the generated
+              <acronym>JSON</acronym> object.
+             </para>
+            </listitem>
+          </varlistentry>
+        </variablelist>
+      </listitem>
+    </varlistentry>
+
+    <varlistentry>
+    <term>
+     <literal>{ WITH | WITHOUT } UNIQUE [ KEYS ]</literal>
+    </term>
+    <listitem>
+     <para>Defines whether duplicate keys are allowed:
+     </para>
+        <variablelist>
+         <varlistentry>
+           <term><literal>WITHOUT</literal></term>
+           <listitem>
+             <para>
+              Default. The constructed
+              <acronym>JSON</acronym> object can contain duplicate keys.
+             </para>
+            </listitem>
+          </varlistentry>
+          <varlistentry>
+           <term><literal>WITH</literal></term>
+            <listitem>
+             <para>
+              Duplicate keys are not allowed.
+              If the input data contains duplicate keys, an error is returned.
+              This check is performed before removing JSON items with NULL values.
+             </para>
+            </listitem>
+          </varlistentry>
+        </variablelist>
+      <para>
+        Optionally, you can add the <literal>KEYS</literal> keyword for semantic clarity.
+      </para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the type of the generated <acronym>JSON</acronym> object.
+       For details, see <xref linkend="sqljson-output-clause"/>.
+      </para>
+     </listitem>
+   </varlistentry>
+
+  </variablelist>
+    </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+  <para>Alternatively, you can create <acronym>JSON</acronym> objects by using
+  <productname>PostgreSQL</productname>-specific <function>json_object_agg()</function>/
+  <function>jsonb_object_agg()</function> aggregate functions.
+  See <xref linkend="functions-aggregate"/> for details.
+  </para>
+ </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+
+  <para>
+    For films with <literal>did</literal> = 103, aggregate key/value pairs
+    of film genre (<literal>f.kind</literal>) and title (<literal>f.title</literal>)
+    into a single object:
+  </para>
+<screen>
+SELECT
+JSON_OBJECTAGG(
+ f.kind VALUE f.title)
+ AS films_list
+FROM films AS f
+where f.did = 103;
+                 films_list
+----------------------------------------------------
+{ "Action" : "Vertigo", "Drama" : "Becket", "Action" : "48 Hrs" }
+</screen>
+
+  <para>
+    Return the same object as <type>jsonb</type>. Note that only a single film of
+    the action genre is included as the <type>jsonb</type> type does not allow duplicate keys.
+  </para>
+<screen>
+SELECT
+JSON_OBJECTAGG(
+  f.kind VALUE f.title
+  RETURNING jsonb)
+AS films_list
+FROM films AS f
+where f.did = 103;
+                 films_list
+----------------------------------------------------
+{"Drama": "Becket", "Action": "48 Hrs"}
+</screen>
+
+  <para>
+    Return objects of film titles and length, grouped by the film genre:
+  </para>
+<screen>
+SELECT
+  f.kind,
+  JSON_OBJECTAGG(
+    f.title VALUE f.len
+) AS films_list
+FROM films AS f
+GROUP BY f.kind;
+
+     kind    |        films_list
+-------------+----------------------------------
+Musical      | { "West Side Story" : "02:32:00", "The King and I" : "02:13:00", "Bed Knobs and Broomsticks" : "01:57:00" }
+Romantic     | { "The African Queen" : "01:43:00", "Une Femme est une Femme" : "01:25:00", "Storia di una donna" : "01:30:00" }
+Comedy       | { "Bananas" : "01:22:00", "There's a Girl in my Soup" : "01:36:00" }
+Drama        | { "The Third Man" : "01:44:00", "Becket" : "02:28:00", "War and Peace" : "05:57:00", "Yojimbo" : "01:50:00", "Das Boot" : "02:29:00" }
+Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : "01:54:00", "Absence of Malice" : "01:55:00" }
+(5 rows)
+</screen>
+    </refsect1>
+   </refentry>
+
+   <refentry id="functions-jsonarray">
+    <refnamediv>
+     <refname>JSON_ARRAY</refname>
+     <refpurpose>create a JSON array</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>JSON_ARRAY (
+  [ { <replaceable class="parameter">value_expression</replaceable> [ FORMAT JSON ] } [, ...] ]
+  [ { NULL | ABSENT } ON NULL ]
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+)
+</synopsis>
+<synopsis>JSON_ARRAY (
+  [ <replaceable class="parameter">query_expression</replaceable> ]
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+)
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_ARRAY</function> function constructs a <acronym>JSON</acronym> array from
+      the provided <acronym>SQL</acronym> or <acronym>JSON</acronym> data.
+     </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+
+  <variablelist>
+    <varlistentry>
+      <term>
+        <literal><replaceable class="parameter">value_expression</replaceable></literal>
+      </term>
+      <listitem>
+
+        <para>
+          The input clause that provides the data for constructing a JSON array.
+          The <replaceable class="parameter">value_expression</replaceable> is an expression
+          that provides the input for the <acronym>JSON</acronym> value preceded by its type.
+          For <acronym>JSON</acronym> scalar types, you can omit the type.
+        </para>
+        <note>
+          <para>
+            The input value of the <literal>bytea</literal> type must be stored in <literal>UTF8</literal>
+            and contain a valid <literal>UTF8</literal> string. Otherwise, an error occurs.
+            <productname>PostgreSQL</productname> currently supports only <literal>UTF8</literal>.
+          </para>
+        </note>
+
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+      <term>
+        <literal><replaceable class="parameter">query_expression</replaceable></literal>
+      </term>
+      <listitem>
+        <para>
+          An SQL query that provides the data for constructing a JSON array.
+          The query must return a single column that holds the values to be
+          used in the array.
+        </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <literal>{ NULL | ABSENT } ON NULL</literal>
+    </term>
+    <listitem>
+      <para>
+        Defines whether <literal>NULL</literal> values are allowed in the generated <acronym>JSON</acronym> array:
+      </para>
+       <variablelist>
+         <varlistentry>
+           <term><literal>NULL</literal></term>
+           <listitem>
+             <para>
+              <literal>NULL</literal> values are allowed.
+             </para>
+            </listitem>
+          </varlistentry>
+          <varlistentry>
+           <term><literal>ABSENT</literal></term>
+            <listitem>
+             <para>
+              Default. If the value is <literal>NULL</literal>,
+              the corresponding key/value pair is omitted from the generated
+              <acronym>JSON</acronym> object.
+             </para>
+            </listitem>
+          </varlistentry>
+        </variablelist>
+        <para>
+          This clause is only supported for arrays built from an explicit list of values.
+          If you are using an SQL query to generate an array, NULL values are always
+          omitted.
+        </para>
+      </listitem>
+    </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the return type of the constructed <acronym>JSON</acronym> array.
+       For details, see <xref linkend="sqljson-output-clause"/>.
+      </para>
+     </listitem>
+   </varlistentry>
+
+</variablelist>
+    </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+  <para>Alternatively, you can create <acronym>JSON</acronym> arrays by using
+  <productname>PostgreSQL</productname>-specific <function>json_build_array()</function>/
+  <function>jsonb_build_array()</function> functions.
+  See <xref linkend="functions-json"/> for details.
+  </para>
+ </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+  <para>
+    From the <structname>films</structname> table, select some data
+    about the films distributed by Paramount Pictures
+    (<literal>did</literal> = 103) and return JSON arrays:
+  </para>
+<screen>
+SELECT
+JSON_ARRAY(
+  f.code,
+  f.title,
+  f.did
+) AS films
+FROM films AS f
+WHERE f.did = 103;
+                       films
+----------------------------------------------------
+["code" : "P_301", "title" : "Vertigo", "did" : 103]
+["code" : "P_302", "title" : "Becket", "did" : 103]
+["code" : "P_303", "title" : "48 Hrs", "did" : 103]
+(3 rows)
+</screen>
+  <para>
+    Construct a JSON array from the list of film titles returned from the
+    <structname>films</structname> table by a subquery:
+  </para>
+<screen>
+SELECT
+JSON_ARRAY(
+  SELECT
+  f.title
+FROM films AS f
+where f.did = 103)
+AS film_titles;
+                    film_titles
+----------------------------------------------------
+["Vertigo", "Becket", "48 Hrs"]
+(1 row)
+</screen>
+    </refsect1>
+   </refentry>
+
+   <refentry id="functions-jsonarrayagg">
+    <refnamediv>
+     <refname>JSON_ARRAYAGG</refname>
+     <refpurpose>aggregate a JSON array</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>JSON_ARRAYAGG (
+  [ <replaceable class="parameter">value_expression</replaceable> ]
+  [ ORDER BY <replaceable class="parameter">sort_expression</replaceable> ]
+  [ { NULL | ABSENT } ON NULL ]
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+)
+
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_ARRAYAGG</function> function aggregates the provided <acronym>SQL</acronym>
+      or <acronym>JSON</acronym> data into a <acronym>JSON</acronym> array.
+     </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+
+  <variablelist>
+    <varlistentry>
+      <term>
+        <literal><replaceable class="parameter">value_expression</replaceable></literal>
+      </term>
+      <listitem>
+
+        <para>
+          The input clause that provides the input data to be aggregated as a <acronym>JSON</acronym> array.
+          The <replaceable class="parameter">value_expression</replaceable>
+          can be a value or a query returning the values to be used as input in array construction.
+          You can provide multiple input values separated by commas.
+        </para>
+    </listitem>
+   </varlistentry>
+
+<varlistentry>
+      <term>
+        <literal>ORDER BY</literal>
+      </term>
+      <listitem>
+        <para>
+          Sorts the input data to be aggregated as a <acronym>JSON</acronym> array.
+          For details on the exact syntax of the <literal>ORDER BY</literal> clause, see <xref linkend="sql-orderby"/>.
+        </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <literal>{ NULL | ABSENT } ON NULL</literal>
+    </term>
+    <listitem>
+      <para>
+        Defines whether <literal>NULL</literal> values are allowed in the constructed array:
+          <itemizedlist>
+            <listitem>
+              <para>
+                <literal>NULL</literal> &mdash; <literal>NULL</literal> values are allowed.
+              </para>
+            </listitem>
+            <listitem>
+              <para>
+                <literal>ABSENT</literal> (default) &mdash; <literal>NULL</literal>
+                values are omitted from the generated array.
+              </para>
+            </listitem>
+          </itemizedlist>
+        </para>
+      </listitem>
+    </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the return type of the constructed <acronym>JSON</acronym> array.
+       For details, see <xref linkend="sqljson-output-clause"/>.
+     </para>
+     </listitem>
+   </varlistentry>
+
+</variablelist>
+    </refsect1>
+
+<refsect1>
+  <title>Notes</title>
+  <para>Alternatively, you can create <acronym>JSON</acronym> arrays by using
+  <productname>PostgreSQL</productname>-specific <function>json_agg()</function>/
+  <function>jsonb_agg()</function> functions.
+  See <xref linkend="functions-aggregate"/> for details.
+  </para>
+ </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+     <para>
+       Construct an array of film titles sorted in alphabetical order:
+     </para>
+<screen>
+SELECT
+JSON_ARRAYAGG(
+  f.title
+ORDER BY f.title ASC) AS film_titles
+FROM films AS f;
+                    film_titles
+----------------------------------------------------
+["48 Hrs", "Absence of Malice", "Bananas", "Becket", "Bed Knobs and Broomsticks", "Das Boot", "Storia di una donna", "Taxi Driver", "The African Queen", "The King and I", "There's a Girl in my Soup", "The Third Man", "Une Femme est une Femme", "Vertigo", "War and Peace", "West Side Story", "Yojimbo"]
+(1 row)
+</screen>
+    </refsect1>
+   </refentry>
+  </sect3>
+ 
+  <sect3 id="sqljson-common-clauses">
+   <title>SQL/JSON Common Clauses</title>
+
+   <sect4 id="sqljson-output-clause">
+    <title>SQL/JSON Output Clause</title>
+
+    <variablelist>
+  <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the return type of the generated
+       <acronym>JSON</acronym> object. Out of the box, <productname>PostgreSQL</productname>
+       supports the following types: <type>json</type>, <type>jsonb</type>,
+       <type>bytea</type>, and character string types (<type>text</type>, <type>char</type>,
+       <type>varchar</type>, and <type>nchar</type>).
+       To use other types, you must create the <literal>CAST</literal> from <type>json</type> for this type.
+       By default, the <type>json</type> type is returned.
+     </para>
+     <para>
+       The optional <literal>FORMAT</literal> clause is provided to conform to the SQL/JSON standard.
+      </para>
+     <para>
+       The output clause is common for both constructor and query SQL/JSON functions.
+     </para>
+     </listitem>
+   </varlistentry>
+    </variablelist>
+
+   </sect4>
+  </sect3>
+  </sect2>
+
  </sect1>
 
  <sect1 id="functions-sequence">
