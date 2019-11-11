@@ -18593,9 +18593,10 @@ FROM
 
 <synopsis>
 JSON_TABLE (
-  <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional> </optional>
+  <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> AS <replaceable>json_path_name</replaceable> </optional> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional> </optional>
   COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> <optional>, ...</optional> )
   <optional>
+    PLAN ( <replaceable class="parameter">json_table_plan</replaceable> ) |
     PLAN DEFAULT ( { INNER | OUTER } <optional> , { CROSS | UNION } </optional>
                  | { CROSS | UNION } <optional> , { INNER | OUTER } </optional> )
   </optional>
@@ -18619,6 +18620,16 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
   | NESTED PATH <replaceable>json_path_specification</replaceable> <optional> AS <replaceable>path_name</replaceable> </optional>
         COLUMNS ( <replaceable>json_table_column</replaceable> <optional>, ...</optional> )
   | <replaceable>name</replaceable> FOR ORDINALITY
+<phrase>
+<replaceable>json_table_plan</replaceable> is:
+</phrase>
+    <replaceable>json_path_name</replaceable> <optional> { OUTER | INNER } <replaceable>json_table_plan_primary</replaceable> </optional>
+  | <replaceable>json_table_plan_primary</replaceable> { UNION <replaceable>json_table_plan_primary</replaceable> } <optional>...</optional>
+  | <replaceable>json_table_plan_primary</replaceable> { CROSS <replaceable>json_table_plan_primary</replaceable> } <optional>...</optional>
+<phrase>
+<replaceable>json_table_plan_primary</replaceable> is:
+</phrase>
+    <replaceable>json_path_name</replaceable> | ( <replaceable>json_table_plan</replaceable> )
 
 </synopsis>
 
@@ -18661,7 +18672,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
       joined to the row that generated them, so you do not have to explicitly join
       the constructed view with the original table holding <acronym>JSON</acronym>
       data. Optionally, you can specify how to join the columns returned
-      by <literal>NESTED PATH</literal> using the <literal>PLAN DEFAULT</literal> clause.
+      by <literal>NESTED PATH</literal> using the <literal>PLAN</literal> clause.
      </para>
 
      <para>
@@ -18846,7 +18857,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     </para>
 
     <para>
-     You can use the <literal>PLAN DEFAULT</literal> clause to define how
+     You can use the <literal>PLAN</literal> clause to define how
      to join the columns returned by <replaceable>NESTED PATH</replaceable> clauses.
     </para>
     </listitem>
@@ -18873,18 +18884,31 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
    <varlistentry>
     <term>
-     <literal>PLAN DEFAULT ( <replaceable>option</replaceable> <optional>, ... </optional> )</literal>
+     <literal>AS <replaceable>json_path_name</replaceable></literal>
     </term>
     <listitem>
-     <para>
-      Defines how to join the data returned by <replaceable>NESTED PATH</replaceable>
-      clauses to the constructed view. The <literal>INNER</literal> and
-      <literal>OUTER</literal> options define the joining plan for parent/child
-      columns, while <literal>UNION</literal> and <literal>CROSS</literal>
-      affect the sibling columns. You can override the default plans for all
-      columns at once.
-     </para>
 
+    <para>
+     The optional <replaceable>json_path_name</replaceable> serves as an
+     identifier of the provided <replaceable>json_path_specification</replaceable>.
+     The path name must be unique and cannot coincide with column names.
+     When using the <literal>PLAN</literal> clause, you must specify the names
+     for all the paths, including the row pattern. Each path name can appear in
+     the <literal>PLAN</literal> clause only once.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>PLAN ( <replaceable class="parameter">json_table_plan</replaceable> )</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Defines how to join the data returned by <replaceable>NESTED PATH</replaceable>
+     clauses to the constructed view.
+    </para>
     <para>
      To join columns with parent/child relationship, you can use:
     </para>
@@ -18963,6 +18987,23 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>PLAN DEFAULT ( <replaceable>option</replaceable> <optional>, ... </optional> )</literal>
+    </term>
+    <listitem>
+     <para>
+      Overrides the default joining plans. The <literal>INNER</literal> and
+      <literal>OUTER</literal> options define the joining plan for parent/child
+      columns, while <literal>UNION</literal> and <literal>CROSS</literal>
+      affect the sibling columns. You can override the default plans for all columns at once.
+      Even though the path names are not incuded into the <literal>PLAN DEFAULT</literal>
+      clause, they must be provided for all the paths to conform to
+      the SQL/JSON standard.
+     </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
     </sect5>
 
@@ -18994,9 +19035,35 @@ SELECT jt.* FROM
 </screen>
      </para>
 
-   </sect5>
-  </sect4>
-
+     <para>
+      Find a director that has done films in two different genres:
+<screen>
+SELECT
+  director1 AS director, title1, kind1, title2, kind2
+FROM
+  my_films,
+  JSON_TABLE ( js, '$.favorites' AS favs COLUMNS (
+    NESTED PATH '$[*]' AS films1 COLUMNS (
+      kind1 text PATH '$.kind',
+      NESTED PATH '$.films[*]' AS film1 COLUMNS (
+        title1 text PATH '$.title',
+        director1 text PATH '$.director')
+    ),
+    NESTED PATH '$[*]' AS films2 COLUMNS (
+      kind2 text PATH '$.kind',
+      NESTED PATH '$.films[*]' AS film2 COLUMNS (
+        title2 text PATH '$.title',
+        director2 text PATH '$.director'
+      )
+    )
+   )
+   PLAN (favs OUTER ((films1 INNER film1) CROSS (films2 INNER film2)))
+  ) AS jt
+ WHERE kind1 > kind2 AND director1 = director2;
+</screen>
+     </para>
+    </sect5>
+   </sect4>
   </sect3>
 
   <sect3 id="functions-sqljson-serializing">
