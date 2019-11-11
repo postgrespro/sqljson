@@ -17912,6 +17912,11 @@ FROM films AS f;
        <link linkend="functions-jsonquery"><literal>JSON_QUERY</literal></link>
       </para>
     </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsontable"/>
+      </para>
+    </listitem>
   </itemizedlist>
 
   <para>
@@ -18582,6 +18587,285 @@ FROM
     </sect5>
    </sect4>
 
+   <refentry id="functions-jsontable">
+    <refnamediv>
+     <refname>JSON_TABLE</refname>
+     <refpurpose>display JSON data as an SQL relation</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+
+<synopsis>
+JSON_TABLE (
+ <replaceable class="parameter">json_api_common_syntax</replaceable>
+ COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> [, ...] )
+)
+<phrase>
+where <replaceable class="parameter">json_table_column</replaceable> is:
+</phrase>
+    <replaceable>name</replaceable> <replaceable>type</replaceable> [ PATH <replaceable>json_path_specification</replaceable> ]
+        [ { ERROR | NULL | DEFAULT expression } ON EMPTY ]
+        [ { ERROR | NULL | DEFAULT expression } ON ERROR ]
+  | <replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
+        [ PATH <replaceable>json_path_specification</replaceable> ]
+        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } }
+          [ ARRAY ] WRAPPER ]
+        [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
+        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON EMPTY ]
+        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON ERROR ]
+  | NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>path_name</replaceable> ]
+        COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )
+  | <replaceable>name</replaceable> FOR ORDINALITY
+
+</synopsis>
+    </refsynopsisdiv>
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_TABLE</function> function queries <acronym>JSON</acronym> data
+      and presents the results as a relational view, which can be accessed as a
+      regular SQL table. You can only use <function>JSON_TABLE</function> inside the
+      <literal>FROM</literal> clause of the <literal>SELECT</literal> statement
+      for an SQL table.
+     </para>
+
+     <para>
+      Taking JSON data as input, <function>JSON_TABLE</function> uses
+      a path expression to extract a part of the provided data that
+      will be used as a <firstterm>row pattern</firstterm> for the
+      constructed view. Each SQL/JSON item at the top level of the row pattern serves
+      as the source for a separate row in the constructed relational view.
+     </para>
+
+    <para>
+      To split the row pattern into columns, <function>JSON_TABLE</function>
+      provides the <literal>COLUMNS</literal> clause that defines the
+      schema of the created view. For each column to be constructed,
+      this clause provides a separate path expression that evaluates
+      the row pattern, extracts a JSON item, and returns it as a
+      separate SQL value for the specified column. If the required value
+      is stored in a nested level of the row pattern, it can be extracted
+      using the <literal>NESTED PATH</literal> subclause. Joining the
+      columns returned by <literal>NESTED PATH</literal> can add multiple
+      new rows to the constructed view. Such rows are called
+      <firstterm>child rows</firstterm>, as opposed to the <firstterm>parent row</firstterm>
+      that generates them.
+     </para>
+
+     <para>
+      The rows produced by <function>JSON_TABLE</function> are laterally
+      joined to the row that generated them, so you do not have to explicitly join
+      the constructed view with the original table holding <acronym>JSON</acronym>
+      data.
+     </para>
+
+     <para>
+      Each <literal>NESTED PATH</literal> clause can generate one or more
+      columns, which are considered to be <firstterm>siblings</firstterm>
+      to each other. In relation to the columns returned directly from the row
+      expression or by the <literal>NESTED PATH</literal> clause of a
+      higher level, these columns are <firstterm>child</firstterm> columns.
+      Sibling columns are always joined first. Once they are processed,
+      the resulting rows are joined to the parent row.
+     </para>
+
+     <para>
+      Columns with parent/child relationship are joined using
+      <literal>LEFT OUTER JOIN</literal>, so that the parent row
+      is always included into the output even if it does not have any child rows
+      after joining the data returned by <literal>NESTED PATH</literal>,
+      with NULL values inserted into the child columns if the corresponding
+      values are missing.
+     </para>
+
+     <para>
+      Sibling columns are joined using
+      <literal>FULL OUTER JOIN ON FALSE</literal>, so that both parent and child
+      rows are included into the output, with NULL values inserted
+      into both child and parrent columns for all missing values.
+     </para>
+
+    </refsect1>
+    <refsect1>
+     <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">json_api_common_syntax</replaceable></literal>
+    </term>
+    <listitem>
+
+    <para>
+     The input data to query, the JSON path expression defining the query,
+     and an optional <literal>PASSING</literal> clause, as described in
+     <xref linkend="sqljson-input-clause"/>. The result of the input data
+     evaluation is called the <firstterm>row pattern</firstterm>. The row
+     pattern is used as the source for row values in the constructed view.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>COLUMNS( { <replaceable class="parameter">json_table_column</replaceable> } [, ...] )</literal>
+    </term>
+    <listitem>
+
+    <para>
+     The <literal>COLUMNS</literal> clause defining the schema of the
+     constructed view. In this clause, you must specify all the columns
+     to be filled with SQL/JSON items. Only scalar column types are supported.
+     The <replaceable class="parameter">json_table_column</replaceable>
+     expression has the following syntax variants:
+    </para>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal><replaceable>name</replaceable> <replaceable>type</replaceable>
+          [ PATH <replaceable>json_path_specification</replaceable> ]</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Inserts a single SQL/JSON item into each row of
+     the specified column.
+    </para>
+    <para>
+     The provided <literal>PATH</literal> expression parses the
+     row pattern defined by <replaceable>json_api_common_syntax</replaceable>
+     and fills the column with produced SQL/JSON items, one for each row.
+     If the <literal>PATH</literal> expression is omitted,
+     <function>JSON_TABLE</function> uses the
+     <literal>$.<replaceable>name</replaceable></literal> path expression,
+     where <replaceable>name</replaceable> is the provided column name.
+     In this case, the column name must correspond to one of the
+     keys within the SQL/JSON item produced by the row pattern.
+    </para>
+    <para>
+     Optionally, you can add <literal>ON EMPTY</literal> and
+     <literal>ON ERROR</literal> clauses to define how to handle
+     missing values or structural errors. These clauses have the same syntax
+     and semantics as in <xref linkend="functions-jsonvalue"/>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal><replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
+          [ PATH <replaceable>json_path_specification</replaceable> ]</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Gerenates a column and inserts a composite SQL/JSON
+     item into each row of this column.
+    </para>
+    <para>
+     The provided <literal>PATH</literal> expression parses the
+     row pattern defined by <replaceable>json_api_common_syntax</replaceable>
+     and fills the column with produced SQL/JSON items, one for each row.
+     If the <literal>PATH</literal> expression is omitted,
+     <function>JSON_TABLE</function> uses the
+     <literal>$.<replaceable>name</replaceable></literal> path expression,
+     where <replaceable>name</replaceable> is the provided column name.
+     In this case, the column name must correspond to one of the
+     keys within the SQL/JSON item produced by the row pattern.
+    </para>
+    <para>
+     Optionally, you can add <literal>WRAPPER</literal>, <literal>QUOTES</literal>,
+     <literal>ON EMPTY</literal> and <literal>ON ERROR</literal> clauses
+     to define additional settings for the returned SQL/JSON items.
+     These clauses have the same syntax and semantics as
+     in <xref linkend="functions-jsonquery"/>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>json_path_name</replaceable> ]
+          COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Extracts SQL/JSON items from nested levels of the row pattern,
+     gerenates one or more columns as defined by the <literal>COLUMNS</literal>
+     subclause, and inserts the extracted SQL/JSON items into each row of these columns.
+     The <replaceable>json_table_column</replaceable> expression in the
+     <literal>COLUMNS</literal> subclause uses the same syntax as in the
+     parent <literal>COLUMNS</literal> clause.
+    </para>
+
+    <para>
+     The <literal>NESTED PATH</literal> syntax is recursive,
+     so you can go down multiple nested levels by specifying several
+     <literal>NESTED PATH</literal> subclauses within each other.
+     It allows to unnest the hierarchy of JSON objects and arrays
+     in a single function invocation rather than chaining several
+     <function>JSON_TABLE</function> expressions in an SQL statement.
+    </para>
+
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal><replaceable>name</replaceable> FOR ORDINALITY</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Adds an ordinality column that provides sequential row numbering.
+     You can have only one ordinality column per table. Row numbering
+     is 1-based. For child rows that result from the <literal>NESTED PATH</literal>
+     clauses, the parent row number is repeated.
+    </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+
+    </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+
+     <para>
+      Query the <structname>my_films</structname> table holding
+      some JSON data about the films and create a view that
+      distributes the film genre, title, and director between separate columns:
+<screen>
+SELECT jt.* FROM 
+ my_films,
+ JSON_TABLE ( js, '$.favorites[*]' COLUMNS (
+   id FOR ORDINALITY,
+   kind text PATH '$.kind',
+   NESTED PATH '$.films[*]' COLUMNS (
+     title text PATH '$.title',
+     director text PATH '$.director'))) AS jt;
+----+----------+------------------+-------------------
+ id |   kind   |       title      |    director
+----+----------+------------------+-------------------
+ 1  | comedy   | Bananas          | Woody Allen
+ 1  | comedy   | The Dinner Game  | Francis Veber
+ 2  | horror   | Psycho           | Alfred Hitchcock
+ 3  | thriller | Vertigo          | Hitchcock
+ 4  | drama    | Yojimbo          | Akira Kurosawa
+ (5 rows)
+</screen>
+     </para>
+
+   </refsect1>
+  </refentry>
 
   </sect3>
 
