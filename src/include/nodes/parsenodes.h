@@ -1499,6 +1499,98 @@ typedef struct JsonOutput
 	JsonReturning returning;	/* RETURNING FORMAT clause and type Oids */
 } JsonOutput;
 
+/*
+ * JsonKeyValue -
+ *		untransformed representation of JSON object key-value pair for
+ *		JSON_OBJECT() and JSON_OBJECTAGG()
+ */
+typedef struct JsonKeyValue
+{
+	NodeTag		type;
+	Expr	   *key;			/* key expression */
+	JsonValueExpr *value;		/* JSON value expression */
+} JsonKeyValue;
+
+/*
+ * JsonObjectCtor -
+ *		untransformed representation of JSON_OBJECT() constructor
+ */
+typedef struct JsonObjectCtor
+{
+	NodeTag		type;
+	List	   *exprs;			/* list of JsonKeyValue pairs */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	bool		absent_on_null;	/* skip NULL values? */
+	bool		unique;			/* check key uniqueness? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonObjectCtor;
+
+/*
+ * JsonArrayCtor -
+ *		untransformed representation of JSON_ARRAY(element,...) constructor
+ */
+typedef struct JsonArrayCtor
+{
+	NodeTag		type;
+	List	   *exprs;			/* list of JsonValueExpr elements */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	bool		absent_on_null;	/* skip NULL elements? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonArrayCtor;
+
+/*
+ * JsonArrayQueryCtor -
+ *		untransformed representation of JSON_ARRAY(subquery) constructor
+ */
+typedef struct JsonArrayQueryCtor
+{
+	NodeTag		type;
+	Node	   *query;			/* subquery */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	JsonFormat	format;			/* FORMAT clause for subquery, if specified */
+	bool		absent_on_null;	/* skip NULL elements? */
+	int			location;		/* token location, or -1 if unknown */
+} JsonArrayQueryCtor;
+
+/*
+ * JsonAggCtor -
+ *		common fields of untransformed representation of
+ *		JSON_ARRAYAGG() and JSON_OBJECTAGG()
+ */
+typedef struct JsonAggCtor
+{
+	NodeTag		type;
+	JsonOutput *output;			/* RETURNING clause, if any */
+	Node	   *agg_filter;		/* FILTER clause, if any */
+	List	   *agg_order;		/* ORDER BY clause, if any */
+	struct WindowDef *over;		/* OVER clause, if any */
+	int			location;		/* token location, or -1 if unknown */
+} JsonAggCtor;
+
+/*
+ * JsonObjectAgg -
+ *		untransformed representation of JSON_OBJECTAGG()
+ */
+typedef struct JsonObjectAgg
+{
+	JsonAggCtor	ctor;			/* common fields */
+	JsonKeyValue *arg;			/* object key-value pair */
+	bool		absent_on_null;	/* skip NULL values? */
+	bool		unique;			/* check key uniqueness? */
+} JsonObjectAgg;
+
+/*
+ * JsonArrayAgg -
+ *		untransformed representation of JSON_ARRRAYAGG()
+ */
+typedef struct JsonArrayAgg
+{
+	JsonAggCtor	ctor;			/* common fields */
+	JsonValueExpr *arg;			/* array element expression */
+	bool		absent_on_null;	/* skip NULL elements? */
+} JsonArrayAgg;
+
+
 /*****************************************************************************
  *		Raw Grammar Output Statements
  *****************************************************************************/

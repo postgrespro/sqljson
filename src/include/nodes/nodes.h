@@ -484,6 +484,12 @@ typedef enum NodeTag
 	T_PartitionRangeDatum,
 	T_PartitionCmd,
 	T_VacuumRelation,
+	T_JsonObjectCtor,
+	T_JsonArrayCtor,
+	T_JsonArrayQueryCtor,
+	T_JsonObjectAgg,
+	T_JsonArrayAgg,
+	T_JsonKeyValue,
 	T_JsonOutput,
 
 	/*
