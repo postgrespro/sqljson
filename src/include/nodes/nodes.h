@@ -491,8 +491,13 @@ typedef enum NodeTag
 	T_JsonAggConstructor,
 	T_JsonObjectAgg,
 	T_JsonArrayAgg,
+	T_JsonFuncExpr,
 	T_JsonIsPredicate,
+	T_JsonExistsPredicate,
+	T_JsonCommon,
+	T_JsonArgument,
 	T_JsonKeyValue,
+	T_JsonBehavior,
 	T_JsonOutput,
 
 	/*

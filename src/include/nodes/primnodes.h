@@ -1190,6 +1190,17 @@ typedef struct XmlExpr
 } XmlExpr;
 
 /*
+ * JsonExprOp -
+ *		enumeration of JSON functions using JSON path
+ */
+typedef enum JsonExprOp
+{
+	IS_JSON_VALUE,				/* JSON_VALUE() */
+	IS_JSON_QUERY,				/* JSON_QUERY() */
+	IS_JSON_EXISTS				/* JSON_EXISTS() */
+} JsonExprOp;
+
+/*
  * JsonEncoding -
  *		representation of JSON ENCODING clause
  */
@@ -1211,6 +1222,34 @@ typedef enum JsonFormatType
 	JS_FORMAT_JSON,				/* FORMAT JSON [ENCODING ...] */
 	JS_FORMAT_JSONB				/* implicit internal format for RETURNING jsonb */
 } JsonFormatType;
+
+/*
+ * JsonBehaviorType -
+ *		enumeration of behavior types used in JSON ON ... BEHAVIOR clause
+ */
+typedef enum JsonBehaviorType
+{
+	JSON_BEHAVIOR_NULL,
+	JSON_BEHAVIOR_ERROR,
+	JSON_BEHAVIOR_EMPTY,
+	JSON_BEHAVIOR_TRUE,
+	JSON_BEHAVIOR_FALSE,
+	JSON_BEHAVIOR_UNKNOWN,
+	JSON_BEHAVIOR_EMPTY_ARRAY,
+	JSON_BEHAVIOR_EMPTY_OBJECT,
+	JSON_BEHAVIOR_DEFAULT,
+} JsonBehaviorType;
+
+/*
+ * JsonWrapper -
+ *		representation of WRAPPER clause for JSON_QUERY()
+ */
+typedef enum JsonWrapper
+{
+	JSW_NONE,
+	JSW_CONDITIONAL,
+	JSW_UNCONDITIONAL,
+} JsonWrapper;
 
 /*
  * JsonFormat -
@@ -1298,6 +1337,17 @@ typedef struct JsonIsPredicate
 	bool		unique_keys;	/* check key uniqueness? */
 	int			location;		/* token location, or -1 if unknown */
 } JsonIsPredicate;
+
+/*
+ * JsonBehavior -
+ *		representation of JSON ON ... BEHAVIOR clause
+ */
+typedef struct JsonBehavior
+{
+	NodeTag		type;
+	JsonBehaviorType btype;		/* behavior type */
+	Node	   *default_expr;	/* default expression, if any */
+} JsonBehavior;
 
 /* ----------------
  * NullTest
