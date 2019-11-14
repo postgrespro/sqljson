@@ -17674,6 +17674,21 @@ FROM films AS f;
        <link linkend="functions-isjson-predicate"><literal>IS JSON</literal></link>
       </para>
     </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonexists"/>
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonvalue"/>
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonquery"/>
+      </para>
+    </listitem>
   </itemizedlist>
 
   <para>
@@ -17702,6 +17717,490 @@ INSERT INTO my_films VALUES (
   ] }');
 </programlisting>
      </para>
+
+   <refentry id="functions-jsonexists">
+    <refnamediv>
+     <refname>JSON_EXISTS</refname>
+     <refpurpose>check whether a JSON path expression can return any SQL/JSON items</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>JSON_EXISTS (
+  <replaceable class="parameter">json_api_common_syntax</replaceable>
+  [ { TRUE | FALSE | UNKNOWN | ERROR } ON ERROR ]
+)
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_EXISTS</function> function checks whether the provided
+      <acronym>JSON</acronym> path expression can return any <acronym>SQL/JSON</acronym> items.
+     </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">json_api_common_syntax</replaceable></literal>
+    </term>
+    <listitem>
+
+    <para>
+     The input data to query, the JSON path expression defining the query, and an optional <literal>PASSING</literal> clause.
+     See <xref linkend="sqljson-input-clause"/> for details.
+    </para>
+    </listitem>
+   </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>{ TRUE | FALSE | UNKNOWN | ERROR } ON ERROR</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines the return value if an error occurs. The default value is <literal>FALSE</literal>.
+     </para>
+     </listitem>
+   </varlistentry>
+
+   </variablelist>
+    </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+
+  <para>
+    Check whether the provided <type>jsonb</type> data contains a
+    key/value pair with the <literal>key1</literal> key, and its value
+    contains an array with one or more elements bigger than 2:
+  </para>
+<screen>
+SELECT JSON_EXISTS(jsonb '{"key1": [1,2,3]}', 'strict $.key1[*] ? (@ > 2)');
+ json_exists
+-------------
+ t
+(1 row)
+</screen>
+
+  <para>
+   Note the difference between strict and lax modes
+   if the required item does not exist:
+  </para>
+<screen>
+-- Strict mode with ERROR on ERROR clause
+SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]' ERROR ON ERROR);
+ERROR: Invalid SQL/JSON subscript
+(1 row)
+</screen>
+
+<screen>
+-- Lax mode
+SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'lax $.a[5]' ERROR ON ERROR);
+ json_exists
+-------------
+ f
+(1 row)
+</screen>
+
+<screen>
+-- Strict mode using the default value for the ON ERROR clause
+SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
+ json_exists
+-------------
+ f
+(1 row)
+</screen>
+
+    </refsect1>
+   </refentry>
+
+   <refentry id="functions-jsonvalue">
+    <refnamediv>
+     <refname>JSON_VALUE</refname>
+     <refpurpose>extract a value from JSON data and convert
+     it to an <acronym>SQL</acronym> scalar</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>JSON_VALUE (
+  <replaceable class="parameter">json_api_common_syntax</replaceable>
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> ]
+  [ { ERROR | NULL | DEFAULT <replaceable class="parameter">expression</replaceable> } ON EMPTY ]
+  [ { ERROR | NULL | DEFAULT <replaceable class="parameter">expression</replaceable> } ON ERROR ]
+)
+  </synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+  <para>
+   <function>JSON_VALUE</function> function extracts a value from the provided
+   <acronym>JSON</acronym> data and converts it to an <acronym>SQL</acronym> scalar.
+   If the specified JSON path expression returns more than one
+   <acronym>SQL/JSON</acronym> item, an error occurs. To extract
+   an <acronym>SQL/JSON</acronym> array or object, use <xref linkend="functions-jsonquery"/>.
+  </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">json_api_common_syntax</replaceable></literal>
+    </term>
+    <listitem>
+
+    <para>
+     The input data to query, the JSON path expression defining the query, and an optional <literal>PASSING</literal> clause.
+     For details, see <xref linkend="functions-sqljson-path"/>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable></literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the data type of the returned value.
+       Out of the box, <productname>PostgreSQL</productname>
+       supports the following types: <literal>json</literal>, <literal>jsonb</literal>,
+       <literal>bytea</literal>, and character string types (<literal>text</literal>, <literal>char</literal>,
+       <literal>varchar</literal>, and <literal>nchar</literal>).
+       The extracted value must be a single <acronym>SQL/JSON</acronym> scalar item
+       and have a cast to the specified type. Otherwise, an error occurs.
+       By default, <function>JSON_VALUE</function> returns a string
+       of the <literal>text</literal> type.
+     </para>
+     </listitem>
+   </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>{ ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON EMPTY</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines the return value if no JSON value is found. The default is <literal>NULL</literal>.
+       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>, the provided
+       <replaceable>expression</replaceable> is evaluated and cast to the type specified in the
+       <command>RETURNING</command> clause.
+     </para>
+     </listitem>
+   </varlistentry>
+
+     <varlistentry>
+    <term>
+     <literal>{ ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON ERROR</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines the return value if an unhandled error occurs. The default is <literal>NULL</literal>.
+       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>, the provided
+       <replaceable>expression</replaceable> is evaluated and cast to the type specified in the
+       <command>RETURNING</command> clause.
+     </para>
+     </listitem>
+   </varlistentry>
+
+   </variablelist>
+    </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+
+     <para>
+      Extract an SQL/JSON value and return it as an SQL
+      scalar of the specified type. Note that
+      <command>JSON_VALUE</command> can only return a
+      single scalar, and the returned value must have a
+      cast to the specified return type:
+     </para>
+
+<screen>
+SELECT JSON_VALUE('"123.45"', '$' RETURNING float);
+ json_value
+------------
+     123.45
+(1 row)
+
+SELECT JSON_VALUE('123.45', '$' RETURNING int ERROR ON ERROR);
+ json_value
+------------
+        123
+(1 row)
+
+SELECT JSON_VALUE('"03:04 2015-02-01"', '$.datetime("HH24:MI YYYY-MM-DD")' RETURNING date);
+ json_value 
+------------
+ 2015-02-01
+(1 row)
+
+SELECT JSON_VALUE('"123.45"', '$' RETURNING int ERROR ON ERROR);
+ERROR:  invalid input syntax for integer: "123.45"
+
+SELECT JSON_VALUE(jsonb '[1]', 'strict $' ERROR ON ERROR);
+ERROR: SQL/JSON scalar required
+
+SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' ERROR ON ERROR);
+ERROR: more than one SQL/JSON item
+</screen>
+
+     <para>
+       If the path expression returns an array, an object, or
+       multiple SQL/JSON items, an error is returned, as specified
+       in the <command>ON ERROR</command> clause:
+     </para>
+<screen>
+SELECT JSON_VALUE(jsonb '[1]', 'strict $' ERROR ON ERROR);
+ERROR: SQL/JSON scalar required
+
+SELECT JSON_VALUE(jsonb '{"a": 1}', 'strict $' ERROR ON ERROR);
+ERROR: SQL/JSON scalar required
+
+SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' ERROR ON ERROR);
+ERROR: more than one SQL/JSON item
+
+SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
+1
+</screen>
+
+    </refsect1>
+   </refentry>
+
+   <refentry id="functions-jsonquery">
+    <refnamediv>
+     <refname>JSON_QUERY</refname>
+     <refpurpose>extract an SQL/JSON array or object from JSON data
+     and return a JSON string</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>JSON_QUERY (
+  <replaceable class="parameter">json_api_common_syntax</replaceable>
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+  [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER ]
+  [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
+  [ { ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON EMPTY ]
+  [ { ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON ERROR ]
+)
+  </synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+  <para>
+   <function>JSON_QUERY</function> function extracts an <acronym>SQL/JSON</acronym>
+   array or object from <acronym>JSON</acronym> data. This function must return
+   a JSON string, so if the path expression returns a scalar or multiple SQL/JSON
+   items, you must wrap the result using the <literal>WITH WRAPPER</literal> clause.
+   To extract a single <acronym>SQL/JSON</acronym> value, you can use <xref linkend="functions-jsonvalue"/>.
+  </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+
+   <variablelist>
+
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">json_api_common_syntax</replaceable></literal>
+    </term>
+    <listitem>
+
+    <para>
+     The input data to query, the JSON path expression defining the query, and an optional <literal>PASSING</literal> clause.
+     For details, see <xref linkend="functions-sqljson-path"/>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the data type of the returned value.
+       For details, see <xref linkend="sqljson-output-clause"/>.
+     </para>
+     </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>{ WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines whether to wrap a returned sequence of <acronym>SQL/JSON</acronym>
+       items into a <acronym>SQL/JSON</acronym> array.
+     </para>
+       <variablelist>
+        <varlistentry>
+        <term><literal>WITHOUT WRAPPER</literal></term>
+        <listitem>
+          <para>
+            Do not wrap the result.
+            This is the default behavior if the <literal>WRAPPER</literal>
+            clause is omitted.
+          </para>
+        </listitem>
+        </varlistentry>
+        <varlistentry>
+        <term><literal>WITH [UNCONDITIONAL] WRAPPER</literal></term>
+        <listitem>
+          <para>
+            Always wrap the result.
+          </para>
+        </listitem>
+        </varlistentry>
+        <varlistentry>
+        <term><literal>WITH CONDITIONAL WRAPPER</literal></term>
+        <listitem>
+          <para>
+            Wrap the result if the path
+            expression returns anything other than a single
+            <acronym>SQL/JSON</acronym> array or object.
+          </para>
+        </listitem>
+        </varlistentry>
+       </variablelist>
+     <para>
+       Optionally, you can add the <literal>ARRAY</literal> keyword for semantic clarity.
+     </para>
+     <important>
+      <para>You cannot use this clause together with the <literal>ON EMPTY</literal> clause.
+      </para>
+     </important>
+     </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>{ KEEP | OMIT } QUOTES [ ON SCALAR STRING ]</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines whether to keep or omit quotes if a scalar string is returned.
+       By default, scalar strings are returned with quotes. Using this
+       clause together with the <command>WITH WRAPPER</command> clause is not allowed.
+     </para>
+     <para>
+       Optionally, you can add the <literal>ON SCALAR STRING</literal> keywords for semantic clarity.
+     </para>
+     </listitem>
+   </varlistentry>
+
+  <varlistentry>
+    <term>
+     <literal>{ ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON EMPTY</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines the return value if no JSON value is found. The default is <literal>NULL</literal>.
+       If you use <literal>EMPTY [ARRAY]</literal> or <literal>EMPTY OBJECT</literal>,
+       an empty JSON array [] or object {} is returned, respectively.
+     </para>
+     <para>
+       You cannot use this clause together with the <literal>WRAPPER</literal> clause.
+     </para>
+     </listitem>
+   </varlistentry>
+
+     <varlistentry>
+    <term>
+     <literal>{ ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON ERROR</literal>
+    </term>
+    <listitem>
+     <para>
+       Defines the return value if an unhandled error occurs. The default is <literal>NULL</literal>.
+       If you use <literal>EMPTY [ARRAY]</literal> or <literal>EMPTY OBJECT</literal>,
+       an empty JSON array [] or object {} are returned, respectively.
+     </para>
+     </listitem>
+   </varlistentry>
+
+   </variablelist>
+    </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+
+     <para>
+      Extract all film genres listed in the <structname>my_films</structname> table:
+     </para>
+     <screen>
+SELECT
+    JSON_QUERY(js, '$.favorites[*].kind' WITH WRAPPER ERROR ON ERROR)
+FROM my_films;
+ json_query
+------------
+ ["comedy", "horror", "thriller", "drama"]
+(1 row)
+</screen>
+
+     <para>
+      Note that the same query will result in an error if you omit the
+      <command>WITH WRAPPER</command> clause, as it returns multiple SQL/JSON items:
+     </para>
+     <screen>
+SELECT
+    JSON_QUERY(js, '$.favorites[*].kind' ERROR ON ERROR)
+FROM my_films;
+ERROR: more than one SQL/JSON item 
+</screen>
+
+     <para>
+       Compare the effect of different <literal>WRAPPER</literal> clauses:
+     </para>
+     <screen>
+SELECT
+    js,
+    JSON_QUERY(js, 'lax $[*]') AS "without",
+    JSON_QUERY(js, 'lax $[*]' WITH WRAPPER)  AS "with uncond",
+    JSON_QUERY(js, 'lax $[*]' WITH CONDITIONAL WRAPPER) AS "with cond"
+FROM
+    (VALUES (jsonb '[]'), ('[1]'), ('[[1,2,3]]'),  ('[{"a": 1}]'), ('[1, null, "2"]')) foo(js);
+       js       |  without  |  with uncond   |   with cond
+----------------+-----------+----------------+----------------
+ []             | (null)    | (null)         | (null)
+ [1]            | 1         | [1]            | [1]
+ [[1, 2, 3]]    | [1, 2, 3] | [[1, 2, 3]]    | [1, 2, 3]
+ [{"a": 1}]     | {"a": 1}  | [{"a": 1}]     | {"a": 1}
+ [1, null, "2"] | (null)    | [1, null, "2"] | [1, null, "2"]
+(5 rows)
+</screen>
+
+<para>Compare quote handling for scalar types with and without the <command>OMIT QUOTES</command> clause:
+</para>
+     <screen>
+SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text);
+ json_query
+------------
+ "aaa"
+(1 row)
+
+SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES);
+ json_query
+------------
+ aaa
+(1 row)
+</screen>
+    </refsect1>
+   </refentry>
 
    <sect4 id="functions-isjson-predicate">
     <title><literal>IS JSON</literal></title>
