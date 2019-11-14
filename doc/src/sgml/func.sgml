@@ -16886,7 +16886,16 @@ $ ? (@ like_regex "^\\d+$")
   </listitem>
  </itemizedlist>
 
- <sect3 id="functions-sqljson-producing">
+ <para>
+   All SQL/JSON functions fall into one of the two groups.
+   <link linkend="functions-sqljson-producing">Constructor functions</link>
+   generate JSON data from values of SQL types.
+   <link linkend="functions-sqljson-querying">Query functions</link>
+   evaluate SQL/JSON path language expressions against JSON values
+   and produce values of SQL/JSON types, which are converted to SQL types.
+ </para>
+
+  <sect3 id="functions-sqljson-producing">
    <title>Producing JSON Content</title>
 
   <para>
@@ -17646,9 +17655,253 @@ FROM films AS f;
     </sect5>
    </sect4>
   </sect3>
+
+  <sect3 id="functions-sqljson-querying">
+   <title>Querying JSON</title>
+
+   <para>
+    SQL/JSON query functions evaluate SQL/JSON path language expressions
+    against JSON values, producing values of SQL/JSON types, which are
+    converted to SQL types. All SQL/JSON query functions accept several
+    common clauses described in <xref linkend="sqljson-common-clauses"/>.
+    For details on the SQL/JSON path language,
+    see <xref linkend="functions-sqljson-path"/>.
+   </para>
+
+  <itemizedlist>
+    <listitem>
+      <para>
+       <xref linkend="functions-isjson-predicate"/>
+      </para>
+    </listitem>
+  </itemizedlist>
+
+  <para>
+     In some usage examples for these functions,
+     the following small table storing some JSON data will be used:
+<programlisting>
+CREATE TABLE my_films (
+  js       text );
+
+INSERT INTO my_films VALUES (
+'{ "favorites" : [
+   { "kind" : "comedy", "films" : [
+     { "title" : "Bananas",
+       "director" : "Woody Allen"},
+     { "title" : "The Dinner Game",
+       "director" : "Francis Veber" } ] },
+   { "kind" : "horror", "films" : [
+     { "title" : "Psycho",
+       "director" : "Alfred Hitchcock" } ] },
+   { "kind" : "thriller", "films" : [
+     { "title" : "Vertigo",
+       "director" : "Alfred Hitchcock" } ] },
+   { "kind" : "drama", "films" : [
+     { "title" : "Yojimbo",
+       "director" : "Akira Kurosawa" } ] }
+  ] }');
+</programlisting>
+     </para>
+
+   <refentry id="functions-isjson-predicate">
+    <refnamediv>
+     <refname>IS JSON</refname>
+     <refpurpose>test whether the provided value is valid JSON data</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>
+<replaceable class="parameter">expression</replaceable>
+  IS [ NOT ] JSON 
+  [ { VALUE | SCALAR | ARRAY | OBJECT } ]
+  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+  <para>
+   <command>IS JSON</command> predicate tests whether the provided value is valid
+   <acronym>JSON</acronym> data. If you provide a specific JSON data type as a parameter,
+   you can check whether the value belongs to this type.
+   You can also use this predicate in the <command>IS NOT JSON</command> form.
+   The return values are:
+   <itemizedlist>
+    <listitem>
+      <para>
+        <literal>t</literal> if the value satisfies the specified condition.
+      </para>
+    </listitem>
+    <listitem>
+      <para>
+        <literal>f</literal> if the value does not satisfy the specified condition.
+      </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+
+<variablelist>
+
+   <varlistentry>
+    <term>
+     <literal><replaceable class="parameter">expression</replaceable></literal>
+    </term>
+    <listitem>
+
+    <para>
+      The input clause defining the value to test. You can provide the values
+      of <literal>json</literal>, <literal>jsonb</literal>,
+      <literal>bytea</literal>, or character string types.
+    </para>
+  </listitem>
+   </varlistentry>
+   
+   <varlistentry>
+    <term>
+     <literal>VALUE | SCALAR | ARRAY | OBJECT</literal>
+    </term>
+    <listitem>
+
+    <para>
+      Specifies the <acronym>JSON</acronym> data type to test for:
+      <itemizedlist>
+        <listitem>
+          <para>
+            <literal>VALUE</literal> (default) &mdash; any <acronym>JSON</acronym> type.
+          </para>
+        </listitem>
+        <listitem>
+          <para>
+            <literal>SCALAR</literal> &mdash; <acronym>JSON</acronym> number, string, or boolean.
+          </para>
+        </listitem>
+        <listitem>
+          <para>
+            <literal>ARRAY</literal> &mdash; <acronym>JSON</acronym> array.
+          </para>
+        </listitem>
+        <listitem>
+          <para>
+            <literal>OBJECT</literal> &mdash; <acronym>JSON</acronym> object.
+          </para>
+        </listitem>
+      </itemizedlist>
+    </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+    <term>
+     <literal>{ WITH | WITHOUT } UNIQUE [ KEYS ]</literal>
+    </term>
+    <listitem>
+     <para>Defines whether duplicate keys are allowed:
+      <itemizedlist>
+        <listitem>
+          <para>
+            <literal>WITHOUT</literal> (default) &mdash; the
+            <acronym>JSON</acronym> object can contain duplicate keys.
+          </para>
+        </listitem>
+        <listitem>
+          <para>
+            <literal>WITH</literal> &mdash; duplicate keys are not allowed.
+            If the input data contains duplicate keys, it is considered to be invalid JSON.
+          </para>
+        </listitem>
+      </itemizedlist>
+      Optionally, you can add the <literal>KEYS</literal> keyword for semantic clarity.
+      </para>
+    </listitem>
+  </varlistentry>
+   </variablelist>
+
+    </refsect1>
+
+    <refsect1>
+     <title>Examples</title>
+
+     <para>
+      Compare the result returned by the <function>IS JSON</function>
+      predicate for different data types:
+     </para>
+     <screen>
+SELECT
+    js, 
+    js IS JSON "is json", 
+    js IS NOT JSON "is not json",
+    js IS JSON SCALAR "is scalar",
+    js IS JSON OBJECT "is object",
+    js IS JSON ARRAY "is array"
+FROM 
+    (VALUES ('123'), ('"abc"'), ('{"a": "b"}'), ('[1,2]'), ('abc')) foo(js);
+
+     js     | is json | is not json | is scalar | is object | is array 
+------------+---------+-------------+-----------+-----------|-------------
+ 123        | t       | f           | t         | f         | f
+ "abc"      | t       | f           | t         | f         | f
+ {"a": "b"} | t       | f           | f         | t         | f
+ [1,2]      | t       | f           | f         | f         | t
+ abc        | f       | t           | f         | f         | f
+(5 rows)
+</screen>
+    </refsect1>
+   </refentry>
+
+
+  </sect3>
  
   <sect3 id="sqljson-common-clauses">
    <title>SQL/JSON Common Clauses</title>
+
+   <sect4 id="sqljson-input-clause">
+    <title>SQL/JSON Input Clause</title>
+
+    <variablelist>
+  <varlistentry>
+    <term>
+     <literal><replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable>
+[ PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } [, ...]]</literal>
+    </term>
+    <listitem>
+     <para>
+       The input clause specifies the JSON data to query and
+       the exact query path to be passed to SQL/JSON query functions:
+     </para>
+    <itemizedlist>
+     <listitem>
+      <para>
+       The <replaceable>context_item</replaceable> is the JSON data to query.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       The <replaceable>path_expression</replaceable> is an SQL/JSON path
+       expression that specifies the items to be retrieved from the JSON
+       data. For details on path expression syntax, see
+       <xref linkend="functions-sqljson-path"/>.
+      </para>
+      </listitem>
+      <listitem>
+      <para>
+       The optional <command>PASSING</command> clause provides the values for
+       the named variables used in the SQL/JSON path expression.
+      </para>
+     </listitem>
+    </itemizedlist>
+    <para>
+    The input clause is common for all SQL/JSON query functions.
+    </para>
+     </listitem>
+   </varlistentry>
+    </variablelist>
+
+   </sect4>
 
    <sect4 id="sqljson-output-clause">
     <title>SQL/JSON Output Clause</title>
