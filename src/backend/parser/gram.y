@@ -220,6 +220,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	JoinType			jtype;
 	DropBehavior		dbehavior;
 	OnCommitAction		oncommit;
+	JsonFormat			jsformat;
 	List				*list;
 	Node				*node;
 	Value				*value;
@@ -599,6 +600,15 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
+%type <node>		json_value_expr
+					json_output_clause_opt
+
+%type <ival>		json_encoding
+					json_encoding_clause_opt
+
+%type <jsformat>	json_format_clause_opt
+					json_representation
+
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
  * They must be listed first so that their numeric codes do not depend on
@@ -650,7 +660,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	EXTENSION EXTERNAL EXTRACT
 
 	FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR
-	FORCE FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
+	FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GENERATED GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING GROUPS
 
@@ -661,7 +671,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
-	JOIN
+	JOIN JSON
 
 	KEY
 
@@ -729,9 +739,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 %token		NOT_LA NULLS_LA WITH_LA
 
-
 /* Precedence: lowest to highest */
 %nonassoc	SET				/* see relation_expr_opt_alias */
+%right		FORMAT
 %left		UNION EXCEPT
 %left		INTERSECT
 %left		OR
@@ -14635,6 +14645,58 @@ opt_asymmetric: ASYMMETRIC
 			| /*EMPTY*/
 		;
 
+/* SQL/JSON support */
+
+json_value_expr:
+			a_expr json_format_clause_opt
+			{
+				$$ = (Node *) makeJsonValueExpr((Expr *) $1, $2);
+			}
+		;
+
+json_format_clause_opt:
+			FORMAT json_representation
+				{
+					$$ = $2;
+					$$.location = @1;
+				}
+			| /* EMPTY */
+				{
+					$$.type = JS_FORMAT_DEFAULT;
+					$$.encoding = JS_ENC_DEFAULT;
+					$$.location = -1;
+				}
+		;
+
+json_representation:
+			JSON json_encoding_clause_opt
+				{
+					$$.type = JS_FORMAT_JSON;
+					$$.encoding = $2;
+					$$.location = @1;
+				}
+		/*	| implementation_defined_JSON_representation_option (BSON, AVRO etc) */
+		;
+
+json_encoding_clause_opt:
+			ENCODING json_encoding					{ $$ = $2; }
+			| /* EMPTY */							{ $$ = JS_ENC_DEFAULT; }
+		;
+
+json_encoding:
+			name									{ $$ = makeJsonEncoding($1); }
+		;
+
+json_output_clause_opt:
+			RETURNING Typename json_format_clause_opt
+				{
+					JsonOutput *n = makeNode(JsonOutput);
+					n->typeName = $2;
+					n->returning.format = $3;
+					$$ = (Node *) n;
+				}
+			| /* EMPTY */							{ $$ = NULL; }
+		;
 
 /*****************************************************************************
  *
@@ -15113,6 +15175,7 @@ unreserved_keyword:
 			| FIRST_P
 			| FOLLOWING
 			| FORCE
+			| FORMAT
 			| FORWARD
 			| FUNCTION
 			| FUNCTIONS
@@ -15144,6 +15207,7 @@ unreserved_keyword:
 			| INSTEAD
 			| INVOKER
 			| ISOLATION
+			| JSON
 			| KEY
 			| LABEL
 			| LANGUAGE
