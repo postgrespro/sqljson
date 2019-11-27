@@ -72,7 +72,9 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 	JsonPathSpec pathspec;
 	JsonFormat *default_format;
 
-	jfexpr->op = jtc->coltype == JTC_REGULAR ? IS_JSON_VALUE : IS_JSON_QUERY;
+	jfexpr->op =
+		jtc->coltype == JTC_REGULAR ? IS_JSON_VALUE :
+		jtc->coltype == JTC_EXISTS ? IS_JSON_EXISTS : IS_JSON_QUERY;
 	jfexpr->common = common;
 	jfexpr->output = output;
 	jfexpr->on_empty = jtc->on_empty;
@@ -260,6 +262,7 @@ appendJsonTableColumns(JsonTableContext *cxt, List *columns)
 				break;
 
 			case JTC_REGULAR:
+			case JTC_EXISTS:
 			case JTC_FORMATTED:
 				{
 					Node	   *je;

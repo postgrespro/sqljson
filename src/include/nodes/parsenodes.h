@@ -1507,6 +1507,7 @@ typedef enum
 {
 	JTC_FOR_ORDINALITY,
 	JTC_REGULAR,
+	JTC_EXISTS,
 	JTC_FORMATTED,
 	JTC_NESTED,
 } JsonTableColumnType;

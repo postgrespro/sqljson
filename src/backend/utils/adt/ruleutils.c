@@ -10462,6 +10462,7 @@ get_json_table_columns(TableFunc *tf, JsonTableParentNode *node,
 		Oid			typid;
 		int32		typmod;
 		bool		ordinality;
+		JsonBehaviorType default_behavior;
 
 		typid = lfirst_oid(l2);
 		l2 = lnext(tf->coltypes, l2);
@@ -10494,18 +10495,28 @@ get_json_table_columns(TableFunc *tf, JsonTableParentNode *node,
 		if (ordinality)
 			continue;
 
-		if (colexpr->op == IS_JSON_QUERY)
-			appendStringInfoString(buf,
-								   colexpr->format->format == JS_FORMAT_JSONB ?
-								   " FORMAT JSONB" : " FORMAT JSON");
+		if (colexpr->op == IS_JSON_EXISTS)
+		{
+			appendStringInfoString(buf, " EXISTS");
+			default_behavior = JSON_BEHAVIOR_FALSE;
+		}
+		else
+		{
+			if (colexpr->op == IS_JSON_QUERY)
+				appendStringInfoString(buf,
+									   colexpr->format->format == JS_FORMAT_JSONB ?
+									   " FORMAT JSONB" : " FORMAT JSON");
+			default_behavior = JSON_BEHAVIOR_NULL;
+		}
+
+		if (jexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
+			default_behavior = JSON_BEHAVIOR_ERROR;
 
 		appendStringInfoString(buf, " PATH ");
 
 		get_json_path_spec(colexpr->path_spec, context, showimplicit);
 
-		get_json_expr_options(colexpr, context,
-							  jexpr->on_error->btype == JSON_BEHAVIOR_ERROR ?
-							  JSON_BEHAVIOR_ERROR : JSON_BEHAVIOR_NULL);
+		get_json_expr_options(colexpr, context, default_behavior);
 	}
 
 	if (node->child)

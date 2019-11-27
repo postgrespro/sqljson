@@ -639,6 +639,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 					json_table_ordinality_column_definition
 					json_table_regular_column_definition
 					json_table_formatted_column_definition
+					json_table_exists_column_definition
 					json_table_nested_columns
 
 %type <list>		json_name_and_value_list
@@ -15156,6 +15157,7 @@ json_table_column_definition:
 			json_table_ordinality_column_definition		%prec json_table_column
 			| json_table_regular_column_definition 		%prec json_table_column
 			| json_table_formatted_column_definition	%prec json_table_column
+			| json_table_exists_column_definition		%prec json_table_column
 			| json_table_nested_columns
 		;
 
@@ -15185,6 +15187,26 @@ json_table_regular_column_definition:
 					n->pathspec = $3;
 					n->on_empty = $4.on_empty;
 					n->on_error = $4.on_error;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+json_table_exists_column_definition:
+			ColId Typename
+			EXISTS json_table_column_path_specification_clause_opt
+			json_exists_error_clause_opt
+				{
+					JsonTableColumn *n = makeNode(JsonTableColumn);
+					n->coltype = JTC_EXISTS;
+					n->name = $1;
+					n->typeName = $2;
+					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
+					n->wrapper = JSW_NONE;
+					n->omit_quotes = false;
+					n->pathspec = $4;
+					n->on_empty = NULL;
+					n->on_error = $5;
 					n->location = @1;
 					$$ = (Node *) n;
 				}

@@ -18613,6 +18613,8 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
         [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
         [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON EMPTY ]
         [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON ERROR ]
+  | <replaceable>name</replaceable> <replaceable>type</replaceable> EXISTS [ PATH <replaceable>json_path_specification</replaceable> ]
+        [ { ERROR | TRUE | FALSE | UNKNOWN } ON ERROR ]
   | NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>path_name</replaceable> ]
         COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )
   | <replaceable>name</replaceable> FOR ORDINALITY
@@ -18781,6 +18783,38 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      to define additional settings for the returned SQL/JSON items.
      These clauses have the same syntax and semantics as
      in <xref linkend="functions-jsonquery"/>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>
+       <replaceable>name</replaceable> <replaceable>type</replaceable>
+       EXISTS [ PATH <replaceable>json_path_specification</replaceable> ]
+     </literal>
+    </term>
+    <listitem>
+
+    <para>
+     Gerenates a column and inserts a boolean item into each row of this column.
+    </para>
+    <para>
+     The provided <literal>PATH</literal> expression parses the
+     row pattern defined by <replaceable>json_api_common_syntax</replaceable>,
+     checks whether any SQL/JSON items were returned, and fills the column with
+     resulting boolean value, one for each row.
+     The specified <replaceable>type</replaceable> should have cast from
+     <type>boolean</type>.
+     If the <literal>PATH</literal> expression is omitted,
+     <function>JSON_TABLE</function> uses the
+     <literal>$.<replaceable>name</replaceable></literal> path expression,
+     where <replaceable>name</replaceable> is the provided column name.
+    </para>
+    <para>
+     Optionally, you can add <literal>ON ERROR</literal> clause to define
+     error behavior.  This clause have the same syntax and semantics as in
+     <xref linkend="functions-jsonexists"/>.
     </para>
     </listitem>
    </varlistentry>

@@ -363,7 +363,11 @@ FROM
 			jsb jsonb FORMAT JSON PATH '$',
 			jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES,
 			aaa int, -- implicit path '$."aaa"',
-			aaa1 int PATH '$.aaa'
+			aaa1 int PATH '$.aaa',
+			exists1 bool EXISTS PATH '$.aaa',
+			exists2 int EXISTS PATH '$.aaa',
+			exists3 int EXISTS PATH 'strict $.aaa' UNKNOWN ON ERROR,
+			exists4 text EXISTS PATH 'strict $.aaa' FALSE ON ERROR
 		)
 	) jt
 	ON true;
@@ -392,6 +396,9 @@ SELECT * FROM
 			jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES,
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa',
+			exists1 bool EXISTS PATH '$.aaa',
+			exists2 int EXISTS PATH '$.aaa' TRUE ON ERROR,
+			exists3 text EXISTS PATH 'strict $.aaa' UNKNOWN ON ERROR,
 			NESTED PATH '$[1]' COLUMNS (
 				a1 int,
 				NESTED PATH '$[*]' COLUMNS (
@@ -444,6 +451,15 @@ SELECT * FROM JSON_TABLE(jsonb '1', '$' COLUMNS (a int PATH 'lax $.a' ERROR ON E
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int PATH '$'   DEFAULT 1 ON EMPTY DEFAULT 2 ON ERROR)) jt;
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int PATH 'strict $.a' DEFAULT 1 ON EMPTY DEFAULT 2 ON ERROR)) jt;
 SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int PATH 'lax $.a' DEFAULT 1 ON EMPTY DEFAULT 2 ON ERROR)) jt;
+
+-- JSON_TABLE: EXISTS PATH types
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int4 EXISTS PATH '$.a'));
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int2 EXISTS PATH '$.a'));
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int8 EXISTS PATH '$.a'));
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a float4 EXISTS PATH '$.a'));
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a char(3) EXISTS PATH '$.a'));
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a json EXISTS PATH '$.a'));
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a jsonb EXISTS PATH '$.a'));
 
 -- JSON_TABLE: nested paths and plans
 

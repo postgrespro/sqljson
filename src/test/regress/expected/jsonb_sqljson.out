@@ -1072,26 +1072,30 @@ FROM
 			jsb jsonb FORMAT JSON PATH '$',
 			jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES,
 			aaa int, -- implicit path '$."aaa"',
-			aaa1 int PATH '$.aaa'
+			aaa1 int PATH '$.aaa',
+			exists1 bool EXISTS PATH '$.aaa',
+			exists2 int EXISTS PATH '$.aaa',
+			exists3 int EXISTS PATH 'strict $.aaa' UNKNOWN ON ERROR,
+			exists4 text EXISTS PATH 'strict $.aaa' FALSE ON ERROR
 		)
 	) jt
 	ON true;
-                                          js                                           | id | id2 | int |  text   | char(4) | bool | numeric | domain  |    js     |    jb     |     jst      | jsc  | jsv  |     jsb      |     jsbq     | aaa | aaa1 
----------------------------------------------------------------------------------------+----+-----+-----+---------+---------+------+---------+---------+-----------+-----------+--------------+------+------+--------------+--------------+-----+------
- 1                                                                                     |  1 |   1 |   1 | 1       | 1       |      |       1 | 1       | 1         | 1         | 1            | 1    | 1    | 1            | 1            |     |     
- []                                                                                    |    |     |     |         |         |      |         |         |           |           |              |      |      |              |              |     |     
- {}                                                                                    |  1 |   1 |     |         |         |      |         |         |           |           | {}           | {}   | {}   | {}           | {}           |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  1 |   1 |   1 | 1       | 1       |      |       1 | 1       | 1         | 1         | 1            | 1    | 1    | 1            | 1            |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  2 |   2 |   1 | 1.23    | 1.23    |      |    1.23 | 1.23    | 1.23      | 1.23      | 1.23         | 1.23 | 1.23 | 1.23         | 1.23         |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  3 |   3 |   2 | 2       | 2       |      |       2 | 2       | "2"       | "2"       | "2"          | "2"  | "2"  | "2"          | 2            |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  4 |   4 |     | aaaaaaa | aaaa    |      |         | aaaaaaa | "aaaaaaa" | "aaaaaaa" | "aaaaaaa"    | "aaa | "aaa | "aaaaaaa"    |              |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  5 |   5 |     | foo     | foo     |      |         |         | "foo"     | "foo"     | "foo"        | "foo | "foo | "foo"        |              |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  6 |   6 |     |         |         |      |         |         |           |           | null         | null | null | null         | null         |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  7 |   7 |   0 | false   | fals    | f    |         | false   | false     | false     | false        | fals | fals | false        | false        |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  8 |   8 |   1 | true    | true    | t    |         | true    | true      | true      | true         | true | true | true         | true         |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  9 |   9 |     |         |         |      |         |         |           |           | {"aaa": 123} | {"aa | {"aa | {"aaa": 123} | {"aaa": 123} | 123 |  123
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 10 |  10 |     | [1,2]   | [1,2    |      |         | [1,2]   | "[1,2]"   | "[1,2]"   | "[1,2]"      | "[1, | "[1, | "[1,2]"      | [1, 2]       |     |     
- [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 11 |  11 |     | "str"   | "str    |      |         | "str"   | "\"str\"" | "\"str\"" | "\"str\""    | "\"s | "\"s | "\"str\""    | "str"        |     |     
+                                          js                                           | id | id2 | int |  text   | char(4) | bool | numeric | domain  |    js     |    jb     |     jst      | jsc  | jsv  |     jsb      |     jsbq     | aaa | aaa1 | exists1 | exists2 | exists3 | exists4 
+---------------------------------------------------------------------------------------+----+-----+-----+---------+---------+------+---------+---------+-----------+-----------+--------------+------+------+--------------+--------------+-----+------+---------+---------+---------+---------
+ 1                                                                                     |  1 |   1 |   1 | 1       | 1       |      |       1 | 1       | 1         | 1         | 1            | 1    | 1    | 1            | 1            |     |      | f       |       0 |         | false
+ []                                                                                    |    |     |     |         |         |      |         |         |           |           |              |      |      |              |              |     |      |         |         |         | 
+ {}                                                                                    |  1 |   1 |     |         |         |      |         |         |           |           | {}           | {}   | {}   | {}           | {}           |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  1 |   1 |   1 | 1       | 1       |      |       1 | 1       | 1         | 1         | 1            | 1    | 1    | 1            | 1            |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  2 |   2 |   1 | 1.23    | 1.23    |      |    1.23 | 1.23    | 1.23      | 1.23      | 1.23         | 1.23 | 1.23 | 1.23         | 1.23         |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  3 |   3 |   2 | 2       | 2       |      |       2 | 2       | "2"       | "2"       | "2"          | "2"  | "2"  | "2"          | 2            |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  4 |   4 |     | aaaaaaa | aaaa    |      |         | aaaaaaa | "aaaaaaa" | "aaaaaaa" | "aaaaaaa"    | "aaa | "aaa | "aaaaaaa"    |              |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  5 |   5 |     | foo     | foo     |      |         |         | "foo"     | "foo"     | "foo"        | "foo | "foo | "foo"        |              |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  6 |   6 |     |         |         |      |         |         |           |           | null         | null | null | null         | null         |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  7 |   7 |   0 | false   | fals    | f    |         | false   | false     | false     | false        | fals | fals | false        | false        |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  8 |   8 |   1 | true    | true    | t    |         | true    | true      | true      | true         | true | true | true         | true         |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] |  9 |   9 |     |         |         |      |         |         |           |           | {"aaa": 123} | {"aa | {"aa | {"aaa": 123} | {"aaa": 123} | 123 |  123 | t       |       1 |       1 | true
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 10 |  10 |     | [1,2]   | [1,2    |      |         | [1,2]   | "[1,2]"   | "[1,2]"   | "[1,2]"      | "[1, | "[1, | "[1,2]"      | [1, 2]       |     |      | f       |       0 |         | false
+ [1, 1.23, "2", "aaaaaaa", "foo", null, false, true, {"aaa": 123}, "[1,2]", "\"str\""] | 11 |  11 |     | "str"   | "str    |      |         | "str"   | "\"str\"" | "\"str\"" | "\"str\""    | "\"s | "\"s | "\"str\""    | "str"        |     |      | f       |       0 |         | false
 (14 rows)
 
 -- JSON_TABLE: Test backward parsing
@@ -1117,6 +1121,9 @@ SELECT * FROM
 			jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES,
 			aaa int, -- implicit path '$."aaa"',
 			aaa1 int PATH '$.aaa',
+			exists1 bool EXISTS PATH '$.aaa',
+			exists2 int EXISTS PATH '$.aaa' TRUE ON ERROR,
+			exists3 text EXISTS PATH 'strict $.aaa' UNKNOWN ON ERROR,
 			NESTED PATH '$[1]' COLUMNS (
 				a1 int,
 				NESTED PATH '$[*]' COLUMNS (
@@ -1153,6 +1160,9 @@ CREATE OR REPLACE VIEW public.jsonb_table_view AS
     "json_table".jsbq,
     "json_table".aaa,
     "json_table".aaa1,
+    "json_table".exists1,
+    "json_table".exists2,
+    "json_table".exists3,
     "json_table".a1,
     "json_table".b1,
     "json_table".a11,
@@ -1181,6 +1191,9 @@ CREATE OR REPLACE VIEW public.jsonb_table_view AS
                 jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES,
                 aaa integer PATH '$."aaa"',
                 aaa1 integer PATH '$."aaa"',
+                exists1 boolean EXISTS PATH '$."aaa"',
+                exists2 integer EXISTS PATH '$."aaa"' TRUE ON ERROR,
+                exists3 text EXISTS PATH 'strict $."aaa"' UNKNOWN ON ERROR,
                 NESTED PATH '$[1]'
                 COLUMNS (
                     a1 integer PATH '$."a1"',
@@ -1204,11 +1217,11 @@ CREATE OR REPLACE VIEW public.jsonb_table_view AS
             )
         )
 EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM jsonb_table_view;
-                                                                                                                                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                             
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Table Function Scan on "json_table"
-   Output: "json_table".id, "json_table".id2, "json_table"."int", "json_table".text, "json_table"."char(4)", "json_table".bool, "json_table"."numeric", "json_table".domain, "json_table".js, "json_table".jb, "json_table".jst, "json_table".jsc, "json_table".jsv, "json_table".jsb, "json_table".jsbq, "json_table".aaa, "json_table".aaa1, "json_table".a1, "json_table".b1, "json_table".a11, "json_table".a21, "json_table".a22
-   Table Function Call: JSON_TABLE('null'::jsonb, '$[*]' PASSING 3 AS a, '"foo"'::jsonb AS "b c" COLUMNS (id FOR ORDINALITY, id2 FOR ORDINALITY, "int" integer PATH '$', text text PATH '$', "char(4)" character(4) PATH '$', bool boolean PATH '$', "numeric" numeric PATH '$', domain jsonb_test_domain PATH '$', js json PATH '$', jb jsonb PATH '$', jst text FORMAT JSON PATH '$', jsc character(4) FORMAT JSON PATH '$', jsv character varying(4) FORMAT JSON PATH '$', jsb jsonb FORMAT JSON PATH '$', jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES, aaa integer PATH '$."aaa"', aaa1 integer PATH '$."aaa"', NESTED PATH '$[1]' COLUMNS (a1 integer PATH '$."a1"', b1 text PATH '$."b1"', NESTED PATH '$[*]' COLUMNS (a11 text PATH '$."a11"')), NESTED PATH '$[2]' COLUMNS ( NESTED PATH '$[*]' COLUMNS (a21 text PATH '$."a21"'), NESTED PATH '$[*]' COLUMNS (a22 text PATH '$."a22"'))))
+   Output: "json_table".id, "json_table".id2, "json_table"."int", "json_table".text, "json_table"."char(4)", "json_table".bool, "json_table"."numeric", "json_table".domain, "json_table".js, "json_table".jb, "json_table".jst, "json_table".jsc, "json_table".jsv, "json_table".jsb, "json_table".jsbq, "json_table".aaa, "json_table".aaa1, "json_table".exists1, "json_table".exists2, "json_table".exists3, "json_table".a1, "json_table".b1, "json_table".a11, "json_table".a21, "json_table".a22
+   Table Function Call: JSON_TABLE('null'::jsonb, '$[*]' PASSING 3 AS a, '"foo"'::jsonb AS "b c" COLUMNS (id FOR ORDINALITY, id2 FOR ORDINALITY, "int" integer PATH '$', text text PATH '$', "char(4)" character(4) PATH '$', bool boolean PATH '$', "numeric" numeric PATH '$', domain jsonb_test_domain PATH '$', js json PATH '$', jb jsonb PATH '$', jst text FORMAT JSON PATH '$', jsc character(4) FORMAT JSON PATH '$', jsv character varying(4) FORMAT JSON PATH '$', jsb jsonb FORMAT JSON PATH '$', jsbq jsonb FORMAT JSON PATH '$' OMIT QUOTES, aaa integer PATH '$."aaa"', aaa1 integer PATH '$."aaa"', exists1 boolean EXISTS PATH '$."aaa"', exists2 integer EXISTS PATH '$."aaa"' TRUE ON ERROR, exists3 text EXISTS PATH 'strict $."aaa"' UNKNOWN ON ERROR, NESTED PATH '$[1]' COLUMNS (a1 integer PATH '$."a1"', b1 text PATH '$."b1"', NESTED PATH '$[*]' COLUMNS (a11 text PATH '$."a11"')), NESTED PATH '$[2]' COLUMNS ( NESTED PATH '$[*]' COLUMNS (a21 text PATH '$."a21"'), NESTED PATH '$[*]' COLUMNS (a22 text PATH '$."a22"'))))
 (3 rows)
 
 DROP VIEW jsonb_table_view;
@@ -1266,6 +1279,39 @@ SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int PATH 'lax $.a' DEFAULT 
  1
 (1 row)
 
+-- JSON_TABLE: EXISTS PATH types
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int4 EXISTS PATH '$.a'));
+ a 
+---
+ 0
+(1 row)
+
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int2 EXISTS PATH '$.a'));
+ERROR:  cannot cast type boolean to smallint
+LINE 1: ...ELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int2 EXI...
+                                                             ^
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int8 EXISTS PATH '$.a'));
+ERROR:  cannot cast type boolean to bigint
+LINE 1: ...ELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a int8 EXI...
+                                                             ^
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a float4 EXISTS PATH '$.a'));
+ERROR:  cannot cast type boolean to real
+LINE 1: ...ELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a float4 E...
+                                                             ^
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a char(3) EXISTS PATH '$.a'));
+  a  
+-----
+ fal
+(1 row)
+
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a json EXISTS PATH '$.a'));
+ERROR:  cannot cast type boolean to json
+LINE 1: ...ELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a json EXI...
+                                                             ^
+SELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a jsonb EXISTS PATH '$.a'));
+ERROR:  cannot cast type boolean to jsonb
+LINE 1: ...ELECT * FROM JSON_TABLE(jsonb '"a"', '$' COLUMNS (a jsonb EX...
+                                                             ^
 -- JSON_TABLE: nested paths and plans
 -- Should fail (column names anf path names shall be distinct)
 SELECT * FROM JSON_TABLE(
