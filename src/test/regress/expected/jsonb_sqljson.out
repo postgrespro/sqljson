@@ -682,6 +682,12 @@ SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY);
  
 (1 row)
 
+SELECT JSON_QUERY(jsonb '[]', '$[*]' DEFAULT '"empty"' ON EMPTY);
+ json_query 
+------------
+ "empty"
+(1 row)
+
 SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON EMPTY NULL ON ERROR);
  json_query 
 ------------
@@ -711,6 +717,12 @@ SELECT JSON_QUERY(jsonb '[]', '$[*]' ERROR ON ERROR);
 SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' ERROR ON ERROR);
 ERROR:  JSON path expression in JSON_QUERY should return singleton item without wrapper
 HINT:  use WITH WRAPPER clause to wrap SQL/JSON item sequence into array
+SELECT JSON_QUERY(jsonb '[1,2]', '$[*]' DEFAULT '"empty"' ON ERROR);
+ json_query 
+------------
+ "empty"
+(1 row)
+
 SELECT JSON_QUERY(jsonb '[1,2]', '$' RETURNING json);
  json_query 
 ------------

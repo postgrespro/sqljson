@@ -4820,6 +4820,14 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 
 			transformJsonFuncExprOutput(pstate, func, jsexpr);
 
+			jsexpr->on_empty->default_expr =
+				coerceDefaultJsonExpr(pstate, jsexpr,
+									  jsexpr->on_empty->default_expr);
+
+			jsexpr->on_error->default_expr =
+				coerceDefaultJsonExpr(pstate, jsexpr,
+									  jsexpr->on_error->default_expr);
+
 			jsexpr->wrapper = func->wrapper;
 			jsexpr->omit_quotes = func->omit_quotes;
 

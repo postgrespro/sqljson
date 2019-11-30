@@ -18005,8 +18005,8 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
   [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
   [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER ]
   [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
-  [ { ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON EMPTY ]
-  [ { ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON ERROR ]
+  [ { ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } | DEFAULT <replaceable class="parameter">expression</replaceable> } ON EMPTY ]
+  [ { ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } | DEFAULT <replaceable class="parameter">expression</replaceable> } ON ERROR ]
 )
   </synopsis>
     </refsynopsisdiv>
@@ -18120,13 +18120,16 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
 
   <varlistentry>
     <term>
-     <literal>{ ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON EMPTY</literal>
+     <literal>{ ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } | DEFAULT <replaceable class="parameter">expression</replaceable> } ON EMPTY</literal>
     </term>
     <listitem>
      <para>
        Defines the return value if no JSON value is found. The default is <literal>NULL</literal>.
        If you use <literal>EMPTY [ARRAY]</literal> or <literal>EMPTY OBJECT</literal>,
        an empty JSON array [] or object {} is returned, respectively.
+       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>,
+       the provided <replaceable>expression</replaceable> is evaluated and cast
+       to the type specified in the <command>RETURNING</command> clause.
      </para>
      <para>
        You cannot use this clause together with the <literal>WRAPPER</literal> clause.
@@ -18136,13 +18139,16 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
 
      <varlistentry>
     <term>
-     <literal>{ ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } } ON ERROR</literal>
+     <literal>{ ERROR | NULL | EMPTY { [ ARRAY ] | OBJECT } | DEFAULT <replaceable class="parameter">expression</replaceable> } ON ERROR</literal>
     </term>
     <listitem>
      <para>
        Defines the return value if an unhandled error occurs. The default is <literal>NULL</literal>.
        If you use <literal>EMPTY [ARRAY]</literal> or <literal>EMPTY OBJECT</literal>,
        an empty JSON array [] or object {} are returned, respectively.
+       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>,
+       the provided <replaceable>expression</replaceable> is evaluated and cast
+       to the type specified in the <command>RETURNING</command> clause.
      </para>
      </listitem>
    </varlistentry>

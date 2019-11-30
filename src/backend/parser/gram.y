@@ -15020,6 +15020,7 @@ json_query_behavior:
 			| json_behavior_null
 			| json_behavior_empty_array
 			| json_behavior_empty_object
+			| json_behavior_default
 		;
 
 json_query_on_behavior_clause_opt:
