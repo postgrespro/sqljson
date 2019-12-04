@@ -32,6 +32,18 @@ SELECT JSON_EXISTS(jsonb '{"a": 1, "b": 2}', '$.* ? (@ > $x && @ < $y)' PASSING 
 SELECT JSON_EXISTS(jsonb '1', '$ > 2');
 SELECT JSON_EXISTS(jsonb '1', '$.a > 2' ERROR ON ERROR);
 
+-- extension: RETURNING clause
+SELECT JSON_EXISTS(jsonb '1', '$[0]' RETURNING bool);
+SELECT JSON_EXISTS(jsonb '1', '$[1]' RETURNING bool);
+SELECT JSON_EXISTS(jsonb '1', '$[0]' RETURNING int);
+SELECT JSON_EXISTS(jsonb '1', '$[1]' RETURNING int);
+SELECT JSON_EXISTS(jsonb '1', '$[0]' RETURNING text);
+SELECT JSON_EXISTS(jsonb '1', '$[1]' RETURNING text);
+SELECT JSON_EXISTS(jsonb '1', 'strict $[1]' RETURNING text FALSE ON ERROR);
+SELECT JSON_EXISTS(jsonb '1', '$[0]' RETURNING jsonb);
+SELECT JSON_EXISTS(jsonb '1', '$[0]' RETURNING float4);
+
+
 -- JSON_VALUE
 
 SELECT JSON_VALUE(NULL::jsonb, '$');
@@ -258,6 +270,8 @@ CREATE TABLE test_jsonb_constraints (
 		CHECK (JSON_QUERY(js::jsonb, '$.a' WITH CONDITIONAL WRAPPER EMPTY OBJECT ON ERROR) < jsonb '[10]')
 	CONSTRAINT test_jsonb_constraint5
 		CHECK (JSON_QUERY(js::jsonb, '$.a' RETURNING char(5) OMIT QUOTES EMPTY ARRAY ON EMPTY) >  'a' COLLATE "C")
+	CONSTRAINT test_jsonb_constraint6
+		CHECK (JSON_EXISTS(js::jsonb, 'strict $.a' RETURNING int TRUE ON ERROR) < 2)
 );
 
 \d test_jsonb_constraints

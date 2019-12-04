@@ -9306,9 +9306,10 @@ get_rule_expr(Node *node, deparse_context *context,
 					}
 				}
 
-				if (jexpr->op != IS_JSON_EXISTS)
+				if (jexpr->op != IS_JSON_EXISTS ||
+					jexpr->returning->typid != BOOLOID)
 					get_json_returning(jexpr->returning, context->buf,
-									   jexpr->op != IS_JSON_VALUE);
+									   jexpr->op == IS_JSON_QUERY);
 
 				get_json_expr_options(jexpr, context,
 									  jexpr->op == IS_JSON_EXISTS ?

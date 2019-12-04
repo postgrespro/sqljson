@@ -15061,13 +15061,15 @@ json_output_clause_opt:
 json_exists_predicate:
 			JSON_EXISTS '('
 				json_api_common_syntax
+				json_returning_clause_opt
 				json_exists_error_clause_opt
 			')'
 				{
 					JsonFuncExpr *p = makeNode(JsonFuncExpr);
 					p->op = IS_JSON_EXISTS;
 					p->common = (JsonCommon *) $3;
-					p->on_error = $4;
+					p->output = (JsonOutput *) $4;
+					p->on_error = $5;
 					p->location = @1;
 					$$ = (Node *) p;
 				}

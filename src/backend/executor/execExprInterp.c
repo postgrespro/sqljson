@@ -4519,7 +4519,8 @@ ExecEvalJsonExprCoercion(ExprEvalStep *op, ExprContext *econtext,
 
 	if (estate)		/* coerce using specified expression */
 		return ExecEvalExpr(estate, econtext, isNull);
-	else
+
+	if (op->d.jsonexpr.jsexpr->op != IS_JSON_EXISTS)
 	{
 		JsonCoercion *coercion = op->d.jsonexpr.jsexpr->result_coercion;
 		JsonExpr   *jexpr = op->d.jsonexpr.jsexpr;
@@ -4855,11 +4856,21 @@ ExecEvalJsonExpr(ExprEvalStep *op, ExprContext *econtext,
 
 		case IS_JSON_EXISTS:
 			{
-				bool		res = JsonPathExists(item, path,
-												 op->d.jsonexpr.args, error);
+				bool		exists = JsonPathExists(item, path,
+													op->d.jsonexpr.args,
+													error);
 
 				*resnull = error && *error;
-				return BoolGetDatum(res);
+				res = BoolGetDatum(exists);
+
+				if (!op->d.jsonexpr.result_expr)
+					return res;
+
+				/* coerce using result expression */
+				estate = op->d.jsonexpr.result_expr;
+				op->d.jsonexpr.res_expr->value = res;
+				op->d.jsonexpr.res_expr->isnull = *resnull;
+				break;
 			}
 
 		default:
@@ -4909,7 +4920,7 @@ ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr,
 	if (jsexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
 		return false;
 
-	if (jsexpr->op == IS_JSON_EXISTS)
+	if (jsexpr->op == IS_JSON_EXISTS && !jsexpr->result_coercion)
 		return false;
 
 	if (!coercions)
@@ -4980,9 +4991,8 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 								   op->d.jsonexpr.default_on_error,
 								   op->resnull);
 
-		if (jexpr->op != IS_JSON_EXISTS &&
-			/* result is already coerced in DEFAULT behavior case */
-			jexpr->on_error->btype != JSON_BEHAVIOR_DEFAULT)
+		/* result is already coerced in DEFAULT behavior case */
+		if (jexpr->on_error->btype != JSON_BEHAVIOR_DEFAULT)
 			res = ExecEvalJsonExprCoercion(op, econtext, res,
 										   op->resnull,
 										   NULL, NULL);

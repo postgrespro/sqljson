@@ -4828,11 +4828,45 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 		case IS_JSON_EXISTS:
 			func_name = "JSON_EXISTS";
 
-			jsexpr->returning = makeNode(JsonReturning);
-			jsexpr->returning->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
-			jsexpr->returning->typid = BOOLOID;
-			jsexpr->returning->typmod = -1;
+			jsexpr->returning = transformJsonOutput(pstate, func->output, false);
 
+			jsexpr->returning->format->format = JS_FORMAT_DEFAULT;
+			jsexpr->returning->format->encoding = JS_ENC_DEFAULT;
+
+			if (!OidIsValid(jsexpr->returning->typid))
+			{
+				jsexpr->returning->typid = BOOLOID;
+				jsexpr->returning->typmod = -1;
+			}
+			else if (jsexpr->returning->typid != BOOLOID)
+			{
+				CaseTestExpr *placeholder = makeNode(CaseTestExpr);
+				int			location = exprLocation((Node *) jsexpr);
+
+				placeholder->typeId = BOOLOID;
+				placeholder->typeMod = -1;
+				placeholder->collation = InvalidOid;
+
+				jsexpr->result_coercion = makeNode(JsonCoercion);
+				jsexpr->result_coercion->expr =
+					coerce_to_target_type(pstate, (Node *) placeholder, BOOLOID,
+										  jsexpr->returning->typid,
+										  jsexpr->returning->typmod,
+										  COERCION_EXPLICIT,
+										  COERCE_INTERNAL_CAST,
+										  location);
+
+				if (!jsexpr->result_coercion->expr)
+					ereport(ERROR,
+							(errcode(ERRCODE_CANNOT_COERCE),
+							 errmsg("cannot cast type %s to %s",
+									format_type_be(BOOLOID),
+									format_type_be(jsexpr->returning->typid)),
+							 parser_coercion_errposition(pstate, location, (Node *) jsexpr)));
+
+				if (jsexpr->result_coercion->expr == (Node *) placeholder)
+					jsexpr->result_coercion->expr = NULL;
+			}
 			break;
 	}
 

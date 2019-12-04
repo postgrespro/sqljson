@@ -17727,6 +17727,7 @@ INSERT INTO my_films VALUES (
     <refsynopsisdiv>
 <synopsis>JSON_EXISTS (
   <replaceable class="parameter">json_api_common_syntax</replaceable>
+  [ RETURNING <replaceable class="parameter">data_type</replaceable> ]
   [ { TRUE | FALSE | UNKNOWN | ERROR } ON ERROR ]
 )
 </synopsis>
@@ -17755,6 +17756,19 @@ INSERT INTO my_films VALUES (
      See <xref linkend="sqljson-input-clause"/> for details.
     </para>
     </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable></literal>
+    </term>
+    <listitem>
+     <para>
+       The output clause that specifies the data type of the returned value.
+       The specified data type should have a cast from a <literal>boolean</literal>
+       type, which is returned by default.
+     </para>
+     </listitem>
    </varlistentry>
 
   <varlistentry>
