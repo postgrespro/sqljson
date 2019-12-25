@@ -26,6 +26,7 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
+#include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/json.h"
 #include "utils/lsyscache.h"
@@ -213,6 +214,28 @@ transformJsonTableChildColumns(JsonTableContext *cxt, List *columns)
 	return res;
 }
 
+/* Check whether type is json/jsonb, array, or record. */
+static bool
+typeIsComposite(Oid typid)
+{
+	if (typid == JSONOID ||
+		typid == JSONBOID ||
+		typid == RECORDOID ||
+		type_is_array(typid))
+		return true;
+
+	switch (get_typtype(typid))
+	{
+		case TYPTYPE_COMPOSITE:
+			return true;
+
+		case TYPTYPE_DOMAIN:
+			return typeIsComposite(getBaseType(typid));
+	}
+
+	return false;
+}
+
 /* Append transformed non-nested JSON_TABLE columns to the TableFunc node */
 static void
 appendJsonTableColumns(JsonTableContext *cxt, List *columns)
@@ -262,6 +285,26 @@ appendJsonTableColumns(JsonTableContext *cxt, List *columns)
 				break;
 
 			case JTC_REGULAR:
+				typenameTypeIdAndMod(pstate, rawc->typeName, &typid, &typmod);
+
+				/*
+				 * Use implicit FORMAT JSON for composite types (arrays and
+				 * records)
+				 */
+				if (typeIsComposite(typid))
+					rawc->coltype = JTC_FORMATTED;
+				else if (rawc->wrapper != JSW_NONE)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("cannot use WITH WRAPPER clause with scalar columns"),
+							 parser_errposition(pstate, rawc->location)));
+				else if (rawc->omit_quotes)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("cannot use OMIT QUOTES clause with scalar columns"),
+							 parser_errposition(pstate, rawc->location)));
+
+				/* FALLTHROUGH */
 			case JTC_EXISTS:
 			case JTC_FORMATTED:
 				{

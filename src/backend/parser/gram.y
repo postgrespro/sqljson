@@ -15175,6 +15175,8 @@ json_table_ordinality_column_definition:
 json_table_regular_column_definition:
 			ColId Typename
 			json_table_column_path_specification_clause_opt
+			json_wrapper_clause_opt
+			json_quotes_clause_opt
 			json_value_on_behavior_clause_opt
 				{
 					JsonTableColumn *n = makeNode(JsonTableColumn);
@@ -15182,11 +15184,11 @@ json_table_regular_column_definition:
 					n->name = $1;
 					n->typeName = $2;
 					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
-					n->wrapper = JSW_NONE;
-					n->omit_quotes = false;
+					n->wrapper = $4; /* JSW_NONE */
+					n->omit_quotes = $5; /* false */
 					n->pathspec = $3;
-					n->on_empty = $4.on_empty;
-					n->on_error = $4.on_error;
+					n->on_empty = $6.on_empty;
+					n->on_error = $6.on_error;
 					n->location = @1;
 					$$ = (Node *) n;
 				}

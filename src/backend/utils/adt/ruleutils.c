@@ -10503,9 +10503,18 @@ get_json_table_columns(TableFunc *tf, JsonTableParentNode *node,
 		else
 		{
 			if (colexpr->op == IS_JSON_QUERY)
-				appendStringInfoString(buf,
-									   colexpr->format->format == JS_FORMAT_JSONB ?
-									   " FORMAT JSONB" : " FORMAT JSON");
+			{
+				char		typcategory;
+				bool		typispreferred;
+
+				get_type_category_preferred(typid, &typcategory, &typispreferred);
+
+				if (typcategory == TYPCATEGORY_STRING)
+					appendStringInfoString(buf,
+										   colexpr->format->format == JS_FORMAT_JSONB ?
+										   " FORMAT JSONB" : " FORMAT JSON");
+			}
+
 			default_behavior = JSON_BEHAVIOR_NULL;
 		}
 

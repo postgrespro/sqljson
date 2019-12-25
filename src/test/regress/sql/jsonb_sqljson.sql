@@ -367,7 +367,14 @@ FROM
 			exists1 bool EXISTS PATH '$.aaa',
 			exists2 int EXISTS PATH '$.aaa',
 			exists3 int EXISTS PATH 'strict $.aaa' UNKNOWN ON ERROR,
-			exists4 text EXISTS PATH 'strict $.aaa' FALSE ON ERROR
+			exists4 text EXISTS PATH 'strict $.aaa' FALSE ON ERROR,
+
+			js2 json PATH '$',
+			jsb2w jsonb PATH '$' WITH WRAPPER,
+			jsb2q jsonb PATH '$' OMIT QUOTES,
+			ia int[] PATH '$',
+			ta text[] PATH '$',
+			jba jsonb[] PATH '$'
 		)
 	) jt
 	ON true;
@@ -399,6 +406,14 @@ SELECT * FROM
 			exists1 bool EXISTS PATH '$.aaa',
 			exists2 int EXISTS PATH '$.aaa' TRUE ON ERROR,
 			exists3 text EXISTS PATH 'strict $.aaa' UNKNOWN ON ERROR,
+
+			js2 json PATH '$',
+			jsb2w jsonb PATH '$' WITH WRAPPER,
+			jsb2q jsonb PATH '$' OMIT QUOTES,
+			ia int[] PATH '$',
+			ta text[] PATH '$',
+			jba jsonb[] PATH '$',
+
 			NESTED PATH '$[1]' COLUMNS (
 				a1 int,
 				NESTED PATH '$[*]' COLUMNS (

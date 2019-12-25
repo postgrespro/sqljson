@@ -18604,15 +18604,16 @@ JSON_TABLE (
 where <replaceable class="parameter">json_table_column</replaceable> is:
 </phrase>
     <replaceable>name</replaceable> <replaceable>type</replaceable> [ PATH <replaceable>json_path_specification</replaceable> ]
+        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER ]
+        [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
         [ { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON EMPTY ]
         [ { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON ERROR ]
   | <replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
         [ PATH <replaceable>json_path_specification</replaceable> ]
-        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } }
-          [ ARRAY ] WRAPPER ]
+        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER ]
         [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
-        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON EMPTY ]
-        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } } ON ERROR ]
+        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } | DEFAULT expression } ON EMPTY ]
+        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } | DEFAULT expression } ON ERROR ]
   | <replaceable>name</replaceable> <replaceable>type</replaceable> EXISTS [ PATH <replaceable>json_path_specification</replaceable> ]
         [ { ERROR | TRUE | FALSE | UNKNOWN } ON ERROR ]
   | NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>path_name</replaceable> ]
@@ -18718,7 +18719,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     <para>
      The <literal>COLUMNS</literal> clause defining the schema of the
      constructed view. In this clause, you must specify all the columns
-     to be filled with SQL/JSON items. Only scalar column types are supported.
+     to be filled with SQL/JSON items.
      The <replaceable class="parameter">json_table_column</replaceable>
      expression has the following syntax variants:
     </para>
@@ -18747,10 +18748,21 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      keys within the SQL/JSON item produced by the row pattern.
     </para>
     <para>
+      Internally, <xref linkend="functions-jsonvalue"/> and
+      <xref linkend="functions-jsonquery"/> are used to produce resulting values.
+      <xref linkend="functions-jsonquery"/> is used for JSON, array, and
+      composite column types, <xref linkend="functions-jsonvalue"/> is used for
+      other types.
+    </para>
+    <para>
      Optionally, you can add <literal>ON EMPTY</literal> and
-     <literal>ON ERROR</literal> clauses to define how to handle
-     missing values or structural errors. These clauses have the same syntax
-     and semantics as in <xref linkend="functions-jsonvalue"/>.
+     <literal>ON ERROR</literal> clauses to define how to handle missing values
+     or structural errors.
+     <literal>WRAPPER</literal> and <literal>QUOTES</literal> clauses can only
+     be used with JSON, array, and composite types.
+     These clauses have the same syntax and semantics as in
+     <xref linkend="functions-jsonvalue"/> and
+     <xref linkend="functions-jsonquery"/>.
     </para>
     </listitem>
    </varlistentry>
@@ -18776,6 +18788,10 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      where <replaceable>name</replaceable> is the provided column name.
      In this case, the column name must correspond to one of the
      keys within the SQL/JSON item produced by the row pattern.
+    </para>
+    <para>
+      Internally, <xref linkend="functions-jsonquery"/> is used to produce
+      resulting values.
     </para>
     <para>
      Optionally, you can add <literal>WRAPPER</literal>, <literal>QUOTES</literal>,
