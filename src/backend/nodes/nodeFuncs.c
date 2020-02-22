@@ -1654,7 +1654,7 @@ exprLocation(const Node *expr)
 
 				/* consider both function name and leftmost arg */
 				loc = leftmostLoc(jsexpr->location,
-								  exprLocation(jsexpr->raw_expr));
+								  exprLocation(jsexpr->formatted_expr));
 			}
 			break;
 		default:
@@ -2382,8 +2382,6 @@ expression_tree_walker(Node *node,
 			{
 				JsonExpr    *jexpr = (JsonExpr *) node;
 
-				if (walker(jexpr->raw_expr, context))
-					return true;
 				if (walker(jexpr->formatted_expr, context))
 					return true;
 				if (walker(jexpr->result_coercion, context))
@@ -3406,7 +3404,6 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, jexpr, JsonExpr);
 				MUTATE(newnode->path_spec, jexpr->path_spec, Node *);
-				MUTATE(newnode->raw_expr, jexpr->raw_expr, Node *);
 				MUTATE(newnode->formatted_expr, jexpr->formatted_expr, Node *);
 				MUTATE(newnode->result_coercion, jexpr->result_coercion, JsonCoercion *);
 				MUTATE(newnode->passing_values, jexpr->passing_values, List *);

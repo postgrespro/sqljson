@@ -1780,7 +1780,6 @@ _outJsonExpr(StringInfo str, const JsonExpr *node)
 	WRITE_NODE_TYPE("JSONEXPR");
 
 	WRITE_ENUM_FIELD(op, JsonExprOp);
-	WRITE_NODE_FIELD(raw_expr);
 	WRITE_NODE_FIELD(formatted_expr);
 	WRITE_NODE_FIELD(result_coercion);
 	WRITE_NODE_FIELD(format);

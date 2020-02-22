@@ -9280,9 +9280,7 @@ get_rule_expr(Node *node, deparse_context *context,
 						break;
 				}
 
-				get_rule_expr(jexpr->raw_expr, context, showimplicit);
-
-				get_json_format(jexpr->format, context->buf);
+				get_rule_expr(jexpr->formatted_expr, context, showimplicit);
 
 				appendStringInfoString(buf, ", ");
 

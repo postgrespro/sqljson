@@ -2449,7 +2449,6 @@ _copyJsonExpr(const JsonExpr *from)
 	JsonExpr    *newnode = makeNode(JsonExpr);
 
 	COPY_SCALAR_FIELD(op);
-	COPY_NODE_FIELD(raw_expr);
 	COPY_NODE_FIELD(formatted_expr);
 	COPY_NODE_FIELD(result_coercion);
 	COPY_NODE_FIELD(format);

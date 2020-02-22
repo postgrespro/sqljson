@@ -1431,7 +1431,6 @@ _readJsonExpr(void)
 	READ_LOCALS(JsonExpr);
 
 	READ_ENUM_FIELD(op, JsonExprOp);
-	READ_NODE_FIELD(raw_expr);
 	READ_NODE_FIELD(formatted_expr);
 	READ_NODE_FIELD(result_coercion);
 	READ_NODE_FIELD(format);

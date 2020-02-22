@@ -1390,7 +1390,6 @@ typedef struct JsonExpr
 {
 	Expr		xpr;
 	JsonExprOp	op;				/* json function ID */
-	Node	   *raw_expr;		/* raw context item expression */
 	Node	   *formatted_expr;	/* formatted context item expression */
 	JsonCoercion *result_coercion;	/* resulting coercion to RETURNING type */
 	JsonFormat *format;			/* context item format (JSON/JSONB) */

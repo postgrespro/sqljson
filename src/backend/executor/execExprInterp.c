@@ -4780,26 +4780,6 @@ ExecEvalJsonExpr(ExprEvalStep *op, ExprContext *econtext,
 	bool		empty = false;
 	Datum		res = (Datum) 0;
 
-	if (op->d.jsonexpr.formatted_expr)
-	{
-		bool		isnull;
-
-		Assert(!cxt->coercionInSubtrans);
-
-		op->d.jsonexpr.raw_expr->value = item;
-		op->d.jsonexpr.raw_expr->isnull = false;
-
-		item = ExecEvalExpr(op->d.jsonexpr.formatted_expr, econtext, &isnull);
-		if (isnull)
-		{
-			/* execute domain checks for NULLs */
-			(void) ExecEvalJsonExprCoercion(op, econtext, res, resnull,
-											NULL, NULL);
-			*resnull = true;
-			return (Datum) 0;
-		}
-	}
-
 	switch (jexpr->op)
 	{
 		case IS_JSON_QUERY:
@@ -4929,9 +4909,6 @@ ExecEvalJsonNeedsSubTransaction(JsonExpr *jsexpr,
 	if (jsexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
 		return false;
 
-	if (jsexpr->formatted_expr)
-		return true;
-
 	if (jsexpr->op == IS_JSON_EXISTS)
 		return false;
 
@@ -4961,7 +4938,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	*op->resnull = true;		/* until we get a result */
 	*op->resvalue = (Datum) 0;
 
-	if (op->d.jsonexpr.raw_expr->isnull || op->d.jsonexpr.pathspec->isnull)
+	if (op->d.jsonexpr.formatted_expr->isnull || op->d.jsonexpr.pathspec->isnull)
 	{
 		/* execute domain checks for NULLs */
 		(void) ExecEvalJsonExprCoercion(op, econtext, res, op->resnull,
@@ -4973,7 +4950,7 @@ ExecEvalJson(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 		return;
 	}
 
-	item = op->d.jsonexpr.raw_expr->value;
+	item = op->d.jsonexpr.formatted_expr->value;
 	path = DatumGetJsonPathP(op->d.jsonexpr.pathspec->value);
 
 	/* reset JSON path variable contexts */

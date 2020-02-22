@@ -673,12 +673,11 @@ typedef struct ExprEvalStep
 			} input;					/* I/O info for output type */
 
 			NullableDatum
-					   *raw_expr,			/* raw context item value */
+					   *formatted_expr,		/* formatted context item value */
 					   *res_expr,			/* result item */
 					   *coercion_expr,		/* input for JSON item coercion */
 					   *pathspec;			/* path specification value */
 
-			ExprState  *formatted_expr;		/* formatted context item */
 			ExprState  *result_expr;		/* coerced to output type */
 			ExprState  *default_on_empty;	/* ON EMPTY DEFAULT expression */
 			ExprState  *default_on_error;	/* ON ERROR DEFAULT expression */

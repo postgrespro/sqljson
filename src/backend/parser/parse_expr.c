@@ -3693,8 +3693,7 @@ makeCaseTestExpr(Node *expr)
  */
 static Node *
 transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
-						  JsonFormatType default_format, bool isarg,
-						  Node **prawexpr)
+						  JsonFormatType default_format, bool isarg)
 {
 	Node	   *expr = transformExprRecurse(pstate, (Node *) ve->raw_expr);
 	Node	   *rawexpr;
@@ -3714,17 +3713,6 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 	get_type_category_preferred(exprtype, &typcategory, &typispreferred);
 
 	rawexpr = expr;
-
-	if (prawexpr)
-	{
-		/*
-		 * Save a raw context item expression if it is needed for the isolation
-		 * of error handling in the formatting stage.
-		 */
-		*prawexpr = expr;
-		assign_expr_collations(pstate, expr);
-		expr = makeCaseTestExpr(expr);
-	}
 
 	if (ve->format->format != JS_FORMAT_DEFAULT)
 	{
@@ -3846,7 +3834,7 @@ transformJsonValueExprExt(ParseState *pstate, JsonValueExpr *ve,
 static Node *
 transformJsonValueExpr(ParseState *pstate, JsonValueExpr *jve)
 {
-	return transformJsonValueExprExt(pstate, jve, JS_FORMAT_JSON, false, NULL);
+	return transformJsonValueExprExt(pstate, jve, JS_FORMAT_JSON, false);
 }
 
 /*
@@ -3855,7 +3843,7 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *jve)
 static Node *
 transformJsonValueExprDefault(ParseState *pstate, JsonValueExpr *jve)
 {
-	return transformJsonValueExprExt(pstate, jve, JS_FORMAT_DEFAULT, false, NULL);
+	return transformJsonValueExprExt(pstate, jve, JS_FORMAT_DEFAULT, false);
 }
 
 /*
@@ -4505,7 +4493,7 @@ transformJsonPassingArgs(ParseState *pstate, JsonFormatType format, List *args,
 	{
 		JsonArgument *arg = castNode(JsonArgument, lfirst(lc));
 		Node	   *expr = transformJsonValueExprExt(pstate, arg->val,
-													 format, true, NULL);
+													 format, true);
 
 		assign_expr_collations(pstate, expr);
 
@@ -4550,20 +4538,12 @@ transformJsonExprCommon(ParseState *pstate, JsonFuncExpr *func)
 
 	jsexpr->location = func->location;
 	jsexpr->op = func->op;
-	jsexpr->formatted_expr = transformJsonValueExprExt(pstate,
-													   func->common->expr,
-													   JS_FORMAT_JSON,
-													   false,
-													   &jsexpr->raw_expr);
+	jsexpr->formatted_expr = transformJsonValueExpr(pstate, func->common->expr);
 
 	assign_expr_collations(pstate, jsexpr->formatted_expr);
 
 	/* format is determined by context item type */
-	format = exprType(jsexpr->formatted_expr) == JSONBOID ?
-		JS_FORMAT_JSONB : JS_FORMAT_JSON;
-
-	if (jsexpr->formatted_expr == jsexpr->raw_expr)
-		jsexpr->formatted_expr = NULL;
+	format = exprType(jsexpr->formatted_expr) == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON;
 
 	jsexpr->result_coercion = NULL;
 	jsexpr->omit_quotes = false;
@@ -4662,8 +4642,7 @@ static void
 transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 							JsonExpr *jsexpr)
 {
-	Node	   *expr = jsexpr->formatted_expr ?
-					   jsexpr->formatted_expr : jsexpr->raw_expr;
+	Node	   *expr = jsexpr->formatted_expr;
 
 	jsexpr->returning = transformJsonOutput(pstate, func->output, false);
 
@@ -4689,7 +4668,7 @@ transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 			return;
 		}
 
-		assignDefaultJsonReturningType(jsexpr->raw_expr, jsexpr->format, &ret);
+		assignDefaultJsonReturningType(jsexpr->formatted_expr, jsexpr->format, &ret);
 
 		if (ret.typid != jsexpr->returning->typid ||
 			ret.typmod != jsexpr->returning->typmod)
@@ -4704,7 +4683,7 @@ transformJsonFuncExprOutput(ParseState *pstate,	JsonFuncExpr *func,
 		}
 	}
 	else
-		assignDefaultJsonReturningType(jsexpr->raw_expr, jsexpr->format,
+		assignDefaultJsonReturningType(jsexpr->formatted_expr, jsexpr->format,
 									   jsexpr->returning);
 }
 
@@ -4809,9 +4788,8 @@ static Node *
 transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 {
 	JsonExpr   *jsexpr = transformJsonExprCommon(pstate, func);
-	Node	   *contextItemExpr =
-		jsexpr->formatted_expr ? jsexpr->formatted_expr : jsexpr->raw_expr;
 	const char *func_name = NULL;
+	Node	   *contextItemExpr = jsexpr->formatted_expr;
 
 	switch (func->op)
 	{

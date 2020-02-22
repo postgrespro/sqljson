@@ -3139,7 +3139,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JsonExpr    *jexpr = (JsonExpr *) node;
 
 				APP_JUMB(jexpr->op);
-				JumbleExpr(jstate, jexpr->raw_expr);
+				JumbleExpr(jstate, jexpr->formatted_expr);
 				JumbleExpr(jstate, jexpr->path_spec);
 				foreach(temp, jexpr->passing_names)
 				{

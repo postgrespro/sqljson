@@ -984,7 +984,6 @@ static bool
 _equalJsonExpr(const JsonExpr *a, const JsonExpr *b)
 {
 	COMPARE_SCALAR_FIELD(op);
-	COMPARE_NODE_FIELD(raw_expr);
 	COMPARE_NODE_FIELD(formatted_expr);
 	COMPARE_NODE_FIELD(result_coercion);
 	COMPARE_NODE_FIELD(format);
