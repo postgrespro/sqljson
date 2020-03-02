@@ -10536,24 +10536,7 @@ get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
 
 	appendContextKeyword(context, "", 0, 0, 0);
 
-	get_rule_expr(jexpr->raw_expr, context, showimplicit);
-
-	if (jexpr->format->format != JS_FORMAT_DEFAULT)
-	{
-		appendStringInfoString(buf,
-							   jexpr->format->format == JS_FORMAT_JSONB ?
-								" FORMAT JSONB" : " FORMAT JSON");
-
-		if (jexpr->format->encoding != JS_ENC_DEFAULT)
-		{
-			const char *encoding =
-				jexpr->format->encoding == JS_ENC_UTF16 ? "UTF16" :
-				jexpr->format->encoding == JS_ENC_UTF32 ? "UTF32" :
-														 "UTF8";
-
-			appendStringInfo(buf, " ENCODING %s", encoding);
-		}
-	}
+	get_rule_expr(jexpr->formatted_expr, context, showimplicit);
 
 	appendStringInfoString(buf, ", ");
 
