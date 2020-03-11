@@ -1706,87 +1706,38 @@ json_unique_object_field_start(void *_state, char *field, bool isnull)
 	}
 }
 
-/*
- * json_is_valid -- check json text validity, its value type and key uniqueness
- */
-Datum
-json_is_valid(PG_FUNCTION_ARGS)
+/* Validate JSON text and additionally check key uniqueness */
+bool
+json_validate(text *json, bool check_unique_keys)
 {
-	text	   *json = PG_GETARG_TEXT_P(0);
-	text	   *type = PG_GETARG_TEXT_P(1);
-	bool		unique = PG_GETARG_BOOL(2);
+	JsonLexContext *lex = makeJsonLexContext(json, check_unique_keys);
+	JsonSemAction uniqueSemAction = {0};
+	JsonUniqueParsingState state;
+	JsonParseErrorType result;
 
-	if (PG_ARGISNULL(0))
-		PG_RETURN_NULL();
-
-	if (!PG_ARGISNULL(1) &&
-		strncmp("any", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
+	if (check_unique_keys)
 	{
-		JsonLexContext *lex;
-		JsonTokenType tok;
-		JsonParseErrorType result;
+		state.lex = lex;
+		state.stack = NULL;
+		state.id_counter = 0;
+		state.unique = true;
+		json_unique_check_init(&state.check);
 
-		lex = makeJsonLexContext(json, false);
-
-		/* Lex exactly one token from the input and check its type. */
-		result = json_lex(lex);
-
-		if (result != JSON_SUCCESS)
-			PG_RETURN_BOOL(false);	/* invalid json */
-
-		tok = lex->token_type;
-
-		if (!strncmp("object", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
-		{
-			if (tok != JSON_TOKEN_OBJECT_START)
-				PG_RETURN_BOOL(false);	/* json is not a object */
-		}
-		else if (!strncmp("array", VARDATA(type), VARSIZE_ANY_EXHDR(type)))
-		{
-			if (tok != JSON_TOKEN_ARRAY_START)
-				PG_RETURN_BOOL(false);	/* json is not an array */
-		}
-		else
-		{
-			if (tok == JSON_TOKEN_OBJECT_START ||
-				tok == JSON_TOKEN_ARRAY_START)
-				PG_RETURN_BOOL(false);	/* json is not a scalar */
-		}
+		uniqueSemAction.semstate = &state;
+		uniqueSemAction.object_start = json_unique_object_start;
+		uniqueSemAction.object_field_start = json_unique_object_field_start;
+		uniqueSemAction.object_end = json_unique_object_end;
 	}
 
-	/* do full parsing pass only for uniqueness check or JSON text validation */
-	if (unique ||
-		get_fn_expr_argtype(fcinfo->flinfo, 0) != JSONOID)
-	{
-		JsonLexContext *lex = makeJsonLexContext(json, unique);
-		JsonSemAction uniqueSemAction = {0};
-		JsonUniqueParsingState state;
-		JsonParseErrorType result;
+	result = pg_parse_json(lex, check_unique_keys ? &uniqueSemAction : &nullSemAction);
 
-		if (unique)
-		{
-			state.lex = lex;
-			state.stack = NULL;
-			state.id_counter = 0;
-			state.unique = true;
-			json_unique_check_init(&state.check);
+	if (result != JSON_SUCCESS)
+		return false;	/* invalid json */
 
-			uniqueSemAction.semstate = &state;
-			uniqueSemAction.object_start = json_unique_object_start;
-			uniqueSemAction.object_field_start = json_unique_object_field_start;
-			uniqueSemAction.object_end = json_unique_object_end;
-		}
+	if (check_unique_keys && !state.unique)
+		return false;	/* not unique keys */
 
-		result = pg_parse_json(lex, unique ? &uniqueSemAction : &nullSemAction);
-
-		if (result != JSON_SUCCESS)
-			PG_RETURN_BOOL(false);	/* invalid json */
-
-		if (unique && !state.unique)
-			PG_RETURN_BOOL(false);	/* not unique keys */
-	}
-
-	PG_RETURN_BOOL(true);	/* ok */
+	return true;	/* ok */
 }
 
 /*
@@ -1804,21 +1755,13 @@ json_is_valid(PG_FUNCTION_ARGS)
 Datum
 json_typeof(PG_FUNCTION_ARGS)
 {
-	text	   *json;
-
-	JsonLexContext *lex;
-	JsonTokenType tok;
+	text	   *json = PG_GETARG_TEXT_PP(0);
 	char	   *type;
-	JsonParseErrorType result;
-
-	json = PG_GETARG_TEXT_PP(0);
-	lex = makeJsonLexContext(json, false);
+	JsonTokenType tok;
 
 	/* Lex exactly one token from the input and check its type. */
-	result = json_lex(lex);
-	if (result != JSON_SUCCESS)
-		json_ereport_error(result, lex);
-	tok = lex->token_type;
+	tok = json_get_first_token(json, true);
+
 	switch (tok)
 	{
 		case JSON_TOKEN_OBJECT_START:

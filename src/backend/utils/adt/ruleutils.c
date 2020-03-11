@@ -9142,8 +9142,7 @@ get_rule_expr(Node *node, deparse_context *context,
 				if (!PRETTY_PAREN(context))
 					appendStringInfoChar(context->buf, '(');
 
-				get_rule_expr_paren(linitial(((FuncExpr *) pred->expr)->args),
-									context, true, node);
+				get_rule_expr_paren(pred->expr, context, true, node);
 
 				appendStringInfoString(context->buf, " IS JSON");
 

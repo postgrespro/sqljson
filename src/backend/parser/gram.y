@@ -13382,7 +13382,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					json_key_uniqueness_constraint_opt		%prec IS
 				{
 					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
-					$$ = makeJsonIsPredicate($1, format, $4, $5);
+					$$ = makeJsonIsPredicate($1, format, $4, $5, @1);
 				}
 			/*
 			 * Required by standard, but it would conflict with expressions
@@ -13394,7 +13394,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					json_key_uniqueness_constraint_opt		%prec FORMAT
 				{
 					$3.location = @2;
-					$$ = makeJsonIsPredicate($1, $3, $6, $7);
+					$$ = makeJsonIsPredicate($1, $3, $6, $7, @1);
 				}
 			*/
 			| a_expr
@@ -13403,7 +13403,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					json_key_uniqueness_constraint_opt		%prec IS
 				{
 					JsonFormat *format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
-					$$ = makeNotExpr(makeJsonIsPredicate($1, format, $5, $6), @1);
+					$$ = makeNotExpr(makeJsonIsPredicate($1, format, $5, $6, @1), @1);
 				}
 			/*
 			 * Required by standard, but it would conflict with expressions
@@ -13415,7 +13415,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					json_key_uniqueness_constraint_opt		%prec FORMAT
 				{
 					$3.location = @2;
-					$$ = makeNotExpr(makeJsonIsPredicate($1, $3, $7, $8), @1);
+					$$ = makeNotExpr(makeJsonIsPredicate($1, $3, $7, $8, @1), @1);
 				}
 			*/
 			| DEFAULT

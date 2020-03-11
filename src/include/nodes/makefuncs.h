@@ -110,7 +110,8 @@ extern JsonFormat *makeJsonFormat(JsonFormatType type, JsonEncoding encoding,
 extern JsonValueExpr *makeJsonValueExpr(Expr *expr, JsonFormat *format);
 extern Node *makeJsonKeyValue(Node *key, Node *value);
 extern Node *makeJsonIsPredicate(Node *expr, JsonFormat *format,
-								 JsonValueType vtype, bool unique_keys);
+								 JsonValueType vtype, bool unique_keys,
+								 int location);
 extern JsonEncoding makeJsonEncoding(char *name);
 
 #endif							/* MAKEFUNC_H */

@@ -4346,24 +4346,6 @@ transformJsonArrayConstructor(ParseState *pstate, JsonArrayConstructor *ctor)
 								   ctor->location);
 }
 
-static const char *
-JsonValueTypeStrings[] =
-{
-	"any",
-	"object",
-	"array",
-	"scalar",
-};
-
-static Const *
-makeJsonValueTypeConst(JsonValueType type)
-{
-	return makeConst(TEXTOID, -1, InvalidOid, -1,
-					 PointerGetDatum(cstring_to_text(
-											JsonValueTypeStrings[(int) type])),
-					 false, false);
-}
-
 /*
  * Transform IS JSON predicate into
  * json[b]_is_valid(json, value_type [, check_key_uniqueness]) call.
@@ -4373,7 +4355,6 @@ transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
 {
 	Node	   *expr = transformExprRecurse(pstate, pred->expr);
 	Oid			exprtype = exprType(expr);
-	FuncExpr   *fexpr;
 
 	/* prepare input document */
 	if (exprtype == BYTEAOID)
@@ -4408,38 +4389,12 @@ transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
 	expr = (Node *) makeJsonValueExpr((Expr *) expr, pred->format);
 
 	/* make resulting expression */
-	if (exprtype == TEXTOID || exprtype == JSONOID)
-	{
-		fexpr = makeFuncExpr(F_JSON_IS_VALID, BOOLOID,
-							 list_make3(expr,
-										makeJsonValueTypeConst(pred->value_type),
-										makeBoolConst(pred->unique_keys, false)),
-							 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-
-		fexpr->location = pred->location;
-	}
-	else if (exprtype == JSONBOID)
-	{
-		/* XXX the following expressions also can be used here:
-		 * jsonb_type(jsonb) = 'type' (for object and array checks)
-		 * CASE jsonb_type(jsonb) WHEN ... END (for scalars checks)
-		 */
-		fexpr = makeFuncExpr(F_JSONB_IS_VALID, BOOLOID,
-							 list_make2(expr,
-										makeJsonValueTypeConst(pred->value_type)),
-							 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-
-		fexpr->location = pred->location;
-	}
-	else
-	{
+	if (exprtype != TEXTOID && exprtype != JSONOID && exprtype != JSONBOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("cannot use type %s in IS JSON predicate",
 						format_type_be(exprtype))));
-		return NULL;
-	}
 
-	return makeJsonIsPredicate((Node *) fexpr, NULL, pred->value_type,
-							   pred->unique_keys);
+	return makeJsonIsPredicate((Node *) expr, NULL, pred->value_type,
+							   pred->unique_keys, pred->location);
 }
