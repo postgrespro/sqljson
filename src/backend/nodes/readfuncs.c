@@ -1398,6 +1398,7 @@ _readJsonCtorExpr(void)
 
 	READ_NODE_FIELD(args);
 	READ_NODE_FIELD(func);
+	READ_NODE_FIELD(coercion);
 	READ_INT_FIELD(type);
 	READ_NODE_FIELD(returning);
 	READ_BOOL_FIELD(unique);

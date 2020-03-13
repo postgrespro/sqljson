@@ -266,7 +266,7 @@ exprType(const Node *expr)
 			}
 			break;
 		case T_JsonCtorExpr:
-			type = ((const JsonCtorExpr *) expr)->returning->format->format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
+			type = ((const JsonCtorExpr *) expr)->returning->typid;
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -924,8 +924,14 @@ exprCollation(const Node *expr)
 			coll = exprCollation((Node *) ((const JsonValueExpr *) expr)->formatted_expr);
 			break;
 		case T_JsonCtorExpr:
-			/* coll = exprCollation((Node *) ((const JsonCtorExpr *) expr)->func); */
-			coll = InvalidOid;	/* keep compiler quiet */
+			{
+				const JsonCtorExpr *ctor = (const JsonCtorExpr *) expr;
+
+				if (ctor->coercion)
+					coll = exprCollation((Node *) ctor->coercion);
+				else
+					coll = InvalidOid;
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -1135,8 +1141,14 @@ exprSetCollation(Node *expr, Oid collation)
 							 collation);
 			break;
 		case T_JsonCtorExpr:
-			/* exprSetCollation((Node *) ((const JsonCtorExpr *) expr)->func, collation); */
-			Assert(!OidIsValid(collation)); /* result is always an json[b] type */
+			{
+				JsonCtorExpr *ctor = (JsonCtorExpr *) expr;
+
+				if (ctor->coercion)
+					exprSetCollation((Node *) ctor->coercion, collation);
+				else
+					Assert(!OidIsValid(collation)); /* result is always an json[b] type */
+			}
 			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
@@ -2299,6 +2311,8 @@ expression_tree_walker(Node *node,
 					return true;
 				if (walker(ctor->func, context))
 					return true;
+				if (walker(ctor->coercion, context))
+					return true;
 			}
 			break;
 		default:
@@ -3255,6 +3269,7 @@ expression_tree_mutator(Node *node,
 				FLATCOPY(newnode, jve, JsonCtorExpr);
 				MUTATE(newnode->args, jve->args, List *);
 				MUTATE(newnode->func, jve->func, Expr *);
+				MUTATE(newnode->coercion, jve->coercion, Expr *);
 				MUTATE(newnode->returning, jve->returning, JsonReturning *);
 
 				return (Node *) newnode;
@@ -3975,6 +3990,8 @@ raw_expression_tree_walker(Node *node,
 				if (walker(ctor->args, context))
 					return true;
 				if (walker(ctor->func, context))
+					return true;
+				if (walker(ctor->coercion, context))
 					return true;
 				if (walker(ctor->returning, context))
 					return true;

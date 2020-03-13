@@ -2141,40 +2141,55 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				if (ctor->func)
 				{
 					ExecInitExprRec(ctor->func, state, resv, resnull);
-					break;
 				}
-
-				scratch.opcode = EEOP_JSON_CTOR;
-				scratch.d.json_ctor.ctor = ctor;
-				scratch.d.json_ctor.arg_values = palloc(sizeof(Datum) * nargs);
-				scratch.d.json_ctor.arg_nulls = palloc(sizeof(bool) * nargs);
-				scratch.d.json_ctor.arg_types = palloc(sizeof(Oid) * nargs);
-				scratch.d.json_ctor.nargs = nargs;
-
-				foreach(lc, args)
+				else
 				{
-					Expr	   *arg = (Expr *) lfirst(lc);
+					scratch.opcode = EEOP_JSON_CTOR;
+					scratch.d.json_ctor.ctor = ctor;
+					scratch.d.json_ctor.arg_values = palloc(sizeof(Datum) * nargs);
+					scratch.d.json_ctor.arg_nulls = palloc(sizeof(bool) * nargs);
+					scratch.d.json_ctor.arg_types = palloc(sizeof(Oid) * nargs);
+					scratch.d.json_ctor.nargs = nargs;
 
-					scratch.d.json_ctor.arg_types[argno] = exprType((Node *) arg);
-
-					if (IsA(arg, Const))
+					foreach(lc, args)
 					{
-						/* Don't evaluate const arguments every round */
-						Const	   *con = (Const *) arg;
+						Expr	   *arg = (Expr *) lfirst(lc);
 
-						scratch.d.json_ctor.arg_values[argno] = con->constvalue;
-						scratch.d.json_ctor.arg_nulls[argno] = con->constisnull;
+						scratch.d.json_ctor.arg_types[argno] = exprType((Node *) arg);
+
+						if (IsA(arg, Const))
+						{
+							/* Don't evaluate const arguments every round */
+							Const	   *con = (Const *) arg;
+
+							scratch.d.json_ctor.arg_values[argno] = con->constvalue;
+							scratch.d.json_ctor.arg_nulls[argno] = con->constisnull;
+						}
+						else
+						{
+							ExecInitExprRec(arg, state,
+											&scratch.d.json_ctor.arg_values[argno],
+											&scratch.d.json_ctor.arg_nulls[argno]);
+						}
+						argno++;
 					}
-					else
-					{
-						ExecInitExprRec(arg, state,
-										&scratch.d.json_ctor.arg_values[argno],
-										&scratch.d.json_ctor.arg_nulls[argno]);
-					}
-					argno++;
+
+					ExprEvalPushStep(state, &scratch);
 				}
 
-				ExprEvalPushStep(state, &scratch);
+				if (ctor->coercion)
+				{
+					Datum	   *innermost_caseval = state->innermost_caseval;
+					bool	   *innermost_isnull = state->innermost_casenull;
+
+					state->innermost_caseval = resv;
+					state->innermost_casenull = resnull;
+
+					ExecInitExprRec(ctor->coercion, state, resv, resnull);
+
+					state->innermost_caseval = innermost_caseval;
+					state->innermost_casenull = innermost_isnull;
+				}
 			}
 			break;
 

@@ -1266,6 +1266,7 @@ typedef struct JsonCtorExpr
 	JsonCtorType type;			/* constructor type */
 	List	   *args;
 	Expr	   *func;			/* underlying json[b]_xxx() function call */
+	Expr	   *coercion;		/* coercion to RETURNING type */
 	JsonReturning *returning;	/* RETURNING clause */
 	bool		absent_on_null;	/* ABSENT ON NULL? */
 	bool		unique;			/* WITH UNIQUE KEYS? (JSON_OBJECT[AGG] only) */

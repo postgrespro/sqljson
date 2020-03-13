@@ -3117,6 +3117,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JsonCtorExpr *ctor = (JsonCtorExpr *) node;
 
 				JumbleExpr(jstate, (Node *) ctor->func);
+				JumbleExpr(jstate, (Node *) ctor->coercion);
 				JumbleExpr(jstate, (Node *) ctor->returning);
 				APP_JUMB(ctor->type);
 				APP_JUMB(ctor->unique);

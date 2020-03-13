@@ -3974,6 +3974,46 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 	return res;
 }
 
+static Node *
+makeJsonCtorExpr(ParseState *pstate, JsonCtorType type, List *args, Expr *fexpr,
+				 JsonReturning *returning, bool unique, bool absent_on_null,
+				 int location)
+{
+	Node	   *placeholder;
+	Node	   *coercion;
+	JsonCtorExpr *jsctor = makeNode(JsonCtorExpr);
+	Oid			intermediate_typid =
+		returning->format->format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
+
+	jsctor->args = args;
+	jsctor->func = fexpr;
+	jsctor->type = type;
+	jsctor->returning = returning;
+	jsctor->unique = unique;
+	jsctor->absent_on_null = absent_on_null;
+	jsctor->location = location;
+
+	if (fexpr)
+		placeholder = makeCaseTestExpr((Node *) fexpr);
+	else
+	{
+		CaseTestExpr *cte = makeNode(CaseTestExpr);
+
+		cte->typeId = intermediate_typid;
+		cte->typeMod = -1;
+		cte->collation = InvalidOid;
+
+		placeholder = (Node *) cte;
+	}
+
+	coercion = coerceJsonFuncExpr(pstate, placeholder, returning, true);
+
+	if (coercion != placeholder)
+		jsctor->coercion = (Expr *) coercion;
+
+	return (Node *) jsctor;
+}
+
 /*
  * Transform JSON_OBJECT() constructor.
  *
@@ -3986,7 +4026,7 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 static Node *
 transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 {
-	JsonCtorExpr *jsctor;
+	JsonReturning *returning;
 	List	   *args = NIL;
 
 	/* transform key-value pairs, if any */
@@ -4007,15 +4047,11 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 		}
 	}
 
-	jsctor = makeNode(JsonCtorExpr);
-	jsctor->args = args;
-	jsctor->type = JSCTOR_JSON_OBJECT;
-	jsctor->returning = transformJsonCtorOutput(pstate, ctor->output, args);
-	jsctor->unique = ctor->unique;
-	jsctor->absent_on_null = ctor->absent_on_null;
-	jsctor->location = ctor->location;
+	returning = transformJsonCtorOutput(pstate, ctor->output, args);
 
-	return coerceJsonFuncExpr(pstate, (Node *) jsctor, jsctor->returning, true);
+	return makeJsonCtorExpr(pstate, JSCTOR_JSON_OBJECT, args, NULL,
+							returning, ctor->unique, ctor->absent_on_null,
+							ctor->location);
 }
 
 /*
@@ -4093,7 +4129,6 @@ transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
 					 bool unique, bool absent_on_null)
 {
 	Oid			aggfnoid;
-	JsonCtorExpr *jsctor;
 	Node	   *node;
 	Expr	   *aggfilter = agg_ctor->agg_filter ? (Expr *)
 		transformWhereClause(pstate, agg_ctor->agg_filter,
@@ -4156,15 +4191,8 @@ transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
 		node = (Node *) aggref;
 	}
 
-	jsctor = makeNode(JsonCtorExpr);
-	jsctor->func = (Expr *) node;
-	jsctor->type = ctor_type;
-	jsctor->returning = returning;
-	jsctor->unique = unique;
-	jsctor->absent_on_null = absent_on_null;
-	jsctor->location = agg_ctor->location;
-
-	return coerceJsonFuncExpr(pstate, (Node *) jsctor, returning, true);
+	return makeJsonCtorExpr(pstate, ctor_type, NIL, (Expr *) node, returning,
+							unique, absent_on_null, agg_ctor->location);
 }
 
 /*
@@ -4277,7 +4305,7 @@ transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
 static Node *
 transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor)
 {
-	JsonCtorExpr *jsctor;
+	JsonReturning *returning;
 	List	   *args = NIL;
 
 	/* transform element expressions, if any */
@@ -4296,13 +4324,8 @@ transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor)
 		}
 	}
 
-	jsctor = makeNode(JsonCtorExpr);
-	jsctor->args = args;
-	jsctor->type = JSCTOR_JSON_ARRAY;
-	jsctor->returning = transformJsonCtorOutput(pstate, ctor->output, args);
-	jsctor->unique = false;
-	jsctor->absent_on_null = ctor->absent_on_null;
-	jsctor->location = ctor->location;
+	returning = transformJsonCtorOutput(pstate, ctor->output, args);
 
-	return coerceJsonFuncExpr(pstate, (Node *) jsctor, jsctor->returning, true);
+	return makeJsonCtorExpr(pstate, JSCTOR_JSON_ARRAY, args, NULL, returning,
+							false, ctor->absent_on_null, ctor->location);
 }

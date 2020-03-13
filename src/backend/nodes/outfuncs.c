@@ -1746,6 +1746,7 @@ _outJsonCtorExpr(StringInfo str, const JsonCtorExpr *node)
 
 	WRITE_NODE_FIELD(args);
 	WRITE_NODE_FIELD(func);
+	WRITE_NODE_FIELD(coercion);
 	WRITE_INT_FIELD(type);
 	WRITE_NODE_FIELD(returning);
 	WRITE_BOOL_FIELD(unique);
