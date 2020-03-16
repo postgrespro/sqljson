@@ -2256,7 +2256,8 @@ _copyJsonValueExpr(const JsonValueExpr *from)
 {
 	JsonValueExpr  *newnode = makeNode(JsonValueExpr);
 
-	COPY_NODE_FIELD(expr);
+	COPY_NODE_FIELD(raw_expr);
+	COPY_NODE_FIELD(formatted_expr);
 	COPY_SCALAR_FIELD(format);
 
 	return newnode;

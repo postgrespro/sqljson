@@ -7790,7 +7790,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 
 		case T_JsonValueExpr:
 			/* maybe simple, check args */
-			return isSimpleNode((Node *) ((JsonValueExpr *) node)->expr,
+			return isSimpleNode((Node *) ((JsonValueExpr *) node)->raw_expr,
 								node, prettyFlags);
 
 		default:
@@ -9117,7 +9117,7 @@ get_rule_expr(Node *node, deparse_context *context,
 			{
 				JsonValueExpr *jve = (JsonValueExpr *) node;
 
-				get_rule_expr((Node *) jve->expr, context, false);
+				get_rule_expr((Node *) jve->raw_expr, context, false);
 				get_json_format(&jve->format, context);
 			}
 			break;

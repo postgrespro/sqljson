@@ -1351,7 +1351,8 @@ _readJsonValueExpr(void)
 {
 	READ_LOCALS(JsonValueExpr);
 
-	READ_NODE_FIELD(expr);
+	READ_NODE_FIELD(raw_expr);
+	READ_NODE_FIELD(formatted_expr);
 	READ_ENUM_FIELD(format.type, JsonFormatType);
 	READ_ENUM_FIELD(format.encoding, JsonEncoding);
 	READ_LOCATION_FIELD(format.location);

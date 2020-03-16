@@ -841,7 +841,8 @@ makeJsonValueExpr(Expr *expr, JsonFormat *format)
 {
 	JsonValueExpr *jve = makeNode(JsonValueExpr);
 
-	jve->expr = expr;
+	jve->raw_expr = expr;
+	jve->formatted_expr = NULL;
 	jve->format = format;
 
 	return jve;

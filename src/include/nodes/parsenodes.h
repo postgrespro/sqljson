@@ -1499,7 +1499,6 @@ typedef struct JsonOutput
 	JsonReturning returning;	/* RETURNING FORMAT clause and type Oids */
 } JsonOutput;
 
-
 /*****************************************************************************
  *		Raw Grammar Output Statements
  *****************************************************************************/

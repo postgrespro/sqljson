@@ -821,7 +821,8 @@ _equalOnConflictExpr(const OnConflictExpr *a, const OnConflictExpr *b)
 static bool
 _equalJsonValueExpr(const JsonValueExpr *a, const JsonValueExpr *b)
 {
-	COMPARE_NODE_FIELD(expr);
+	COMPARE_NODE_FIELD(raw_expr);
+	COMPARE_NODE_FIELD(formatted_expr);
 	COMPARE_SCALAR_FIELD(format.type);
 	COMPARE_SCALAR_FIELD(format.encoding);
 	COMPARE_LOCATION_FIELD(format.location);

@@ -3628,6 +3628,21 @@ makeJsonByteaToTextConversion(Node *expr, JsonFormat *format, int location)
 }
 
 /*
+ * Make CaseTestExpr node.
+ */
+static Node *
+makeCaseTestExpr(Node *expr)
+{
+	CaseTestExpr *placeholder = makeNode(CaseTestExpr);
+
+	placeholder->typeId = exprType(expr);
+	placeholder->typeMod = exprTypmod(expr);
+	placeholder->collation = exprCollation(expr);
+
+	return (Node *) placeholder;
+}
+
+/*
  * Transform JSON value expression using specified input JSON format or
  * default format otherwise.
  */
@@ -3635,7 +3650,8 @@ static Node *
 transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 					   JsonFormatType default_format)
 {
-	Node	   *expr = transformExprRecurse(pstate, (Node *) ve->expr);
+	Node	   *expr = transformExprRecurse(pstate, (Node *) ve->raw_expr);
+	Node	   *rawexpr;
 	JsonFormatType format;
 	Oid			exprtype;
 	int			location;
@@ -3645,6 +3661,7 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 	if (exprType(expr) == UNKNOWNOID)
 		expr = coerce_to_specific_type(pstate, expr, TEXTOID, "JSON_VALUE_EXPR");
 
+	rawexpr = expr;
 	exprtype = exprType(expr);
 	location = exprLocation(expr);
 
@@ -3676,8 +3693,10 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 	if (format != JS_FORMAT_DEFAULT)
 	{
 		Oid			targettype = format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
+		Node	   *orig = makeCaseTestExpr(expr);
 		Node	   *coerced;
-		FuncExpr   *fexpr;
+
+		expr = orig;
 
 		if (exprtype != BYTEAOID && typcategory != TYPCATEGORY_STRING)
 			ereport(ERROR,
@@ -3699,28 +3718,32 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 		coerced = coerce_to_target_type(pstate, expr, exprtype,
 										targettype, -1,
 										COERCION_EXPLICIT,
-										COERCE_INTERNAL_CAST,
+										COERCE_EXPLICIT_CAST,
 										location);
 
-		if (coerced)
-			expr = coerced;
-		else
+		if (!coerced)
 		{
 			/* If coercion failed, use to_json()/to_jsonb() functions. */
 			Oid			fnoid = targettype == JSONOID ? F_TO_JSON : F_TO_JSONB;
-
-			fexpr = makeFuncExpr(fnoid, targettype, list_make1(expr),
-								 InvalidOid, InvalidOid,
-								 COERCE_INTERNAL_CAST);
+			FuncExpr   *fexpr = makeFuncExpr(fnoid, targettype,
+											 list_make1(expr),
+											 InvalidOid, InvalidOid,
+											 COERCE_EXPLICIT_CALL);
 			fexpr->location = location;
 
-			expr = (Node *) fexpr;
+			coerced = (Node *) fexpr;
 		}
 
-		ve = copyObject(ve);
-		ve->expr = (Expr *) expr;
+		if (coerced == orig)
+			expr = rawexpr;
+		else
+		{
+			ve = copyObject(ve);
+			ve->raw_expr = (Expr *) rawexpr;
+			ve->formatted_expr = (Expr *) coerced;
 
-		expr = (Node *) ve;
+			expr = (Node *) ve;
+		}
 	}
 
 	return expr;

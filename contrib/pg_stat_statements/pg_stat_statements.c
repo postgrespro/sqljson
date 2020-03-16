@@ -3090,7 +3090,8 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 			{
 				JsonValueExpr *expr = (JsonValueExpr *) node;
 
-				JumbleExpr(jstate, (Node *) expr->expr);
+				JumbleExpr(jstate, (Node *) expr->raw_expr);
+				JumbleExpr(jstate, (Node *) expr->formatted_expr);
 				APP_JUMB(expr->format.type);
 				APP_JUMB(expr->format.encoding);
 			}

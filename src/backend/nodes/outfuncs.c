@@ -1714,7 +1714,8 @@ _outJsonValueExpr(StringInfo str, const JsonValueExpr *node)
 {
 	WRITE_NODE_TYPE("JSONVALUEEXPR");
 
-	WRITE_NODE_FIELD(expr);
+	WRITE_NODE_FIELD(raw_expr);
+	WRITE_NODE_FIELD(formatted_expr);
 	WRITE_ENUM_FIELD(format.type, JsonFormatType);
 	WRITE_ENUM_FIELD(format.encoding, JsonEncoding);
 	WRITE_LOCATION_FIELD(format.location);
