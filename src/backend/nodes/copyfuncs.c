@@ -2248,6 +2248,20 @@ _copyOnConflictExpr(const OnConflictExpr *from)
 	return newnode;
 }
 
+/*
+ * _copyJsonValueExpr
+ */
+static JsonValueExpr *
+_copyJsonValueExpr(const JsonValueExpr *from)
+{
+	JsonValueExpr  *newnode = makeNode(JsonValueExpr);
+
+	COPY_NODE_FIELD(expr);
+	COPY_SCALAR_FIELD(format);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *						pathnodes.h copy functions
  *
@@ -5144,6 +5158,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_OnConflictExpr:
 			retval = _copyOnConflictExpr(from);
+			break;
+		case T_JsonValueExpr:
+			retval = _copyJsonValueExpr(from);
 			break;
 
 			/*

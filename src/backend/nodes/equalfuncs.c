@@ -818,6 +818,17 @@ _equalOnConflictExpr(const OnConflictExpr *a, const OnConflictExpr *b)
 	return true;
 }
 
+static bool
+_equalJsonValueExpr(const JsonValueExpr *a, const JsonValueExpr *b)
+{
+	COMPARE_NODE_FIELD(expr);
+	COMPARE_SCALAR_FIELD(format.type);
+	COMPARE_SCALAR_FIELD(format.encoding);
+	COMPARE_LOCATION_FIELD(format.location);
+
+	return true;
+}
+
 /*
  * Stuff from pathnodes.h
  */
@@ -3209,6 +3220,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_JoinExpr:
 			retval = _equalJoinExpr(a, b);
+			break;
+		case T_JsonValueExpr:
+			retval = _equalJsonValueExpr(a, b);
 			break;
 
 			/*

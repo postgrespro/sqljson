@@ -7788,6 +7788,11 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 					return false;
 			}
 
+		case T_JsonValueExpr:
+			/* maybe simple, check args */
+			return isSimpleNode((Node *) ((JsonValueExpr *) node)->expr,
+								node, prettyFlags);
+
 		default:
 			break;
 	}
@@ -7893,6 +7898,48 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 		appendStringInfoChar(context->buf, ')');
 }
 
+/*
+ * get_json_format			- Parse back a JsonFormat structure
+ */
+static void
+get_json_format(JsonFormat *format, deparse_context *context)
+{
+	if (format->type == JS_FORMAT_DEFAULT)
+		return;
+
+	appendStringInfoString(context->buf,
+						   format->type == JS_FORMAT_JSONB ?
+						   " FORMAT JSONB" : " FORMAT JSON");
+
+	if (format->encoding != JS_ENC_DEFAULT)
+	{
+		const char *encoding =
+			format->encoding == JS_ENC_UTF16 ? "UTF16" :
+			format->encoding == JS_ENC_UTF32 ? "UTF32" : "UTF8";
+
+		appendStringInfo(context->buf, " ENCODING %s", encoding);
+	}
+}
+
+/*
+ * get_json_returning		- Parse back a JsonReturning structure
+ */
+static void
+get_json_returning(JsonReturning *returning, deparse_context *context,
+				   bool json_format_by_default)
+{
+	if (!OidIsValid(returning->typid))
+		return;
+
+	appendStringInfo(context->buf, " RETURNING %s",
+					 format_type_with_typemod(returning->typid,
+											  returning->typmod));
+
+	if (!json_format_by_default ||
+		returning->format.type !=
+			(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
+		get_json_format(&returning->format, context);
+}
 
 /* ----------
  * get_rule_expr			- Parse back an expression
@@ -9063,6 +9110,15 @@ get_rule_expr(Node *node, deparse_context *context,
 							 (int) spec->strategy);
 						break;
 				}
+			}
+			break;
+
+		case T_JsonValueExpr:
+			{
+				JsonValueExpr *jve = (JsonValueExpr *) node;
+
+				get_rule_expr((Node *) jve->expr, context, false);
+				get_json_format(&jve->format, context);
 			}
 			break;
 

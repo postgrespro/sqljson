@@ -1344,6 +1344,22 @@ _readOnConflictExpr(void)
 }
 
 /*
+ * _readJsonValueExpr
+ */
+static JsonValueExpr *
+_readJsonValueExpr(void)
+{
+	READ_LOCALS(JsonValueExpr);
+
+	READ_NODE_FIELD(expr);
+	READ_ENUM_FIELD(format.type, JsonFormatType);
+	READ_ENUM_FIELD(format.encoding, JsonEncoding);
+	READ_LOCATION_FIELD(format.location);
+
+	READ_DONE();
+}
+
+/*
  *	Stuff from pathnodes.h.
  *
  * Mostly we don't need to read planner nodes back in again, but some
@@ -2880,6 +2896,8 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("JSONVALUEEXPR", 13))
+		return_value = _readJsonValueExpr();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);
