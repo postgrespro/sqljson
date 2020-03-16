@@ -3926,7 +3926,7 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 		FuncExpr   *fexpr = makeFuncExpr(F_PG_CONVERT_TO, BYTEAOID,
 										 list_make2(texpr, enc),
 										 InvalidOid, InvalidOid,
-										 COERCE_INTERNAL_CAST);
+										 COERCE_EXPLICIT_CALL);
 		fexpr->location = location;
 
 		return (Node *) fexpr;
@@ -3937,7 +3937,7 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 								returning->typid, returning->typmod,
 								/* XXX throwing errors when casting to char(N) */
 								COERCION_EXPLICIT,
-								COERCE_INTERNAL_CAST,
+								COERCE_EXPLICIT_CAST,
 								location);
 
 	if (!res && report_error)
