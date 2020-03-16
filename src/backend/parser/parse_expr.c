@@ -4353,15 +4353,24 @@ transformJsonArrayConstructor(ParseState *pstate, JsonArrayConstructor *ctor)
 static Node *
 transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
 {
-	Node	   *expr = transformExprRecurse(pstate, pred->expr);
+	Node	   *raw_expr = transformExprRecurse(pstate, pred->expr);
+	Node	   *expr = raw_expr;
 	Oid			exprtype = exprType(expr);
 
 	/* prepare input document */
 	if (exprtype == BYTEAOID)
 	{
+		JsonValueExpr *jve;
+
+		expr = makeCaseTestExpr(raw_expr);
 		expr = makeJsonByteaToTextConversion(expr, pred->format,
 											 exprLocation(expr));
 		exprtype = TEXTOID;
+
+		jve = makeJsonValueExpr((Expr *) raw_expr, pred->format);
+
+		jve->formatted_expr = (Expr *) expr;
+		expr = (Node *) jve;
 	}
 	else
 	{
@@ -4385,8 +4394,6 @@ transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
 					 parser_errposition(pstate, pred->format->location),
 					 errmsg("cannot use JSON FORMAT ENCODING clause for non-bytea input types")));
 	}
-
-	expr = (Node *) makeJsonValueExpr((Expr *) expr, pred->format);
 
 	/* make resulting expression */
 	if (exprtype != TEXTOID && exprtype != JSONOID && exprtype != JSONBOID)
