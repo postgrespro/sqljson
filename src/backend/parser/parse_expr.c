@@ -4721,7 +4721,7 @@ coerceDefaultJsonExpr(ParseState *pstate, JsonExpr *jsexpr, Node *defexpr)
 									jsexpr->returning->typid,
 									jsexpr->returning->typmod,
 									COERCION_EXPLICIT,
-									COERCE_INTERNAL_CAST,
+									COERCE_IMPLICIT_CAST,
 									location);
 
 	if (!defexpr)
