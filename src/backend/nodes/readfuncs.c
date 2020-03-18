@@ -1398,11 +1398,7 @@ _readJsonCtorExpr(void)
 
 	READ_NODE_FIELD(func);
 	READ_INT_FIELD(type);
-	READ_ENUM_FIELD(returning.format.type, JsonFormatType);
-	READ_ENUM_FIELD(returning.format.encoding, JsonEncoding);
-	READ_LOCATION_FIELD(returning.format.location);
-	READ_OID_FIELD(returning.typid);
-	READ_INT_FIELD(returning.typmod);
+	READ_NODE_FIELD(returning);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(absent_on_null);
 

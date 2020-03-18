@@ -2304,11 +2304,7 @@ _copyJsonCtorExpr(const JsonCtorExpr *from)
 
 	COPY_NODE_FIELD(func);
 	COPY_SCALAR_FIELD(type);
-	COPY_SCALAR_FIELD(returning.format.type);
-	COPY_SCALAR_FIELD(returning.format.encoding);
-	COPY_LOCATION_FIELD(returning.format.location);
-	COPY_SCALAR_FIELD(returning.typid);
-	COPY_SCALAR_FIELD(returning.typmod);
+	COPY_NODE_FIELD(returning);
 	COPY_SCALAR_FIELD(absent_on_null);
 	COPY_SCALAR_FIELD(unique);
 
@@ -2355,7 +2351,7 @@ _copyJsonOutput(const JsonOutput *from)
 	JsonOutput	   *newnode = makeNode(JsonOutput);
 
 	COPY_NODE_FIELD(typeName);
-	COPY_SCALAR_FIELD(returning);
+	COPY_NODE_FIELD(returning);
 
 	return newnode;
 }

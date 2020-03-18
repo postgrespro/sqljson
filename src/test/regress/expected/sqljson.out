@@ -100,9 +100,9 @@ SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON);
 WARNING:  FORMAT JSON has no effect for json and jsonb types
 LINE 1: SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON);
                                               ^
-  json_object   
-----------------
- {"foo" : null}
+  json_object  
+---------------
+ {"foo": null}
 (1 row)
 
 SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON ENCODING UTF8);
@@ -176,9 +176,9 @@ SELECT JSON_OBJECT(
 	'c': json '[ 1,true,{ } ]',
 	'd': jsonb '{ "x" : 123.45 }'
 );
-                              json_object                               
-------------------------------------------------------------------------
- {"a" : "123", "1.23" : 123, "c" : [ 1,true,{ } ], "d" : {"x": 123.45}}
+                            json_object                            
+-------------------------------------------------------------------
+ {"a": "123", "c": [1, true, {}], "d": {"x": 123.45}, "1.23": 123}
 (1 row)
 
 SELECT JSON_OBJECT(
@@ -207,9 +207,9 @@ SELECT JSON_OBJECT('a': '123', 'b': JSON_OBJECT('a': 111, 'b': 'aaa'));
 (1 row)
 
 SELECT JSON_OBJECT('a': '123', 'b': JSON_OBJECT('a': 111, 'b': 'aaa' RETURNING jsonb));
-                 json_object                 
----------------------------------------------
- {"a" : "123", "b" : {"a": 111, "b": "aaa"}}
+                json_object                
+-------------------------------------------
+ {"a": "123", "b": {"a": 111, "b": "aaa"}}
 (1 row)
 
 SELECT JSON_OBJECT('a': JSON_OBJECT('b': 1 RETURNING text));

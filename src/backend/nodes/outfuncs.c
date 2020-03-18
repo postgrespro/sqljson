@@ -1746,11 +1746,7 @@ _outJsonCtorExpr(StringInfo str, const JsonCtorExpr *node)
 
 	WRITE_NODE_FIELD(func);
 	WRITE_INT_FIELD(type);
-	WRITE_ENUM_FIELD(returning.format.type, JsonFormatType);
-	WRITE_ENUM_FIELD(returning.format.encoding, JsonEncoding);
-	WRITE_LOCATION_FIELD(returning.format.location);
-	WRITE_OID_FIELD(returning.typid);
-	WRITE_INT_FIELD(returning.typmod);
+	WRITE_NODE_FIELD(returning);
 	WRITE_BOOL_FIELD(unique);
 	WRITE_BOOL_FIELD(absent_on_null);
 }

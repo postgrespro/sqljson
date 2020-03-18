@@ -2291,7 +2291,13 @@ expression_tree_walker(Node *node,
 			}
 			break;
 		case T_JsonCtorExpr:
-			return walker(((JsonCtorExpr *) node)->func, context);
+			{
+				JsonCtorExpr *ctor = (JsonCtorExpr *) node;
+				
+				if (walker(ctor->func, context))
+					return true;
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -3245,6 +3251,7 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, jve, JsonCtorExpr);
 				MUTATE(newnode->func, jve->func, FuncExpr *);
+				MUTATE(newnode->returning, jve->returning, JsonReturning *);
 
 				return (Node *) newnode;
 			}
@@ -3958,9 +3965,25 @@ raw_expression_tree_walker(Node *node,
 			}
 			break;
 		case T_JsonCtorExpr:
-			return walker(((JsonCtorExpr *) node)->func, context);
+			{
+				JsonCtorExpr *ctor = (JsonCtorExpr *) node;
+
+				if (walker(ctor->func, context))
+					return true;
+				if (walker(ctor->returning, context))
+					return true;
+			}
+			break;
 		case T_JsonOutput:
-			return walker(((JsonOutput *) node)->typeName, context);
+			{
+				JsonOutput *out = (JsonOutput *) node;
+
+				if (walker(out->typeName, context))
+					return true;
+				if (walker(out->returning, context))
+					return true;
+			}
+			break;
 		case T_JsonKeyValue:
 			{
 				JsonKeyValue *jkv = (JsonKeyValue *) node;
