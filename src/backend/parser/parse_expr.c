@@ -4912,13 +4912,12 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 			break;
 
 		case IS_JSON_TABLE:
-			jsexpr->returning.format.type = JS_FORMAT_DEFAULT;
-			jsexpr->returning.format.encoding = JS_ENC_DEFAULT;
-			jsexpr->returning.format.location = -1;
-			jsexpr->returning.typid = exprType(contextItemExpr);
-			jsexpr->returning.typmod = -1;
+			jsexpr->returning = makeNode(JsonReturning);
+			jsexpr->returning->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
+			jsexpr->returning->typid = exprType(contextItemExpr);
+			jsexpr->returning->typmod = -1;
 
-			if (jsexpr->returning.typid != JSONBOID)
+			if (jsexpr->returning->typid != JSONBOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("JSON_TABLE() is not yet implemented for json type"),

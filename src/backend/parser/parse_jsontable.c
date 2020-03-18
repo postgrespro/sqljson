@@ -70,7 +70,7 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 	JsonCommon *common = makeNode(JsonCommon);
 	JsonOutput *output = makeNode(JsonOutput);
 	JsonPathSpec pathspec;
-	JsonFormat	default_format;
+	JsonFormat *default_format;
 
 	jfexpr->op = jtc->coltype == JTC_REGULAR ? IS_JSON_VALUE : IS_JSON_QUERY;
 	jfexpr->common = common;
@@ -84,10 +84,10 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 	jfexpr->location = jtc->location;
 
 	output->typeName = jtc->typeName;
-	output->returning.format = jtc->format;
+	output->returning = makeNode(JsonReturning);
+	output->returning->format = jtc->format;
 
-	default_format.type = JS_FORMAT_DEFAULT;
-	default_format.encoding = JS_ENC_DEFAULT;
+	default_format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 
 	common->pathname = NULL;
 	common->expr = makeJsonValueExpr((Expr *) contextItemExpr, default_format);

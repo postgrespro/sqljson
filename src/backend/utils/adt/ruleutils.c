@@ -10496,7 +10496,7 @@ get_json_table_columns(TableFunc *tf, JsonTableParentNode *node,
 
 		if (colexpr->op == IS_JSON_QUERY)
 			appendStringInfoString(buf,
-								   colexpr->format.type == JS_FORMAT_JSONB ?
+								   colexpr->format->format == JS_FORMAT_JSONB ?
 								   " FORMAT JSONB" : " FORMAT JSON");
 
 		appendStringInfoString(buf, " PATH ");
@@ -10538,17 +10538,17 @@ get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
 
 	get_rule_expr(jexpr->raw_expr, context, showimplicit);
 
-	if (jexpr->format.type != JS_FORMAT_DEFAULT)
+	if (jexpr->format->format != JS_FORMAT_DEFAULT)
 	{
 		appendStringInfoString(buf,
-							   jexpr->format.type == JS_FORMAT_JSONB ?
+							   jexpr->format->format == JS_FORMAT_JSONB ?
 								" FORMAT JSONB" : " FORMAT JSON");
 
-		if (jexpr->format.encoding != JS_ENC_DEFAULT)
+		if (jexpr->format->encoding != JS_ENC_DEFAULT)
 		{
 			const char *encoding =
-				jexpr->format.encoding == JS_ENC_UTF16 ? "UTF16" :
-				jexpr->format.encoding == JS_ENC_UTF32 ? "UTF32" :
+				jexpr->format->encoding == JS_ENC_UTF16 ? "UTF16" :
+				jexpr->format->encoding == JS_ENC_UTF32 ? "UTF32" :
 														 "UTF8";
 
 			appendStringInfo(buf, " ENCODING %s", encoding);

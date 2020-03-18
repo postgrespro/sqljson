@@ -15179,8 +15179,7 @@ json_table_regular_column_definition:
 					n->coltype = JTC_REGULAR;
 					n->name = $1;
 					n->typeName = $2;
-					n->format.type = JS_FORMAT_DEFAULT;
-					n->format.encoding = JS_ENC_DEFAULT;
+					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 					n->wrapper = JSW_NONE;
 					n->omit_quotes = false;
 					n->pathspec = $3;
@@ -15217,7 +15216,7 @@ json_table_formatted_column_definition:
 					n->coltype = JTC_FORMATTED;
 					n->name = $1;
 					n->typeName = $2;
-					n->format = $4;
+					n->format = castNode(JsonFormat, $4);
 					n->pathspec = $5;
 					n->wrapper = $6;
 					if (n->wrapper != JSW_NONE && $7 != JS_QUOTES_UNSPEC)

@@ -1581,7 +1581,7 @@ typedef struct JsonTableColumn
 	char	   *name;				/* column name */
 	TypeName   *typeName;			/* column type name */
 	JsonPathSpec pathspec;			/* path specification, if any */
-	JsonFormat	format;				/* JSON format clause, if specified */
+	JsonFormat *format;				/* JSON format clause, if specified */
 	JsonWrapper	wrapper;			/* WRAPPER behavior for formatted columns */
 	bool		omit_quotes;		/* omit or keep quotes on scalar strings? */
 	List	   *columns;			/* nested columns */
