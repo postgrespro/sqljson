@@ -4088,7 +4088,7 @@ transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
 	jsctor = makeNode(JsonCtorExpr);
 	jsctor->func = (Expr *) node;
 	jsctor->type = ctor_type;
-	jsctor->returning = *returning;
+	jsctor->returning = returning;
 	jsctor->unique = unique;
 	jsctor->absent_on_null = absent_on_null;
 	jsctor->location = agg_ctor->location;
@@ -4107,14 +4107,12 @@ transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
 static Node *
 transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 {
-	JsonReturning returning;
+	JsonReturning *returning;
 	Node	   *key;
 	Node	   *val;
 	List	   *args;
 	const char *aggfnname;
 	Oid			aggtype;
-
-	transformJsonOutput(pstate, agg->ctor.output, true, &returning);
 
 	key = transformExprRecurse(pstate, (Node *) agg->arg->key);
 	val = transformJsonValueExpr(pstate, agg->arg->value, JS_FORMAT_DEFAULT);
@@ -4124,7 +4122,9 @@ transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 					  makeBoolConst(agg->absent_on_null, false),
 					  makeBoolConst(agg->unique, false));
 
-	if (returning.format.type == JS_FORMAT_JSONB)
+	returning = transformJsonCtorOutput(pstate, agg->ctor.output, args);
+
+	if (returning->format->format == JS_FORMAT_JSONB)
 	{
 		aggfnname = "pg_catalog.jsonb_objectagg"; /* F_JSONB_OBJECTAGG */
 		aggtype = JSONBOID;
@@ -4135,7 +4135,7 @@ transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 		aggtype = JSONOID;
 	}
 
-	return transformJsonAggCtor(pstate, &agg->ctor, &returning, args, aggfnname,
+	return transformJsonAggCtor(pstate, &agg->ctor, returning, args, aggfnname,
 								aggtype, JSCTOR_JSON_OBJECTAGG,
 								agg->unique, agg->absent_on_null);
 }
@@ -4150,16 +4150,17 @@ transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 static Node *
 transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
 {
-	JsonReturning returning;
+	JsonReturning *returning;
 	Node	   *arg;
 	const char *aggfnname;
 	Oid			aggtype;
 
-	transformJsonOutput(pstate, agg->ctor.output, true, &returning);
-
 	arg = transformJsonValueExpr(pstate, agg->arg, JS_FORMAT_DEFAULT);
 
-	if (returning.format.type == JS_FORMAT_JSONB)
+	returning = transformJsonCtorOutput(pstate, agg->ctor.output,
+										list_make1(arg));
+
+	if (returning->format->format == JS_FORMAT_JSONB)
 	{
 		aggfnname = agg->absent_on_null ?
 			"pg_catalog.jsonb_agg_strict" : "pg_catalog.jsonb_agg";
@@ -4172,7 +4173,7 @@ transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
 		aggtype = JSONOID;
 	}
 
-	return transformJsonAggCtor(pstate, &agg->ctor, &returning, list_make1(arg),
+	return transformJsonAggCtor(pstate, &agg->ctor, returning, list_make1(arg),
 								aggfnname, aggtype, JSCTOR_JSON_ARRAYAGG,
 								false, agg->absent_on_null);
 }

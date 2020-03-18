@@ -9402,7 +9402,7 @@ get_json_ctor_options(JsonCtorExpr *ctor, StringInfo buf)
 	if (ctor->unique)
 		appendStringInfoString(buf, " WITH UNIQUE KEYS");
 
-	get_json_returning(&ctor->returning, buf, true);
+	get_json_returning(ctor->returning, buf, true);
 }
 
 static void
