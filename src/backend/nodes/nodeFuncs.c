@@ -2604,6 +2604,7 @@ expression_tree_mutator(Node *node,
 		case T_NextValueExpr:
 		case T_RangeTblRef:
 		case T_SortGroupClause:
+		case T_JsonFormat:
 			return (Node *) copyObject(node);
 		case T_WithCheckOption:
 			{
@@ -3198,6 +3199,16 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_JsonReturning:
+			{
+				JsonReturning *jr = (JsonReturning *) node;
+				JsonReturning *newnode;
+
+				FLATCOPY(newnode, jr, JsonReturning);
+				MUTATE(newnode->format, jr->format, JsonFormat *);
+
+				return (Node *) newnode;
+			}
 		case T_JsonValueExpr:
 			{
 				JsonValueExpr *jve = (JsonValueExpr *) node;
@@ -3206,6 +3217,7 @@ expression_tree_mutator(Node *node,
 				FLATCOPY(newnode, jve, JsonValueExpr);
 				MUTATE(newnode->raw_expr, jve->raw_expr, Expr *);
 				MUTATE(newnode->formatted_expr, jve->formatted_expr, Expr *);
+				MUTATE(newnode->format, jve->format, JsonFormat *);
 
 				return (Node *) newnode;
 			}
@@ -3904,6 +3916,8 @@ raw_expression_tree_walker(Node *node,
 			break;
 		case T_CommonTableExpr:
 			return walker(((CommonTableExpr *) node)->ctequery, context);
+		case T_JsonReturning:
+			return walker(((JsonReturning *) node)->format, context);
 		case T_JsonValueExpr:
 			{
 				JsonValueExpr *jve = (JsonValueExpr *) node;
@@ -3911,6 +3925,8 @@ raw_expression_tree_walker(Node *node,
 				if (walker(jve->raw_expr, context))
 					return true;
 				if (walker(jve->formatted_expr, context))
+					return true;
+				if (walker(jve->format, context))
 					return true;
 			}
 			break;
