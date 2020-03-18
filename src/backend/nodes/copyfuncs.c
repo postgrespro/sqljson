@@ -2423,7 +2423,7 @@ _copyJsonArrayQueryCtor(const JsonArrayQueryCtor *from)
 
 	COPY_NODE_FIELD(query);
 	COPY_NODE_FIELD(output);
-	COPY_SCALAR_FIELD(format);
+	COPY_NODE_FIELD(format);
 	COPY_SCALAR_FIELD(absent_on_null);
 	COPY_LOCATION_FIELD(location);
 

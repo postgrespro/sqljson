@@ -14846,6 +14846,7 @@ json_array_constructor:
 				{
 					JsonArrayQueryCtor *n = makeNode(JsonArrayQueryCtor);
 					n->query = $3;
+					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 					/* n->format = $4; */
 					n->absent_on_null = true /* $5 */;
 					n->output = (JsonOutput *) $4;

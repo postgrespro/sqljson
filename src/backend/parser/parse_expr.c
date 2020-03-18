@@ -4299,7 +4299,7 @@ transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor)
 	jsctor = makeNode(JsonCtorExpr);
 	jsctor->args = args;
 	jsctor->type = JSCTOR_JSON_ARRAY;
-	jsctor->returning = transformJsonOutput(pstate, ctor->output, true);
+	jsctor->returning = transformJsonCtorOutput(pstate, ctor->output, args);
 	jsctor->unique = false;
 	jsctor->absent_on_null = ctor->absent_on_null;
 	jsctor->location = ctor->location;

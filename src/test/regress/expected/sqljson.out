@@ -364,9 +364,9 @@ LINE 1: SELECT JSON_ARRAY(RETURNING bytea FORMAT JSON ENCODING UTF32...
                                           ^
 HINT:  only UTF8 JSON encoding is supported
 SELECT JSON_ARRAY('aaa', 111, true, array[1,2,3], NULL, json '{"a": [1]}', jsonb '["a",3]');
-                    json_array                     
----------------------------------------------------
- ["aaa", 111, true, [1,2,3], {"a": [1]}, ["a", 3]]
+                     json_array                      
+-----------------------------------------------------
+ ["aaa", 111, true, [1, 2, 3], {"a": [1]}, ["a", 3]]
 (1 row)
 
 SELECT JSON_ARRAY('a',  NULL, 'b' NULL   ON NULL);
