@@ -817,11 +817,27 @@ makeVacuumRelation(RangeVar *relation, Oid oid, List *va_cols)
 }
 
 /*
+ * makeJsonFormat -
+ *	  creates a JsonFormat node
+ */
+JsonFormat *
+makeJsonFormat(JsonFormatType type, JsonEncoding encoding, int location)
+{
+	JsonFormat *jf = makeNode(JsonFormat);
+
+	jf->format = type;
+	jf->encoding = encoding;
+	jf->location = location;
+
+	return jf;
+}
+
+/*
  * makeJsonValueExpr -
  *	  creates a JsonValueExpr node
  */
 JsonValueExpr *
-makeJsonValueExpr(Expr *expr, JsonFormat format)
+makeJsonValueExpr(Expr *expr, JsonFormat *format)
 {
 	JsonValueExpr *jve = makeNode(JsonValueExpr);
 

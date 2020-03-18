@@ -220,7 +220,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	JoinType			jtype;
 	DropBehavior		dbehavior;
 	OnCommitAction		oncommit;
-	JsonFormat			jsformat;
 	List				*list;
 	Node				*node;
 	Value				*value;
@@ -600,14 +599,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <node>		json_value_expr
+%type <node>		json_format_clause_opt
+					json_representation
+					json_value_expr
 					json_output_clause_opt
 
 %type <ival>		json_encoding
 					json_encoding_clause_opt
-
-%type <jsformat>	json_format_clause_opt
-					json_representation
 
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
@@ -14662,18 +14660,14 @@ json_format_clause_opt:
 				}
 			| /* EMPTY */
 				{
-					$$.type = JS_FORMAT_DEFAULT;
-					$$.encoding = JS_ENC_DEFAULT;
-					$$.location = -1;
+					$$ = (Node *) makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 				}
 		;
 
 json_representation:
 			JSON json_encoding_clause_opt
 				{
-					$$.type = JS_FORMAT_JSON;
-					$$.encoding = $2;
-					$$.location = @1;
+					$$ = (Node *) makeJsonFormat(JS_FORMAT_JSON, $2, @1);
 				}
 		/*	| implementation_defined_JSON_representation_option (BSON, AVRO etc) */
 		;

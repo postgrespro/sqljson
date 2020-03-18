@@ -1218,9 +1218,10 @@ typedef enum JsonFormatType
  */
 typedef struct JsonFormat
 {
-	JsonFormatType	type;		/* format type */
-	JsonEncoding	encoding;	/* JSON encoding */
-	int				location;	/* token location, or -1 if unknown */
+	NodeTag		type;
+	JsonFormatType format;		/* format type */
+	JsonEncoding encoding;		/* JSON encoding */
+	int			location;		/* token location, or -1 if unknown */
 } JsonFormat;
 
 /*
@@ -1229,10 +1230,22 @@ typedef struct JsonFormat
  */
 typedef struct JsonReturning
 {
-	JsonFormat	format;			/* output JSON format */
+	NodeTag		type;
+	JsonFormat *format;			/* output JSON format */
 	Oid			typid;			/* target type Oid */
 	int32		typmod;			/* target type modifier */
 } JsonReturning;
+
+/*
+ * JsonValueExpr -
+ *		representation of JSON value expression (expr [FORMAT json_format])
+ */
+typedef struct JsonValueExpr
+{
+	NodeTag		type;
+	Expr	   *expr;			/* raw expression */
+	JsonFormat *format;			/* FORMAT clause, if specified */
+} JsonValueExpr;
 
 /* ----------------
  * NullTest

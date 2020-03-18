@@ -1499,17 +1499,6 @@ typedef struct JsonOutput
 	JsonReturning returning;	/* RETURNING FORMAT clause and type Oids */
 } JsonOutput;
 
-/*
- * JsonValueExpr -
- *		representation of JSON value expression (expr [FORMAT json_format])
- */
-typedef struct JsonValueExpr
-{
-	NodeTag		type;
-	Expr	   *expr;			/* raw expression */
-	JsonFormat  format;			/* FORMAT clause, if specified */
-} JsonValueExpr;
-
 
 /*****************************************************************************
  *		Raw Grammar Output Statements
