@@ -3584,7 +3584,7 @@ getJsonEncodingConst(JsonFormat *format)
 	Name		encname = palloc(sizeof(NameData));
 
 	if (!format ||
-		format->type == JS_FORMAT_DEFAULT ||
+		format->format == JS_FORMAT_DEFAULT ||
 		format->encoding == JS_ENC_DEFAULT)
 		encoding = JS_ENC_UTF8;
 	else
@@ -3620,7 +3620,7 @@ makeJsonByteaToTextConversion(Node *expr, JsonFormat *format, int location)
 	FuncExpr   *fexpr = makeFuncExpr(F_PG_CONVERT_FROM, TEXTOID,
 									 list_make2(expr, encoding),
 									 InvalidOid, InvalidOid,
-									 COERCE_INTERNAL_CAST);
+									 COERCE_EXPLICIT_CALL);
 
 	fexpr->location = location;
 
@@ -3667,13 +3667,13 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 
 	get_type_category_preferred(exprtype, &typcategory, &typispreferred);
 
-	if (ve->format.type != JS_FORMAT_DEFAULT)
+	if (ve->format->format != JS_FORMAT_DEFAULT)
 	{
-		if (ve->format.encoding != JS_ENC_DEFAULT && exprtype != BYTEAOID)
+		if (ve->format->encoding != JS_ENC_DEFAULT && exprtype != BYTEAOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("JSON ENCODING clause is only allowed for bytea input type"),
-					 parser_errposition(pstate, ve->format.location)));
+					 parser_errposition(pstate, ve->format->location)));
 
 		if (exprtype == JSONOID || exprtype == JSONBOID)
 		{
@@ -3683,7 +3683,7 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 					 parser_errposition(pstate, ve->format->location)));
 		}
 		else
-			format = ve->format.type;
+			format = ve->format->format;
 	}
 	else if (exprtype == JSONOID || exprtype == JSONBOID)
 		format = JS_FORMAT_DEFAULT;	/* do not format json[b] types */
@@ -3701,16 +3701,16 @@ transformJsonValueExpr(ParseState *pstate, JsonValueExpr *ve,
 		if (exprtype != BYTEAOID && typcategory != TYPCATEGORY_STRING)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg(ve->format.type == JS_FORMAT_DEFAULT ?
+					 errmsg(ve->format->format == JS_FORMAT_DEFAULT ?
 							"cannot use non-string types with implicit FORMAT JSON clause" :
 							"cannot use non-string types with explicit FORMAT JSON clause"),
-					 parser_errposition(pstate, ve->format.location >= 0 ?
-										ve->format.location : location)));
+					 parser_errposition(pstate, ve->format->location >= 0 ?
+										ve->format->location : location)));
 
 		/* Convert encoded JSON text from bytea. */
 		if (format == JS_FORMAT_JSON && exprtype == BYTEAOID)
 		{
-			expr = makeJsonByteaToTextConversion(expr, &ve->format, location);
+			expr = makeJsonByteaToTextConversion(expr, ve->format, location);
 			exprtype = TEXTOID;
 		}
 

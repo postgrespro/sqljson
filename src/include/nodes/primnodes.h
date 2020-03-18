@@ -1243,7 +1243,8 @@ typedef struct JsonReturning
 typedef struct JsonValueExpr
 {
 	NodeTag		type;
-	Expr	   *expr;			/* raw expression */
+	Expr	   *raw_expr;		/* raw expression */
+	Expr	   *formatted_expr;	/* formatted expression or NULL */
 	JsonFormat *format;			/* FORMAT clause, if specified */
 } JsonValueExpr;
 

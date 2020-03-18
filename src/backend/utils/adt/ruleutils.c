@@ -7899,16 +7899,16 @@ get_rule_expr_paren(Node *node, deparse_context *context,
 }
 
 /*
- * get_json_format			- Parse back a JsonFormat structure
+ * get_json_format			- Parse back a JsonFormat node
  */
 static void
 get_json_format(JsonFormat *format, deparse_context *context)
 {
-	if (format->type == JS_FORMAT_DEFAULT)
+	if (format->format == JS_FORMAT_DEFAULT)
 		return;
 
 	appendStringInfoString(context->buf,
-						   format->type == JS_FORMAT_JSONB ?
+						   format->format == JS_FORMAT_JSONB ?
 						   " FORMAT JSONB" : " FORMAT JSON");
 
 	if (format->encoding != JS_ENC_DEFAULT)
@@ -7936,9 +7936,9 @@ get_json_returning(JsonReturning *returning, deparse_context *context,
 											  returning->typmod));
 
 	if (!json_format_by_default ||
-		returning->format.type !=
+		returning->format->format !=
 			(returning->typid == JSONBOID ? JS_FORMAT_JSONB : JS_FORMAT_JSON))
-		get_json_format(&returning->format, context);
+		get_json_format(returning->format, context);
 }
 
 /* ----------
@@ -9118,7 +9118,7 @@ get_rule_expr(Node *node, deparse_context *context,
 				JsonValueExpr *jve = (JsonValueExpr *) node;
 
 				get_rule_expr((Node *) jve->raw_expr, context, false);
-				get_json_format(&jve->format, context);
+				get_json_format(jve->format, context);
 			}
 			break;
 
