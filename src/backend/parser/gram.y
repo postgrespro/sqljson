@@ -14696,7 +14696,7 @@ json_func_expr:
 json_value_expr:
 			a_expr json_format_clause_opt
 			{
-				$$ = (Node *) makeJsonValueExpr((Expr *) $1, $2);
+				$$ = (Node *) makeJsonValueExpr((Expr *) $1, castNode(JsonFormat, $2));
 			}
 		;
 
@@ -14704,7 +14704,7 @@ json_format_clause_opt:
 			FORMAT json_representation
 				{
 					$$ = $2;
-					$$.location = @1;
+					castNode(JsonFormat, $$)->location = @1;
 				}
 			| /* EMPTY */
 				{
@@ -14734,7 +14734,8 @@ json_output_clause_opt:
 				{
 					JsonOutput *n = makeNode(JsonOutput);
 					n->typeName = $2;
-					n->returning.format = $3;
+					n->returning = makeNode(JsonReturning);
+					n->returning->format = (JsonFormat *) $3;
 					$$ = (Node *) n;
 				}
 			| /* EMPTY */							{ $$ = NULL; }

@@ -1496,7 +1496,7 @@ typedef struct JsonOutput
 {
 	NodeTag		type;
 	TypeName   *typeName;		/* RETURNING type name, if specified */
-	JsonReturning returning;	/* RETURNING FORMAT clause and type Oids */
+	JsonReturning *returning;	/* RETURNING FORMAT clause and type Oids */
 } JsonOutput;
 
 /*
@@ -1547,7 +1547,7 @@ typedef struct JsonArrayQueryCtor
 	NodeTag		type;
 	Node	   *query;			/* subquery */
 	JsonOutput *output;			/* RETURNING clause, if specified  */
-	JsonFormat	format;			/* FORMAT clause for subquery, if specified */
+	JsonFormat *format;			/* FORMAT clause for subquery, if specified */
 	bool		absent_on_null;	/* skip NULL elements? */
 	int			location;		/* token location, or -1 if unknown */
 } JsonArrayQueryCtor;
