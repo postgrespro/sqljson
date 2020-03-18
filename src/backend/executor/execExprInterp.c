@@ -1550,19 +1550,35 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		EEO_CASE(EEOP_JSON_CTOR)
 		{
 			Datum		res;
-			bool		is_jsonb = op->d.json_ctor.ctor->returning->format->format == JS_FORMAT_JSONB;
+			JsonCtorExpr *ctor = op->d.json_ctor.ctor;
+			bool		is_jsonb = ctor->returning->format->format == JS_FORMAT_JSONB;
+			bool		isnull = false;
 
-			res = (is_jsonb ?
-				   jsonb_build_object_worker :
-				   json_build_object_worker)(op->d.json_ctor.nargs,
-											 op->d.json_ctor.arg_values,
-											 op->d.json_ctor.arg_nulls,
-											 op->d.json_ctor.arg_types,
-											 op->d.json_ctor.ctor->absent_on_null,
-											 op->d.json_ctor.ctor->unique);
+			if (ctor->type == JSCTOR_JSON_ARRAY)
+				res = (is_jsonb ?
+					   jsonb_build_array_worker :
+					   json_build_array_worker)(op->d.json_ctor.nargs,
+												op->d.json_ctor.arg_values,
+												op->d.json_ctor.arg_nulls,
+												op->d.json_ctor.arg_types,
+												op->d.json_ctor.ctor->absent_on_null);
+			else if (ctor->type == JSCTOR_JSON_OBJECT)
+				res = (is_jsonb ?
+					   jsonb_build_object_worker :
+					   json_build_object_worker)(op->d.json_ctor.nargs,
+												 op->d.json_ctor.arg_values,
+												 op->d.json_ctor.arg_nulls,
+												 op->d.json_ctor.arg_types,
+												 op->d.json_ctor.ctor->absent_on_null,
+												 op->d.json_ctor.ctor->unique);
+			else
+			{
+				res = (Datum) 0;
+				elog(ERROR, "invalid JsonCtorExpr type %d", ctor->type);
+			}
 
 			*op->resvalue = res;
-			*op->resnull = false;
+			*op->resnull = isnull;
 
 			EEO_NEXT();
 		}

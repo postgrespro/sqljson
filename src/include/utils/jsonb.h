@@ -412,5 +412,7 @@ extern const char *JsonbTypeName(JsonbValue *jb);
 extern Datum jsonb_build_object_worker(int nargs, Datum *args, bool *nulls,
 									   Oid *types, bool absent_on_null,
 									   bool unique_keys);
+extern Datum jsonb_build_array_worker(int nargs, Datum *args, bool *nulls,
+									  Oid *types, bool absent_on_null);
 
 #endif							/* __JSONB_H__ */
