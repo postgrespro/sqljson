@@ -9386,7 +9386,6 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 {
 	StringInfo	buf = context->buf;
 	const char *funcname;
-	int			firstarg;
 	int			nargs;
 	ListCell   *lc;
 
@@ -9394,11 +9393,9 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 	{
 		case JSCTOR_JSON_OBJECT:
 			funcname = "JSON_OBJECT";
-			firstarg = 2;
 			break;
 		case JSCTOR_JSON_ARRAY:
 			funcname = "JSON_ARRAY";
-			firstarg = 1;
 			break;
 		case JSCTOR_JSON_OBJECTAGG:
 			funcname = "JSON_OBJECTAGG";
@@ -9415,20 +9412,19 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 	appendStringInfo(buf, "%s(", funcname);
 
 	nargs = 0;
-	foreach(lc, ctor->func->args)
+	foreach(lc, ctor->args)
 	{
-		if (nargs++ < firstarg)
-			continue;
-
-		if (nargs > firstarg + 1)
+		if (nargs > 0)
 		{
 			const char *sep = ctor->type == JSCTOR_JSON_OBJECT &&
-				!((nargs - firstarg) % 2) ? " : " : ", ";
+				(nargs % 2) != 0 ? " : " : ", ";
 
 			appendStringInfoString(buf, sep);
 		}
 
 		get_rule_expr((Node *) lfirst(lc), context, true);
+
+		nargs++;
 	}
 
 	if (ctor->absent_on_null)

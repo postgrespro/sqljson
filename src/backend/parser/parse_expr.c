@@ -3963,21 +3963,13 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 static Node *
 transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 {
-	JsonReturning *returning;
 	JsonCtorExpr *jsctor;
-	FuncExpr   *fexpr;
 	List	   *args = NIL;
-	Oid			funcid;
-	Oid			funcrettype;
 
 	/* transform key-value pairs, if any */
 	if (ctor->exprs)
 	{
 		ListCell   *lc;
-
-		/* append the first two arguments */
-		args = lappend(args, makeBoolConst(ctor->absent_on_null, false));
-		args = lappend(args, makeBoolConst(ctor->unique, false));
 
 		/* transform and append key-value arguments */
 		foreach(lc, ctor->exprs)
@@ -3992,29 +3984,14 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 		}
 	}
 
-	returning = transformJsonCtorOutput(pstate, ctor->output, args);
-
-	if (returning->format->format == JS_FORMAT_JSONB)
-	{
-		funcid = args ? F_JSONB_BUILD_OBJECT_EXT : F_JSONB_BUILD_OBJECT_NOARGS;
-		funcrettype = JSONBOID;
-	}
-	else
-	{
-		funcid = args ? F_JSON_BUILD_OBJECT_EXT : F_JSON_BUILD_OBJECT_NOARGS;
-		funcrettype = JSONOID;
-	}
-
-	fexpr = makeFuncExpr(funcid, funcrettype, args,
-						 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-	fexpr->location = ctor->location;
-
 	jsctor = makeNode(JsonCtorExpr);
-	jsctor->func = fexpr;
+	jsctor->args = args;
+	jsctor->func = NULL;
 	jsctor->type = JSCTOR_JSON_OBJECT;
-	jsctor->returning = returning;
+	jsctor->returning = transformJsonCtorOutput(pstate, ctor->output, args);
 	jsctor->unique = ctor->unique;
 	jsctor->absent_on_null = ctor->absent_on_null;
+	jsctor->location = ctor->location;
 
-	return coerceJsonFuncExpr(pstate, (Node *) jsctor, returning, true);
+	return coerceJsonFuncExpr(pstate, (Node *) jsctor, jsctor->returning, true);
 }

@@ -409,5 +409,8 @@ extern char *JsonbToCStringIndent(StringInfo out, JsonbContainer *in,
 extern bool JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res);
 extern const char *JsonbTypeName(JsonbValue *jb);
 
+extern Datum jsonb_build_object_worker(int nargs, Datum *args, bool *nulls,
+									   Oid *types, bool absent_on_null,
+									   bool unique_keys);
 
 #endif							/* __JSONB_H__ */

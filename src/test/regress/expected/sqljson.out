@@ -110,7 +110,7 @@ ERROR:  JSON ENCODING clause is only allowed for bytea input type
 LINE 1: SELECT JSON_OBJECT('foo': NULL::jsonb FORMAT JSON ENCODING U...
                                               ^
 SELECT JSON_OBJECT(NULL: 1);
-ERROR:  argument 3 cannot be null
+ERROR:  argument 1 cannot be null
 HINT:  Object keys should be text.
 SELECT JSON_OBJECT('a': 2 + 3);
  json_object 

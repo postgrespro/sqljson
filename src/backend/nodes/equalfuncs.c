@@ -851,11 +851,13 @@ _equalJsonValueExpr(const JsonValueExpr *a, const JsonValueExpr *b)
 static bool
 _equalJsonCtorExpr(const JsonCtorExpr *a, const JsonCtorExpr *b)
 {
+	COMPARE_NODE_FIELD(args);
 	COMPARE_NODE_FIELD(func);
 	COMPARE_SCALAR_FIELD(type);
 	COMPARE_NODE_FIELD(returning);
 	COMPARE_SCALAR_FIELD(absent_on_null);
 	COMPARE_SCALAR_FIELD(unique);
+	COMPARE_LOCATION_FIELD(location);
 
 	return true;
 }

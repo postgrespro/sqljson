@@ -2131,8 +2131,45 @@ ExecInitExprRec(Expr *node, ExprState *state,
 			}
 
 		case T_JsonCtorExpr:
-			ExecInitExprRec(&((JsonCtorExpr *) node)->func->xpr, state, resv,
-							resnull);
+			{
+				JsonCtorExpr *ctor = (JsonCtorExpr *) node;
+				List	   *args = ctor->args;
+				ListCell   *lc;
+				int			nargs = list_length(args);
+				int			argno = 0;
+
+				scratch.opcode = EEOP_JSON_CTOR;
+				scratch.d.json_ctor.ctor = ctor;
+				scratch.d.json_ctor.arg_values = palloc(sizeof(Datum) * nargs);
+				scratch.d.json_ctor.arg_nulls = palloc(sizeof(bool) * nargs);
+				scratch.d.json_ctor.arg_types = palloc(sizeof(Oid) * nargs);
+				scratch.d.json_ctor.nargs = nargs;
+
+				foreach(lc, args)
+				{
+					Expr	   *arg = (Expr *) lfirst(lc);
+
+					scratch.d.json_ctor.arg_types[argno] = exprType((Node *) arg);
+
+					if (IsA(arg, Const))
+					{
+						/* Don't evaluate const arguments every round */
+						Const	   *con = (Const *) arg;
+
+						scratch.d.json_ctor.arg_values[argno] = con->constvalue;
+						scratch.d.json_ctor.arg_nulls[argno] = con->constisnull;
+					}
+					else
+					{
+						ExecInitExprRec(arg, state,
+										&scratch.d.json_ctor.arg_values[argno],
+										&scratch.d.json_ctor.arg_nulls[argno]);
+					}
+					argno++;
+				}
+
+				ExprEvalPushStep(state, &scratch);
+			}
 			break;
 
 		default:

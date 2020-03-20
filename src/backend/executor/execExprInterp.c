@@ -71,6 +71,8 @@
 #include "utils/date.h"
 #include "utils/datum.h"
 #include "utils/expandedrecord.h"
+#include "utils/json.h"
+#include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
@@ -432,6 +434,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_WINDOW_FUNC,
 		&&CASE_EEOP_SUBPLAN,
 		&&CASE_EEOP_ALTERNATIVE_SUBPLAN,
+		&&CASE_EEOP_JSON_CTOR,
 		&&CASE_EEOP_AGG_STRICT_DESERIALIZE,
 		&&CASE_EEOP_AGG_DESERIALIZE,
 		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_ARGS,
@@ -1540,6 +1543,26 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			/* too complex for an inline implementation */
 			ExecEvalAlternativeSubPlan(state, op, econtext);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_JSON_CTOR)
+		{
+			Datum		res;
+			bool		is_jsonb = op->d.json_ctor.ctor->returning->format->format == JS_FORMAT_JSONB;
+
+			res = (is_jsonb ?
+				   jsonb_build_object_worker :
+				   json_build_object_worker)(op->d.json_ctor.nargs,
+											 op->d.json_ctor.arg_values,
+											 op->d.json_ctor.arg_nulls,
+											 op->d.json_ctor.arg_types,
+											 op->d.json_ctor.ctor->absent_on_null,
+											 op->d.json_ctor.ctor->unique);
+
+			*op->resvalue = res;
+			*op->resnull = false;
 
 			EEO_NEXT();
 		}

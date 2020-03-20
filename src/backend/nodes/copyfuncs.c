@@ -2302,11 +2302,13 @@ _copyJsonCtorExpr(const JsonCtorExpr *from)
 {
 	JsonCtorExpr *newnode = makeNode(JsonCtorExpr);
 
+	COPY_NODE_FIELD(args);
 	COPY_NODE_FIELD(func);
 	COPY_SCALAR_FIELD(type);
 	COPY_NODE_FIELD(returning);
 	COPY_SCALAR_FIELD(absent_on_null);
 	COPY_SCALAR_FIELD(unique);
+	COPY_LOCATION_FIELD(location);
 
 	return newnode;
 }

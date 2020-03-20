@@ -219,6 +219,7 @@ typedef enum ExprEvalOp
 	EEOP_WINDOW_FUNC,
 	EEOP_SUBPLAN,
 	EEOP_ALTERNATIVE_SUBPLAN,
+	EEOP_JSON_CTOR,
 
 	/* aggregation related nodes */
 	EEOP_AGG_STRICT_DESERIALIZE,
@@ -640,6 +641,17 @@ typedef struct ExprEvalStep
 			int			transno;
 			int			setoff;
 		}			agg_trans;
+
+		/* for EEOP_JSON_CTOR */
+		struct
+		{
+			JsonCtorExpr *ctor;
+			Datum	   *arg_values;
+			bool	   *arg_nulls;
+			Oid		   *arg_types;
+			int			nargs;
+		}			json_ctor;
+
 	}			d;
 } ExprEvalStep;
 

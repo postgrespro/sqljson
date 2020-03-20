@@ -1121,25 +1121,14 @@ catenate_stringinfo_string(StringInfo buffer, const char *addon)
 	return result;
 }
 
-static Datum
-json_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
+Datum
+json_build_object_worker(int nargs, Datum *args, bool *nulls, Oid *types,
 						 bool absent_on_null, bool unique_keys)
 {
-	int			nargs = PG_NARGS();
 	int			i;
 	const char *sep = "";
 	StringInfo	result;
-	Datum	   *args;
-	bool	   *nulls;
-	Oid		   *types;
 	JsonUniqueBuilderState unique_check;
-
-	/* fetch argument values to build the object */
-	nargs = extract_variadic_args(fcinfo, first_vararg, false,
-								  &args, &types, &nulls);
-
-	if (nargs < 0)
-		PG_RETURN_NULL();
 
 	if (nargs % 2 != 0)
 		ereport(ERROR,
@@ -1184,7 +1173,7 @@ json_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
 		if (nulls[i])
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument %d cannot be null", first_vararg + i + 1),
+					 errmsg("argument %d cannot be null",  i + 1),
 					 errhint("Object keys should be text.")));
 
 		/* save key offset before key appending */
@@ -1217,7 +1206,7 @@ json_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
 	if (unique_keys)
 		json_unique_builder_free(&unique_check);
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+	return PointerGetDatum(cstring_to_text_with_len(result->data, result->len));
 }
 
 /*
@@ -1226,17 +1215,17 @@ json_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
 Datum
 json_build_object(PG_FUNCTION_ARGS)
 {
-	return json_build_object_worker(fcinfo, 0, false, false);
-}
+	Datum	   *args;
+	bool	   *nulls;
+	Oid		   *types;
+	/* build argument values to build the object */
+	int			nargs = extract_variadic_args(fcinfo, 0, true,
+											  &args, &types, &nulls);
 
-/*
- * SQL function json_build_object_ext(absent_on_null bool, unique bool, variadic "any")
- */
-Datum
-json_build_object_ext(PG_FUNCTION_ARGS)
-{
-	return json_build_object_worker(fcinfo, 2,
-									PG_GETARG_BOOL(0), PG_GETARG_BOOL(1));
+	if (nargs < 0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_DATUM(json_build_object_worker(nargs, args, nulls, types, false, false));
 }
 
 /*

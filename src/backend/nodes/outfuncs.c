@@ -1744,11 +1744,13 @@ _outJsonCtorExpr(StringInfo str, const JsonCtorExpr *node)
 {
 	WRITE_NODE_TYPE("JSONCTOREXPR");
 
+	WRITE_NODE_FIELD(args);
 	WRITE_NODE_FIELD(func);
 	WRITE_INT_FIELD(type);
 	WRITE_NODE_FIELD(returning);
 	WRITE_BOOL_FIELD(unique);
 	WRITE_BOOL_FIELD(absent_on_null);
+	WRITE_LOCATION_FIELD(location);
 }
 
 /*****************************************************************************

@@ -1396,11 +1396,13 @@ _readJsonCtorExpr(void)
 {
 	READ_LOCALS(JsonCtorExpr);
 
+	READ_NODE_FIELD(args);
 	READ_NODE_FIELD(func);
 	READ_INT_FIELD(type);
 	READ_NODE_FIELD(returning);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(absent_on_null);
+	READ_LOCATION_FIELD(location);
 
 	READ_DONE();
 }

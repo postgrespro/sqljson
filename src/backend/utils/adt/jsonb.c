@@ -1153,23 +1153,12 @@ to_jsonb(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
 }
 
-static Datum
-jsonb_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
+Datum
+jsonb_build_object_worker(int nargs, Datum *args, bool *nulls, Oid *types,
 						  bool absent_on_null, bool unique_keys)
 {
-	int			nargs;
 	int			i;
 	JsonbInState result;
-	Datum	   *args;
-	bool	   *nulls;
-	Oid		   *types;
-
-	/* build argument values to build the object */
-	nargs = extract_variadic_args(fcinfo, first_vararg, true,
-								  &args, &types, &nulls);
-
-	if (nargs < 0)
-		PG_RETURN_NULL();
 
 	if (nargs % 2 != 0)
 		ereport(ERROR,
@@ -1193,8 +1182,7 @@ jsonb_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
 		if (nulls[i])
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument %d: key must not be null",
-							first_vararg + i + 1)));
+					 errmsg("argument %d: key must not be null", i + 1)));
 
 		/* skip null values if absent_on_null */
 		skip = absent_on_null && nulls[i + 1];
@@ -1211,7 +1199,7 @@ jsonb_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
 
 	result.res = pushJsonbValue(&result.parseState, WJB_END_OBJECT, NULL);
 
-	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
+	return JsonbPGetDatum(JsonbValueToJsonb(result.res));
 }
 
 /*
@@ -1220,17 +1208,17 @@ jsonb_build_object_worker(FunctionCallInfo fcinfo, int first_vararg,
 Datum
 jsonb_build_object(PG_FUNCTION_ARGS)
 {
-	return jsonb_build_object_worker(fcinfo, 0, false, false);
-}
+	Datum	   *args;
+	bool	   *nulls;
+	Oid		   *types;
+	/* build argument values to build the object */
+	int			nargs = extract_variadic_args(fcinfo, 0, true,
+											  &args, &types, &nulls);
 
-/*
- * SQL function jsonb_build_object_ext(absent_on_null bool, unique bool, variadic "any")
- */
-Datum
-jsonb_build_object_ext(PG_FUNCTION_ARGS)
-{
-	return jsonb_build_object_worker(fcinfo, 2,
-									 PG_GETARG_BOOL(0), PG_GETARG_BOOL(1));
+	if (nargs < 0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_DATUM(jsonb_build_object_worker(nargs, args, nulls, types, false, false));
 }
 
 /*
