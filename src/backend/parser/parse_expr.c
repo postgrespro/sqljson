@@ -4116,22 +4116,38 @@ transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 
 	key = transformExprRecurse(pstate, (Node *) agg->arg->key);
 	val = transformJsonValueExpr(pstate, agg->arg->value, JS_FORMAT_DEFAULT);
-
-	args = list_make4(key,
-					  val,
-					  makeBoolConst(agg->absent_on_null, false),
-					  makeBoolConst(agg->unique, false));
+	args = list_make2(key, val);
 
 	returning = transformJsonCtorOutput(pstate, agg->ctor.output, args);
 
 	if (returning->format->format == JS_FORMAT_JSONB)
 	{
-		aggfnname = "pg_catalog.jsonb_objectagg"; /* F_JSONB_OBJECTAGG */
+		if (agg->absent_on_null)
+			if (agg->unique)
+				aggfnname = "pg_catalog.jsonb_object_agg_unique_strict"; /* F_JSONB_OBJECT_AGG_UNIQUE_STRICT */
+			else
+				aggfnname = "pg_catalog.jsonb_object_agg_strict"; /* F_JSONB_OBJECT_AGG_STRICT */
+		else
+			if (agg->unique)
+				aggfnname = "pg_catalog.jsonb_object_agg_unique"; /* F_JSONB_OBJECT_AGG_UNIQUE */
+			else
+				aggfnname = "pg_catalog.jsonb_object_agg"; /* F_JSONB_OBJECT_AGG */
+
 		aggtype = JSONBOID;
 	}
 	else
 	{
-		aggfnname = "pg_catalog.json_objectagg"; /* F_JSON_OBJECTAGG; */
+		if (agg->absent_on_null)
+			if (agg->unique)
+				aggfnname = "pg_catalog.json_object_agg_unique_strict"; /* F_JSON_OBJECT_AGG_UNIQUE_STRICT */
+			else
+				aggfnname = "pg_catalog.json_object_agg_strict"; /* F_JSON_OBJECT_AGG_STRICT */
+		else
+			if (agg->unique)
+				aggfnname = "pg_catalog.json_object_agg_unique"; /* F_JSON_OBJECT_AGG_UNIQUE */
+			else
+				aggfnname = "pg_catalog.json_object_agg"; /* F_JSON_OBJECT_AGG */
+
 		aggtype = JSONOID;
 	}
 

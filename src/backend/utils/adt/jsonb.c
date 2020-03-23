@@ -1934,15 +1934,32 @@ jsonb_object_agg_transfn(PG_FUNCTION_ARGS)
 	return jsonb_object_agg_transfn_worker(fcinfo, false, false);
 }
 
+
 /*
- * jsonb_objectagg aggregate function
+ * jsonb_object_agg_strict aggregate function
  */
 Datum
-jsonb_objectagg_transfn(PG_FUNCTION_ARGS)
+jsonb_object_agg_strict_transfn(PG_FUNCTION_ARGS)
 {
-	return jsonb_object_agg_transfn_worker(fcinfo,
-										   PG_GETARG_BOOL(3),
-										   PG_GETARG_BOOL(4));
+	return jsonb_object_agg_transfn_worker(fcinfo, true, false);
+}
+
+/*
+ * jsonb_object_agg_unique aggregate function
+ */
+Datum
+jsonb_object_agg_unique_transfn(PG_FUNCTION_ARGS)
+{
+	return jsonb_object_agg_transfn_worker(fcinfo, false, true);
+}
+
+/*
+ * jsonb_object_agg_unique_strict aggregate function
+ */
+Datum
+jsonb_object_agg_unique_strict_transfn(PG_FUNCTION_ARGS)
+{
+	return jsonb_object_agg_transfn_worker(fcinfo, true, true);
 }
 
 Datum

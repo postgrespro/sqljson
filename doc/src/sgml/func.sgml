@@ -18562,6 +18562,29 @@ SELECT NULLIF(value, '(none)') ...
        </para></entry>
        <entry>No</entry>
       </row>
+      
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_agg_strict</primary>
+        </indexterm>
+        <function>json_agg_strict</function> ( <type>anyelement</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_agg_strict</primary>
+        </indexterm>
+        <function>jsonb_agg_strict</function> ( <type>anyelement</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the input values, skipping nulls, into a JSON array.
+        Values are converted to JSON as per <function>to_json</function>
+        or <function>to_jsonb</function>.
+       </para></entry>
+       <entry>No</entry>
+      </row>
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
@@ -18587,6 +18610,92 @@ SELECT NULLIF(value, '(none)') ...
         are coerced to text; value arguments are converted as
         per <function>to_json</function> or <function>to_jsonb</function>.
         Values can be null, but not keys.
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_object_agg_strict</primary>
+        </indexterm>
+        <function>json_object_agg_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_object_agg_strict</primary>
+        </indexterm>
+        <function>jsonb_object_agg_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the key/value pairs into a JSON object.  Key arguments
+        are coerced to text; value arguments are converted as
+        per <function>to_json</function> or <function>to_jsonb</function>.
+        Null values are skipped, keys can not be null.
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_object_agg_unique</primary>
+        </indexterm>
+        <function>json_object_agg_unique</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_object_agg_unique</primary>
+        </indexterm>
+        <function>jsonb_object_agg_unique</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the key/value pairs into a JSON object.  Key arguments
+        are coerced to text; value arguments are converted as
+        per <function>to_json</function> or <function>to_jsonb</function>.
+        Values can be null, but not keys.
+        In case of duplicate keys error is thrown.
+       </para></entry>
+       <entry>No</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>json_object_agg_unique_strict</primary>
+        </indexterm>
+        <function>json_object_agg_unique_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>json</returnvalue>
+       </para>
+       <para role="func_signature">
+        <indexterm>
+         <primary>jsonb_object_agg_unique_strict</primary>
+        </indexterm>
+        <function>jsonb_object_agg_unique_strict</function> (
+         <parameter>key</parameter> <type>"any"</type>,
+         <parameter>value</parameter> <type>"any"</type> )
+        <returnvalue>jsonb</returnvalue>
+       </para>
+       <para>
+        Collects all the key/value pairs into a JSON object.  Key arguments
+        are coerced to text; value arguments are converted as
+        per <function>to_json</function> or <function>to_jsonb</function>.
+        Null values are skipped, keys can not be null.
+        In case of duplicate keys error is thrown.
        </para></entry>
        <entry>No</entry>
       </row>

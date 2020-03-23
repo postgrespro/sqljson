@@ -545,7 +545,14 @@
   aggfinalfn => 'json_agg_finalfn', aggtranstype => 'internal' },
 { aggfnoid => 'json_object_agg', aggtransfn => 'json_object_agg_transfn',
   aggfinalfn => 'json_object_agg_finalfn', aggtranstype => 'internal' },
-{ aggfnoid => 'json_objectagg', aggtransfn => 'json_objectagg_transfn',
+{ aggfnoid => 'json_object_agg_unique',
+  aggtransfn => 'json_object_agg_unique_transfn',
+  aggfinalfn => 'json_object_agg_finalfn', aggtranstype => 'internal' },
+{ aggfnoid => 'json_object_agg_strict',
+  aggtransfn => 'json_object_agg_strict_transfn',
+  aggfinalfn => 'json_object_agg_finalfn', aggtranstype => 'internal' },
+{ aggfnoid => 'json_object_agg_unique_strict',
+  aggtransfn => 'json_object_agg_unique_strict_transfn',
   aggfinalfn => 'json_object_agg_finalfn', aggtranstype => 'internal' },
 
 # jsonb
@@ -555,7 +562,14 @@
   aggfinalfn => 'jsonb_agg_finalfn', aggtranstype => 'internal' },
 { aggfnoid => 'jsonb_object_agg', aggtransfn => 'jsonb_object_agg_transfn',
   aggfinalfn => 'jsonb_object_agg_finalfn', aggtranstype => 'internal' },
-{ aggfnoid => 'jsonb_objectagg', aggtransfn => 'jsonb_objectagg_transfn',
+{ aggfnoid => 'jsonb_object_agg_unique',
+  aggtransfn => 'jsonb_object_agg_unique_transfn',
+  aggfinalfn => 'jsonb_object_agg_finalfn', aggtranstype => 'internal' },
+{ aggfnoid => 'jsonb_object_agg_strict',
+  aggtransfn => 'jsonb_object_agg_strict_transfn',
+  aggfinalfn => 'jsonb_object_agg_finalfn', aggtranstype => 'internal' },
+{ aggfnoid => 'jsonb_object_agg_unique_strict',
+  aggtransfn => 'jsonb_object_agg_unique_strict_transfn',
   aggfinalfn => 'jsonb_object_agg_finalfn', aggtranstype => 'internal' },
 
 # ordered-set and hypothetical-set aggregates
