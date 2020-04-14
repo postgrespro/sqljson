@@ -2890,7 +2890,7 @@ JsonPathExists(Datum jb, JsonPath *jp, List *vars, bool *error)
 {
 	JsonPathExecResult res = executeJsonPath(jp, vars, EvalJsonPathVar,
 											 DatumGetJsonbP(jb), !error, NULL,
-											 false /* XXX */);
+											 true);
 
 	Assert(error || !jperIsError(res));
 
@@ -2911,7 +2911,7 @@ JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper, bool *empty,
 	int			count;
 
 	res = executeJsonPath(jp, vars, EvalJsonPathVar, DatumGetJsonbP(jb), !error,
-						  &found, false /* XXX */);
+						  &found, true);
 
 	Assert(error || !jperIsError(res));
 
@@ -2978,7 +2978,7 @@ JsonPathValue(Datum jb, JsonPath *jp, bool *empty, bool *error, List *vars)
 	int			count;
 
 	jper = executeJsonPath(jp, vars, EvalJsonPathVar, DatumGetJsonbP(jb), !error,
-						   &found, false /* XXX */);
+						   &found, true);
 
 	Assert(error || !jperIsError(jper));
 
