@@ -746,6 +746,7 @@
 # - Other Platforms and Clients -
 
 #transform_null_equals = off
+#sql_json = json # jsonb
 
 
 #------------------------------------------------------------------------------

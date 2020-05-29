@@ -22,6 +22,7 @@
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+#include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "utils/syscache.h"
@@ -296,7 +297,11 @@ format_type_extended(Oid type_oid, int32 typemod, bits16 flags)
 			break;
 
 		case JSONOID:
-			buf = pstrdup("json");
+			buf = pstrdup(SQLJSON_TYPE_IS_JSONB() ? "json text" : "json");
+			break;
+
+		case JSONBOID:
+			buf = pstrdup(SQLJSON_TYPE_IS_JSONB() ? "json" : "jsonb");
 			break;
 	}
 

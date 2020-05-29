@@ -439,4 +439,16 @@ extern Datum jsonb_build_object_worker(int nargs, Datum *args, bool *nulls,
 extern Datum jsonb_build_array_worker(int nargs, Datum *args, bool *nulls,
 									  Oid *types, bool absent_on_null);
 
+typedef enum SqlJsonType
+{
+	SQLJSON_TYPE_JSON = 0,
+	SQLJSON_TYPE_JSONB = 1
+} SqlJsonType;
+
+#define SQLJSON_TYPE_IS_JSONB() (sql_json_type == SQLJSON_TYPE_JSONB)
+#define SQLJSON_TYPE_OID() (SQLJSON_TYPE_IS_JSONB() ? JSONBOID : JSONOID)
+#define SQLJSON_TYPE_NAME() (SQLJSON_TYPE_IS_JSONB() ? "jsonb" : "json")
+
+extern int sql_json_type;	/* GUC */
+
 #endif							/* __JSONB_H__ */

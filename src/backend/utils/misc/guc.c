@@ -90,6 +90,7 @@
 #include "utils/bytea.h"
 #include "utils/float.h"
 #include "utils/guc_tables.h"
+#include "utils/jsonb.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/pg_lsn.h"
@@ -495,6 +496,12 @@ static struct config_enum_entry shared_memory_options[] = {
 #ifdef WIN32
 	{"windows", SHMEM_TYPE_WINDOWS, false},
 #endif
+	{NULL, 0, false}
+};
+
+const struct config_enum_entry sql_json_type_info[] = {
+	{"json", SQLJSON_TYPE_JSON, false},
+	{"jsonb", SQLJSON_TYPE_JSONB, false},
 	{NULL, 0, false}
 };
 
@@ -4759,6 +4766,18 @@ static struct config_enum ConfigureNamesEnum[] =
 		&ssl_max_protocol_version,
 		PG_TLS_ANY,
 		ssl_protocol_versions_info,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"sql_json", PGC_USERSET, COMPAT_OPTIONS_CLIENT,
+			gettext_noop("Sets what PostgreSQL type to use as an implementaion of SQL JSON type."),
+			gettext_noop("When turned on, jsonb type is mapped to SQL JSON type, "
+						 "json type is mapped to JSON TEXT type.")
+		},
+		&sql_json_type,
+		SQLJSON_TYPE_JSON,
+		sql_json_type_info,
 		NULL, NULL, NULL
 	},
 

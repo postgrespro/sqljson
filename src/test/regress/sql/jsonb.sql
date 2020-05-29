@@ -1280,3 +1280,41 @@ select '12345.0000000000000000000000000000000000000000000005'::jsonb::float8;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int2;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int4;
 select '12345.0000000000000000000000000000000000000000000005'::jsonb::int8;
+
+-- test mapping of jsonb to SQL/JSON JSON type
+select json(' { "aa": 1, "b" : 2 }');
+select json ' { "aa": 1, "b" : 2 }';
+select json text ' { "aa": 1, "b" : 2 }';
+
+create table test_json_as_json (js json, jb jsonb);
+\d test_json_as_json
+
+set sql_json = jsonb;
+
+select json(' { "aa": 1, "b" : 2 }');
+select json ' { "aa": 1, "b" : 2 }';
+select json text ' { "aa": 1, "b" : 2 }';
+
+\d test_json_as_json
+
+create table test_json_as_jsonb (js json, jb jsonb, jt json text);
+\d test_json_as_jsonb
+
+insert into test_json_as_jsonb values ('{ "a" : 1 }', '{ "a" : 1 }', '{ "a" : 1 }');
+
+select * from test_json_as_jsonb;
+
+select jsonb_object_field(js, 'a') from test_json_as_jsonb;
+select jsonb_object_field(jb, 'a') from test_json_as_jsonb;
+select jsonb_object_field(jt, 'a') from test_json_as_jsonb;
+select json_object_field(jt, 'a') from test_json_as_jsonb;
+
+set sql_json = json;
+\d test_json_as_jsonb
+
+select * from test_json_as_jsonb;
+
+select jsonb_object_field(js, 'a') from test_json_as_jsonb;
+select jsonb_object_field(jb, 'a') from test_json_as_jsonb;
+select jsonb_object_field(jt, 'a') from test_json_as_jsonb;
+select json_object_field(jt, 'a') from test_json_as_jsonb;

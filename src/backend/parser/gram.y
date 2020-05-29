@@ -63,6 +63,7 @@
 #include "storage/lmgr.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
+#include "utils/jsonb.h"
 #include "utils/numeric.h"
 #include "utils/xml.h"
 
@@ -12983,8 +12984,14 @@ interval_second:
 				}
 		;
 
+/* Mapping of PG jsonb types to SQL/JSON JSON type */
 JsonType:
 			JSON
+				{
+					$$ = SystemTypeName(SQLJSON_TYPE_NAME());
+					$$->location = @1;
+				}
+			| JSON TEXT_P
 				{
 					$$ = SystemTypeName("json");
 					$$->location = @1;

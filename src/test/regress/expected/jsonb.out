@@ -5014,3 +5014,133 @@ select '12345.0000000000000000000000000000000000000000000005'::jsonb::int8;
  12345
 (1 row)
 
+-- test mapping of jsonb to SQL/JSON JSON type
+select json(' { "aa": 1, "b" : 2 }');
+         json          
+-----------------------
+  { "aa": 1, "b" : 2 }
+(1 row)
+
+select json ' { "aa": 1, "b" : 2 }';
+         json          
+-----------------------
+  { "aa": 1, "b" : 2 }
+(1 row)
+
+select json text ' { "aa": 1, "b" : 2 }';
+         json          
+-----------------------
+  { "aa": 1, "b" : 2 }
+(1 row)
+
+create table test_json_as_json (js json, jb jsonb);
+\d test_json_as_json
+        Table "public.test_json_as_json"
+ Column | Type  | Collation | Nullable | Default 
+--------+-------+-----------+----------+---------
+ js     | json  |           |          | 
+ jb     | jsonb |           |          | 
+
+set sql_json = jsonb;
+select json(' { "aa": 1, "b" : 2 }');
+       jsonb       
+-------------------
+ {"b": 2, "aa": 1}
+(1 row)
+
+select json ' { "aa": 1, "b" : 2 }';
+       jsonb       
+-------------------
+ {"b": 2, "aa": 1}
+(1 row)
+
+select json text ' { "aa": 1, "b" : 2 }';
+         json          
+-----------------------
+  { "aa": 1, "b" : 2 }
+(1 row)
+
+\d test_json_as_json
+          Table "public.test_json_as_json"
+ Column |   Type    | Collation | Nullable | Default 
+--------+-----------+-----------+----------+---------
+ js     | json text |           |          | 
+ jb     | json      |           |          | 
+
+create table test_json_as_jsonb (js json, jb jsonb, jt json text);
+\d test_json_as_jsonb
+          Table "public.test_json_as_jsonb"
+ Column |   Type    | Collation | Nullable | Default 
+--------+-----------+-----------+----------+---------
+ js     | json      |           |          | 
+ jb     | json      |           |          | 
+ jt     | json text |           |          | 
+
+insert into test_json_as_jsonb values ('{ "a" : 1 }', '{ "a" : 1 }', '{ "a" : 1 }');
+select * from test_json_as_jsonb;
+    js    |    jb    |     jt      
+----------+----------+-------------
+ {"a": 1} | {"a": 1} | { "a" : 1 }
+(1 row)
+
+select jsonb_object_field(js, 'a') from test_json_as_jsonb;
+ jsonb_object_field 
+--------------------
+ 1
+(1 row)
+
+select jsonb_object_field(jb, 'a') from test_json_as_jsonb;
+ jsonb_object_field 
+--------------------
+ 1
+(1 row)
+
+select jsonb_object_field(jt, 'a') from test_json_as_jsonb;
+ERROR:  function jsonb_object_field(json text, unknown) does not exist
+LINE 1: select jsonb_object_field(jt, 'a') from test_json_as_jsonb;
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select json_object_field(jt, 'a') from test_json_as_jsonb;
+ json_object_field 
+-------------------
+ 1
+(1 row)
+
+set sql_json = json;
+\d test_json_as_jsonb
+        Table "public.test_json_as_jsonb"
+ Column | Type  | Collation | Nullable | Default 
+--------+-------+-----------+----------+---------
+ js     | jsonb |           |          | 
+ jb     | jsonb |           |          | 
+ jt     | json  |           |          | 
+
+select * from test_json_as_jsonb;
+    js    |    jb    |     jt      
+----------+----------+-------------
+ {"a": 1} | {"a": 1} | { "a" : 1 }
+(1 row)
+
+select jsonb_object_field(js, 'a') from test_json_as_jsonb;
+ jsonb_object_field 
+--------------------
+ 1
+(1 row)
+
+select jsonb_object_field(jb, 'a') from test_json_as_jsonb;
+ jsonb_object_field 
+--------------------
+ 1
+(1 row)
+
+select jsonb_object_field(jt, 'a') from test_json_as_jsonb;
+ERROR:  function jsonb_object_field(json, unknown) does not exist
+LINE 1: select jsonb_object_field(jt, 'a') from test_json_as_jsonb;
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select json_object_field(jt, 'a') from test_json_as_jsonb;
+ json_object_field 
+-------------------
+ 1
+(1 row)
+
