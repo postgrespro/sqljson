@@ -614,6 +614,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 					json_query_expr
 					json_exists_predicate
 					json_scalar_expr
+					json_serialize_expr
 					json_api_common_syntax
 					json_context_item
 					json_argument
@@ -734,7 +735,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_EXISTS JSON_OBJECT JSON_OBJECTAGG
-	JSON_QUERY JSON_SCALAR JSON_VALUE
+	JSON_QUERY JSON_SCALAR JSON_SERIALIZE JSON_VALUE
 
 	KEY KEYS KEEP
 
@@ -14793,6 +14794,7 @@ json_func_expr:
 			| json_query_expr
 			| json_exists_predicate
 			| json_scalar_expr
+			| json_serialize_expr
 		;
 
 json_scalar_expr:
@@ -14805,6 +14807,16 @@ json_scalar_expr:
 				}
 		;
 
+json_serialize_expr:
+			JSON_SERIALIZE '(' json_value_expr json_output_clause_opt ')'
+				{
+					JsonSerializeExpr *n = makeNode(JsonSerializeExpr);
+					n->expr = (JsonValueExpr *) $3;
+					n->output = (JsonOutput *) $4;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
 
 json_value_func_expr:
 			JSON_VALUE '('
@@ -16020,6 +16032,7 @@ col_name_keyword:
 			| JSON_OBJECTAGG
 			| JSON_QUERY
 			| JSON_SCALAR
+			| JSON_SERIALIZE
 			| JSON_VALUE
 			| LEAST
 			| NATIONAL

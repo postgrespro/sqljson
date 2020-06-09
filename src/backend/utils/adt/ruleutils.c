@@ -9608,6 +9608,9 @@ get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
 		case JSCTOR_JSON_SCALAR:
 			funcname = "JSON_SCALAR";
 			break;
+		case JSCTOR_JSON_SERIALIZE:
+			funcname = "JSON_SERIALIZE";
+			break;
 		case JSCTOR_JSON_OBJECT:
 			funcname = "JSON_OBJECT";
 			break;

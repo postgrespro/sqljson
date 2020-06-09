@@ -135,6 +135,8 @@ static Node *transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *p);
 static Node *transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *p);
 static Node *transformJsonValueExpr(ParseState *pstate, JsonValueExpr *jve);
 static Node *transformJsonScalarExpr(ParseState *pstate, JsonScalarExpr *expr);
+static Node *transformJsonSerializeExpr(ParseState *pstate,
+										JsonSerializeExpr *expr);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
 									List *largs, List *rargs, int location);
 static Node *make_row_distinct_op(ParseState *pstate, List *opname,
@@ -417,6 +419,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_JsonScalarExpr:
 			result = transformJsonScalarExpr(pstate, (JsonScalarExpr *) expr);
+			break;
+
+		case T_JsonSerializeExpr:
+			result = transformJsonSerializeExpr(pstate, (JsonSerializeExpr *) expr);
 			break;
 
 		default:
@@ -4910,4 +4916,28 @@ transformJsonScalarExpr(ParseState *pstate, JsonScalarExpr *jsexpr)
 
 	return makeJsonConstructorExpr(pstate, JSCTOR_JSON_SCALAR, list_make1(arg), NULL,
 							returning, false, false, jsexpr->location);
+}
+
+/*
+ * Transform a JSON_SERIALIZE() expression.
+ */
+static Node *
+transformJsonSerializeExpr(ParseState *pstate, JsonSerializeExpr *expr)
+{
+	Node	   *arg = transformJsonValueExpr(pstate, expr->expr);
+	JsonReturning *returning;
+
+	if (expr->output)
+		returning = transformJsonOutput(pstate, expr->output, true);
+	else
+	{
+		/* RETURNING TEXT FORMAT JSON is by default */
+		returning = makeNode(JsonReturning);
+		returning->format = makeJsonFormat(JS_FORMAT_JSON, JS_ENC_DEFAULT, -1);
+		returning->typid = TEXTOID;
+		returning->typmod = -1;
+	}
+
+	return makeJsonCtorExpr(pstate, JSCTOR_JSON_SERIALIZE, list_make1(arg),
+							NULL, returning, false, false, expr->location);
 }

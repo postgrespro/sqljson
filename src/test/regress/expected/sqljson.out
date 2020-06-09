@@ -89,6 +89,67 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_SCALAR('123');
    Output: JSON_SCALAR('123'::text)
 (2 rows)
 
+-- JSON_SERIALIZE()
+SELECT JSON_SERIALIZE();
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT JSON_SERIALIZE();
+                              ^
+SELECT JSON_SERIALIZE(NULL);
+ json_serialize 
+----------------
+ 
+(1 row)
+
+SELECT JSON_SERIALIZE(JSON('{ "a" : 1 } '));
+ json_serialize 
+----------------
+ { "a" : 1 } 
+(1 row)
+
+SELECT JSON_SERIALIZE('{ "a" : 1 } ');
+ json_serialize 
+----------------
+ { "a" : 1 } 
+(1 row)
+
+SELECT JSON_SERIALIZE('1');
+ json_serialize 
+----------------
+ 1
+(1 row)
+
+SELECT JSON_SERIALIZE('1' FORMAT JSON);
+ json_serialize 
+----------------
+ 1
+(1 row)
+
+SELECT JSON_SERIALIZE('{ "a" : 1 } ' RETURNING bytea);
+       json_serialize       
+----------------------------
+ \x7b20226122203a2031207d20
+(1 row)
+
+SELECT pg_typeof(JSON_SERIALIZE(NULL));
+ pg_typeof 
+-----------
+ text
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_SERIALIZE('{}');
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Result
+   Output: JSON_SERIALIZE('{}'::json RETURNING text)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_SERIALIZE('{}' RETURNING bytea);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Result
+   Output: JSON_SERIALIZE('{}'::json RETURNING bytea)
+(2 rows)
+
 -- JSON_OBJECT()
 SELECT JSON_OBJECT();
  json_object 

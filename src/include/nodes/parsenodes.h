@@ -1582,6 +1582,18 @@ typedef struct JsonScalarExpr
 } JsonScalarExpr;
 
 /*
+ * JsonSerializeExpr -
+ *		untransformed representation of JSON_SERIALIZE() function
+ */
+typedef struct JsonSerializeExpr
+{
+	NodeTag		type;
+	JsonValueExpr *expr;		/* json value expression */
+	JsonOutput *output;			/* RETURNING clause, if specified  */
+	int			location;		/* token location, or -1 if unknown */
+} JsonSerializeExpr;
+
+/*
  * JsonObjectConstructor -
  *		untransformed representation of JSON_OBJECT() constructor
  */
