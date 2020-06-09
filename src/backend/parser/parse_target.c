@@ -1931,6 +1931,9 @@ FigureColnameInternal(Node *node, char **name)
 		case T_XmlSerialize:
 			*name = "xmlserialize";
 			return 2;
+		case T_JsonScalarExpr:
+			*name = "json_scalar";
+			return 2;
 		case T_JsonObjectConstructor:
 			*name = "json_object";
 			return 2;

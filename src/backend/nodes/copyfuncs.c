@@ -2295,6 +2295,20 @@ _copyJsonValueExpr(const JsonValueExpr *from)
 }
 
 /*
+ * _copyJsonScalarExpr
+ */
+static JsonScalarExpr *
+_copyJsonScalarExpr(const JsonScalarExpr *from)
+{
+	JsonScalarExpr *newnode = makeNode(JsonScalarExpr);
+
+	COPY_NODE_FIELD(expr);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+/*
  * _copyJsonConstructorExpr
  */
 static JsonConstructorExpr *
@@ -5491,6 +5505,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_JsonValueExpr:
 			retval = _copyJsonValueExpr(from);
+			break;
+		case T_JsonScalarExpr:
+			retval = _copyJsonScalarExpr(from);
 			break;
 		case T_JsonKeyValue:
 			retval = _copyJsonKeyValue(from);

@@ -376,6 +376,22 @@ typedef struct JsonbIterator
 	struct JsonbIterator *parent;
 } JsonbIterator;
 
+/* unlike with json categories, we need to treat json and jsonb differently */
+typedef enum					/* type categories for datum_to_jsonb */
+{
+	JSONBTYPE_NULL,				/* null, so we didn't bother to identify */
+	JSONBTYPE_BOOL,				/* boolean (built-in types only) */
+	JSONBTYPE_NUMERIC,			/* numeric (ditto) */
+	JSONBTYPE_DATE,				/* we use special formatting for datetimes */
+	JSONBTYPE_TIMESTAMP,		/* we use special formatting for timestamp */
+	JSONBTYPE_TIMESTAMPTZ,		/* ... and timestamptz */
+	JSONBTYPE_JSON,				/* JSON */
+	JSONBTYPE_JSONB,			/* JSONB */
+	JSONBTYPE_ARRAY,			/* array */
+	JSONBTYPE_COMPOSITE,		/* composite */
+	JSONBTYPE_JSONCAST,			/* something with an explicit cast to JSON */
+	JSONBTYPE_OTHER				/* all else */
+} JsonbTypeCategory;
 
 /* Support functions */
 extern uint32 getJsonbOffset(const JsonbContainer *jc, int index);
@@ -412,6 +428,10 @@ extern char *JsonbUnquote(Jsonb *jb);
 extern bool JsonbExtractScalar(JsonbContainer *jbc, JsonbValue *res);
 extern const char *JsonbTypeName(JsonbValue *jb);
 extern bool to_jsonb_is_immutable(Oid typoid);
+extern void jsonb_categorize_type(Oid typoid, JsonbTypeCategory *tcategory,
+								  Oid *outfuncoid);
+extern Datum to_jsonb_worker(Datum val, JsonbTypeCategory tcategory,
+							 Oid outfuncoid);
 extern Datum jsonb_build_object_worker(int nargs, Datum *args, bool *nulls,
 									   Oid *types, bool absent_on_null,
 									   bool unique_keys);

@@ -134,6 +134,7 @@ static Node *transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg);
 static Node *transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *p);
 static Node *transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *p);
 static Node *transformJsonValueExpr(ParseState *pstate, JsonValueExpr *jve);
+static Node *transformJsonScalarExpr(ParseState *pstate, JsonScalarExpr *expr);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
 									List *largs, List *rargs, int location);
 static Node *make_row_distinct_op(ParseState *pstate, List *opname,
@@ -412,6 +413,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_JsonValueExpr:
 			result = transformJsonValueExpr(pstate, (JsonValueExpr *) expr);
+			break;
+
+		case T_JsonScalarExpr:
+			result = transformJsonScalarExpr(pstate, (JsonScalarExpr *) expr);
 			break;
 
 		default:
@@ -4885,4 +4890,24 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 				 parser_errposition(pstate, func->location)));
 
 	return (Node *) jsexpr;
+}
+
+/*
+ * Transform a JSON_SCALAR() expression.
+ */
+static Node *
+transformJsonScalarExpr(ParseState *pstate, JsonScalarExpr *jsexpr)
+{
+	JsonReturning *returning = makeNode(JsonReturning);
+	Node	   *arg = transformExprRecurse(pstate, (Node *) jsexpr->expr);
+
+	returning->format = makeJsonFormat(JS_FORMAT_JSON, JS_ENC_DEFAULT, -1);
+	returning->typid = JSONOID;
+	returning->typmod = -1;
+
+	if (exprType(arg) == UNKNOWNOID)
+		arg = coerce_to_specific_type(pstate, arg, TEXTOID, "JSON_SCALAR");
+
+	return makeJsonCtorExpr(pstate, JSCTOR_JSON_SCALAR, list_make1(arg), NULL,
+							returning, false, false, jsexpr->location);
 }

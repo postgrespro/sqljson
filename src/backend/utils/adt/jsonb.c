@@ -36,23 +36,6 @@ typedef struct JsonbInState
 	JsonbValue *res;
 } JsonbInState;
 
-/* unlike with json categories, we need to treat json and jsonb differently */
-typedef enum					/* type categories for datum_to_jsonb */
-{
-	JSONBTYPE_NULL,				/* null, so we didn't bother to identify */
-	JSONBTYPE_BOOL,				/* boolean (built-in types only) */
-	JSONBTYPE_NUMERIC,			/* numeric (ditto) */
-	JSONBTYPE_DATE,				/* we use special formatting for datetimes */
-	JSONBTYPE_TIMESTAMP,		/* we use special formatting for timestamp */
-	JSONBTYPE_TIMESTAMPTZ,		/* ... and timestamptz */
-	JSONBTYPE_JSON,				/* JSON */
-	JSONBTYPE_JSONB,			/* JSONB */
-	JSONBTYPE_ARRAY,			/* array */
-	JSONBTYPE_COMPOSITE,		/* composite */
-	JSONBTYPE_JSONCAST,			/* something with an explicit cast to JSON */
-	JSONBTYPE_OTHER				/* all else */
-} JsonbTypeCategory;
-
 typedef struct JsonbAggState
 {
 	JsonbInState *res;
@@ -71,17 +54,11 @@ static void jsonb_in_array_end(void *pstate);
 static void jsonb_in_object_field_start(void *pstate, char *fname, bool isnull);
 static void jsonb_put_escaped_value(StringInfo out, JsonbValue *scalarVal);
 static void jsonb_in_scalar(void *pstate, char *token, JsonTokenType tokentype);
-static void jsonb_categorize_type(Oid typoid,
-								  JsonbTypeCategory *tcategory,
-								  Oid *outfuncoid);
 static void composite_to_jsonb(Datum composite, JsonbInState *result);
 static void array_dim_to_jsonb(JsonbInState *result, int dim, int ndims, int *dims,
 							   Datum *vals, bool *nulls, int *valcount,
 							   JsonbTypeCategory tcategory, Oid outfuncoid);
 static void array_to_jsonb_internal(Datum array, JsonbInState *result);
-static void jsonb_categorize_type(Oid typoid,
-								  JsonbTypeCategory *tcategory,
-								  Oid *outfuncoid);
 static void datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
 						   JsonbTypeCategory tcategory, Oid outfuncoid,
 						   bool key_scalar);
@@ -620,7 +597,7 @@ add_indent(StringInfo out, bool indent, int level)
  * output function OID.  If the returned category is JSONBTYPE_JSONCAST,
  * we return the OID of the relevant cast function instead.
  */
-static void
+void
 jsonb_categorize_type(Oid typoid,
 					  JsonbTypeCategory *tcategory,
 					  Oid *outfuncoid)
@@ -1127,6 +1104,18 @@ add_jsonb(Datum val, bool is_null, JsonbInState *result,
 	datum_to_jsonb(val, is_null, result, tcategory, outfuncoid, key_scalar);
 }
 
+Datum
+to_jsonb_worker(Datum val, JsonbTypeCategory tcategory, Oid outfuncoid)
+{
+	JsonbInState result;
+
+	memset(&result, 0, sizeof(JsonbInState));
+
+	datum_to_jsonb(val, false, &result, tcategory, outfuncoid, false);
+
+	return JsonbPGetDatum(JsonbValueToJsonb(result.res));
+}
+
 bool
 to_jsonb_is_immutable(Oid typoid)
 {
@@ -1168,7 +1157,6 @@ to_jsonb(PG_FUNCTION_ARGS)
 {
 	Datum		val = PG_GETARG_DATUM(0);
 	Oid			val_type = get_fn_expr_argtype(fcinfo->flinfo, 0);
-	JsonbInState result;
 	JsonbTypeCategory tcategory;
 	Oid			outfuncoid;
 
@@ -1180,11 +1168,7 @@ to_jsonb(PG_FUNCTION_ARGS)
 	jsonb_categorize_type(val_type,
 						  &tcategory, &outfuncoid);
 
-	memset(&result, 0, sizeof(JsonbInState));
-
-	datum_to_jsonb(val, false, &result, tcategory, outfuncoid, false);
-
-	PG_RETURN_POINTER(JsonbValueToJsonb(result.res));
+	PG_RETURN_DATUM(to_jsonb_worker(val, tcategory, outfuncoid));
 }
 
 Datum

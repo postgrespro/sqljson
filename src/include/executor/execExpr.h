@@ -652,6 +652,11 @@ typedef struct ExprEvalStep
 			Datum	   *arg_values;
 			bool	   *arg_nulls;
 			Oid		   *arg_types;
+			struct
+			{
+				int			category;
+				Oid			outfuncid;
+			}		   *arg_type_cache;		/* cache for datum_to_json[b]() */
 			int			nargs;
 		}			json_constructor;
 

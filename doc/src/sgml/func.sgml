@@ -16901,11 +16901,16 @@ $ ? (@ like_regex "^\\d+$")
   <para>
     <productname>PostgreSQL</productname> provides several functions
     that generate JSON data. Taking values of SQL types as input, these
-    functions construct JSON objects or JSON arrays represented as
-    SQL character or binary strings.
+    functions construct JSON objects, JSON arrays or JSON scalars represented
+    as <type>json</type> or <type>jsonb</type> types, SQL character or binary strings.
   </para>
 
   <itemizedlist>
+    <listitem>
+      <para>
+       <xref linkend="functions-jsonscalar"/>
+      </para>
+    </listitem>
     <listitem>
       <para>
        <link linkend="functions-jsonobject"><literal>JSON_OBJECT</literal></link>
@@ -16927,6 +16932,102 @@ $ ? (@ like_regex "^\\d+$")
       </para>
     </listitem>
   </itemizedlist>
+
+   <refentry id="functions-jsonscalar">
+    <refnamediv>
+     <refname>JSON_SCALAR</refname>
+     <refpurpose>create a JSON scalar</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>
+JSON_SCALAR (
+  <replaceable class="parameter">expression</replaceable>
+  [ RETURNING <replaceable class="parameter">json_data_type</replaceable> ]
+)
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON_SCALAR</function> function generates a scalar
+      <acronym>JSON</acronym> from a <acronym>SQL</acronym> data.
+     </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+      <variablelist>
+       <varlistentry>
+        <term>
+         <literal><replaceable class="parameter">expression</replaceable></literal>
+        </term>
+        <listitem>
+         <para>
+          Expression that provides the data for constructing a
+          <acronym>JSON</acronym>.
+          For null input, <acronym>SQL</acronym>  null
+          (not a <acronym>JSON</acronym> null) value is returned.
+          For any scalar other than a number, a Boolean, the text representation
+          will be used, with escaping as necessary to make it a valid
+          <acronym>JSON</acronym> string value.
+          For details, see
+          <function>to_json()</function>/<function>to_jsonb()</function>
+          in <xref linkend="functions-json-creation-table"/>.
+         </para>
+        </listitem>
+       </varlistentry>
+       <varlistentry>
+        <term>
+         <literal>RETURNING <replaceable class="parameter">json_data_type</replaceable></literal>
+        </term>
+        <listitem>
+        <para>
+         The output clause that specifies the type (<type>json</type> or
+         <type>jsonb</type>) of the generated <acronym>JSON</acronym> scalar.
+         </para>
+       </listitem>
+      </varlistentry>
+     </variablelist>
+    </refsect1>
+
+    <refsect1>
+     <title>Notes</title>
+     <para>
+      Alternatively, you can construct <acronym>JSON</acronym> objects by
+      using <productname>PostgreSQL</productname>-specific
+      <function>to_json()</function>/<function>to_jsonb()</function> functions.
+      See <xref linkend="functions-json-creation-table"/> for details.
+     </para>
+    </refsect1>
+    <refsect1>
+     <title>Examples</title>
+     <para>
+      Construct a JSON from the provided values various types:
+     </para>
+<screen>
+SELECT JSON_SCALAR(123.45);
+ json_scalar
+-------------
+ 123.45
+(1 row)
+
+SELECT JSON_SCALAR('123');
+ json_scalar
+-------------
+ "123"
+(1 row)
+
+SELECT JSON_SCALAR(true);
+ json_scalar
+-------------
+ true
+(1 row)
+</screen>
+    </refsect1>
+   </refentry>
 
    <sect4 id="functions-jsonobject">
     <title><literal>JSON_OBJECT</literal></title>

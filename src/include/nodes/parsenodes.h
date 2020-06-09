@@ -1571,6 +1571,17 @@ typedef struct JsonKeyValue
 } JsonKeyValue;
 
 /*
+ * JsonScalarExpr -
+ *		untransformed representation of JSON_SCALAR()
+ */
+typedef struct JsonScalarExpr
+{
+	NodeTag		type;
+	Expr	   *expr;			/* scalar expression */
+	int			location;		/* token location, or -1 if unknown */
+} JsonScalarExpr;
+
+/*
  * JsonObjectConstructor -
  *		untransformed representation of JSON_OBJECT() constructor
  */

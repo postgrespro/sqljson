@@ -1580,6 +1580,25 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 												 op->d.json_constructor.arg_types,
 												 op->d.json_constructor.constructor->absent_on_null,
 												 op->d.json_constructor.constructor->unique);
+			else if (ctor->type == JSCTOR_JSON_SCALAR)
+			{
+				if (op->d.json_ctor.arg_nulls[0])
+				{
+					res = (Datum) 0;
+					isnull = true;
+				}
+				else
+				{
+					Datum		value = op->d.json_constructor.arg_values[0];
+					int			category = op->d.json_constructor.arg_type_cache[0].category;
+					Oid			outfuncid = op->d.json_constructor.arg_type_cache[0].outfuncid;
+
+					if (is_jsonb)
+						res = to_jsonb_worker(value, category, outfuncid);
+					else
+						res = to_json_worker(value, category, outfuncid);
+				}
+			}
 			else
 			{
 				res = (Datum) 0;

@@ -9590,7 +9590,8 @@ get_json_constructor_options(JsonConstructorExpr *ctor, StringInfo buf)
 	if (ctor->unique)
 		appendStringInfoString(buf, " WITH UNIQUE KEYS");
 
-	get_json_returning(ctor->returning, buf, true);
+	if (ctor->type != JSCTOR_JSON_SCALAR)
+		get_json_returning(ctor->returning, buf, true);
 }
 
 static void
@@ -9604,6 +9605,9 @@ get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
 
 	switch (ctor->type)
 	{
+		case JSCTOR_JSON_SCALAR:
+			funcname = "JSON_SCALAR";
+			break;
 		case JSCTOR_JSON_OBJECT:
 			funcname = "JSON_OBJECT";
 			break;

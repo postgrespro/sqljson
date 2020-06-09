@@ -1,3 +1,94 @@
+-- JSON_SCALAR()
+SELECT JSON_SCALAR();
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT JSON_SCALAR();
+                           ^
+SELECT JSON_SCALAR(NULL);
+ json_scalar 
+-------------
+ 
+(1 row)
+
+SELECT JSON_SCALAR(NULL::int);
+ json_scalar 
+-------------
+ 
+(1 row)
+
+SELECT JSON_SCALAR(123);
+ json_scalar 
+-------------
+ 123
+(1 row)
+
+SELECT JSON_SCALAR(123.45);
+ json_scalar 
+-------------
+ 123.45
+(1 row)
+
+SELECT JSON_SCALAR(123.45::numeric);
+ json_scalar 
+-------------
+ 123.45
+(1 row)
+
+SELECT JSON_SCALAR(true);
+ json_scalar 
+-------------
+ true
+(1 row)
+
+SELECT JSON_SCALAR(false);
+ json_scalar 
+-------------
+ false
+(1 row)
+
+SELECT JSON_SCALAR(' 123.45');
+ json_scalar 
+-------------
+ " 123.45"
+(1 row)
+
+SELECT JSON_SCALAR('2020-06-07'::date);
+ json_scalar  
+--------------
+ "2020-06-07"
+(1 row)
+
+SELECT JSON_SCALAR('2020-06-07 01:02:03'::timestamp);
+      json_scalar      
+-----------------------
+ "2020-06-07T01:02:03"
+(1 row)
+
+SELECT JSON_SCALAR('{}'::json);
+ json_scalar 
+-------------
+ {}
+(1 row)
+
+SELECT JSON_SCALAR('{}'::jsonb);
+ json_scalar 
+-------------
+ {}
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_SCALAR(123);
+         QUERY PLAN         
+----------------------------
+ Result
+   Output: JSON_SCALAR(123)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_SCALAR('123');
+             QUERY PLAN             
+------------------------------------
+ Result
+   Output: JSON_SCALAR('123'::text)
+(2 rows)
+
 -- JSON_OBJECT()
 SELECT JSON_OBJECT();
  json_object 
