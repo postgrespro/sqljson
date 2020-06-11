@@ -20,6 +20,7 @@
 extern void escape_json(StringInfo buf, const char *str);
 extern char *JsonEncodeDateTime(char *buf, Datum value, Oid typid,
 								const int *tzp);
+extern bool to_json_is_immutable(Oid typoid);
 extern Datum json_build_object_worker(int nargs, Datum *args, bool *nulls,
 									  Oid *types, bool absent_on_null,
 									  bool unique_keys);

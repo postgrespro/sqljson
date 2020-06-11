@@ -14,6 +14,7 @@
 
 #include "access/htup_details.h"
 #include "access/transam.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
@@ -1124,6 +1125,39 @@ add_jsonb(Datum val, bool is_null, JsonbInState *result,
 							  &tcategory, &outfuncoid);
 
 	datum_to_jsonb(val, is_null, result, tcategory, outfuncoid, key_scalar);
+}
+
+bool
+to_jsonb_is_immutable(Oid typoid)
+{
+	JsonbTypeCategory tcategory;
+	Oid			outfuncoid;
+
+	jsonb_categorize_type(typoid, &tcategory, &outfuncoid);
+
+	switch (tcategory)
+	{
+		case JSONBTYPE_BOOL:
+		case JSONBTYPE_JSON:
+		case JSONBTYPE_JSONB:
+			return true;
+
+		case JSONBTYPE_DATE:
+		case JSONBTYPE_TIMESTAMP:
+		case JSONBTYPE_TIMESTAMPTZ:
+			return false;
+
+		case JSONBTYPE_ARRAY:
+			return false;	/* TODO recurse into elements */
+
+		case JSONBTYPE_COMPOSITE:
+			return false;	/* TODO recurse into fields */
+
+		case JSONBTYPE_NUMERIC:
+		case JSONBTYPE_JSONCAST:
+		default:
+			return func_volatile(outfuncoid) == PROVOLATILE_IMMUTABLE;
+	}
 }
 
 /*

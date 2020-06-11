@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
 #include "funcapi.h"
@@ -758,6 +759,38 @@ row_to_json_pretty(PG_FUNCTION_ARGS)
 	composite_to_json(array, result, use_line_feeds);
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(result->data, result->len));
+}
+
+bool
+to_json_is_immutable(Oid typoid)
+{
+	JsonTypeCategory tcategory;
+	Oid			outfuncoid;
+
+	json_categorize_type(typoid, &tcategory, &outfuncoid);
+
+	switch (tcategory)
+	{
+		case JSONTYPE_BOOL:
+		case JSONTYPE_JSON:
+			return true;
+
+		case JSONTYPE_DATE:
+		case JSONTYPE_TIMESTAMP:
+		case JSONTYPE_TIMESTAMPTZ:
+			return false;
+
+		case JSONTYPE_ARRAY:
+			return false;	/* TODO recurse into elements */
+
+		case JSONTYPE_COMPOSITE:
+			return false;	/* TODO recurse into fields */
+
+		case JSONTYPE_NUMERIC:
+		case JSONTYPE_CAST:
+		default:
+			return func_volatile(outfuncoid) == PROVOLATILE_IMMUTABLE;
+	}
 }
 
 /*
