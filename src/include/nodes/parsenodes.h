@@ -1578,6 +1578,7 @@ typedef struct JsonParseExpr
 {
 	NodeTag		type;
 	JsonValueExpr *expr;		/* string expression */
+	JsonOutput *output;			/* RETURNING clause, if specified */
 	bool		unique_keys;	/* WITH UNIQUE KEYS? */
 	int			location;		/* token location, or -1 if unknown */
 } JsonParseExpr;
@@ -1590,6 +1591,7 @@ typedef struct JsonScalarExpr
 {
 	NodeTag		type;
 	Expr	   *expr;			/* scalar expression */
+	JsonOutput *output;			/* RETURNING clause, if specified */
 	int			location;		/* token location, or -1 if unknown */
 } JsonScalarExpr;
 

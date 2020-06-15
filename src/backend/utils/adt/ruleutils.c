@@ -65,6 +65,7 @@
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/hsearch.h"
+#include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/partcache.h"
 #include "utils/rel.h"
@@ -9590,8 +9591,9 @@ get_json_constructor_options(JsonConstructorExpr *ctor, StringInfo buf)
 	if (ctor->unique)
 		appendStringInfoString(buf, " WITH UNIQUE KEYS");
 
-	if (ctor->type != JSCTOR_JSON_PARSE &&
-		ctor->type != JSCTOR_JSON_SCALAR)
+	if (!((ctor->type == JSCTOR_JSON_PARSE ||
+		   ctor->type == JSCTOR_JSON_SCALAR) &&
+		  ctor->returning->typid == SQLJSON_TYPE_OID()))
 		get_json_returning(ctor->returning, buf, true);
 }
 
