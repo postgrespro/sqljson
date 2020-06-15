@@ -34,6 +34,7 @@ typedef struct JsonbInState
 {
 	JsonbParseState *parseState;
 	JsonbValue *res;
+	bool		unique_keys;
 } JsonbInState;
 
 typedef struct JsonbAggState
@@ -45,7 +46,7 @@ typedef struct JsonbAggState
 	Oid			val_output_func;
 } JsonbAggState;
 
-static inline Datum jsonb_from_cstring(char *json, int len);
+static inline Datum jsonb_from_cstring(char *json, int len, bool unique_keys);
 static size_t checkStringLen(size_t len);
 static void jsonb_in_object_start(void *pstate);
 static void jsonb_in_object_end(void *pstate);
@@ -76,7 +77,7 @@ jsonb_in(PG_FUNCTION_ARGS)
 {
 	char	   *json = PG_GETARG_CSTRING(0);
 
-	return jsonb_from_cstring(json, strlen(json));
+	return jsonb_from_cstring(json, strlen(json), false);
 }
 
 /*
@@ -100,7 +101,7 @@ jsonb_recv(PG_FUNCTION_ARGS)
 	else
 		elog(ERROR, "unsupported jsonb version number %d", version);
 
-	return jsonb_from_cstring(str, nbytes);
+	return jsonb_from_cstring(str, nbytes, false);
 }
 
 /*
@@ -139,6 +140,14 @@ jsonb_send(PG_FUNCTION_ARGS)
 	pfree(jtext);
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+Datum
+jsonb_from_text(text *js, bool unique_keys)
+{
+	return jsonb_from_cstring(VARDATA_ANY(js),
+							  VARSIZE_ANY_EXHDR(js),
+							  unique_keys);
 }
 
 /*
@@ -231,7 +240,7 @@ jsonb_typeof(PG_FUNCTION_ARGS)
  * Uses the json parser (with hooks) to construct a jsonb.
  */
 static inline Datum
-jsonb_from_cstring(char *json, int len)
+jsonb_from_cstring(char *json, int len, bool unique_keys)
 {
 	JsonLexContext *lex;
 	JsonbInState state;
@@ -240,6 +249,8 @@ jsonb_from_cstring(char *json, int len)
 	memset(&state, 0, sizeof(state));
 	memset(&sem, 0, sizeof(sem));
 	lex = makeJsonLexContextCstringLen(json, len, GetDatabaseEncoding(), true);
+
+	state.unique_keys = unique_keys;
 
 	sem.semstate = (void *) &state;
 
@@ -275,6 +286,7 @@ jsonb_in_object_start(void *pstate)
 	JsonbInState *_state = (JsonbInState *) pstate;
 
 	_state->res = pushJsonbValue(&_state->parseState, WJB_BEGIN_OBJECT, NULL);
+	_state->parseState->unique_keys = _state->unique_keys;
 }
 
 static void

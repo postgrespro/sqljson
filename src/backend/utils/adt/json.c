@@ -1695,7 +1695,7 @@ json_unique_object_field_start(void *_state, char *field, bool isnull)
 
 /* Validate JSON text and additionally check key uniqueness */
 bool
-json_validate(text *json, bool check_unique_keys)
+json_validate(text *json, bool check_unique_keys, bool throw_error)
 {
 	JsonLexContext *lex = makeJsonLexContext(json, check_unique_keys);
 	JsonSemAction uniqueSemAction = {0};
@@ -1719,10 +1719,22 @@ json_validate(text *json, bool check_unique_keys)
 	result = pg_parse_json(lex, check_unique_keys ? &uniqueSemAction : &nullSemAction);
 
 	if (result != JSON_SUCCESS)
+	{
+		if (throw_error)
+			json_ereport_error(result, lex);
+
 		return false;	/* invalid json */
+	}
 
 	if (check_unique_keys && !state.unique)
+	{
+		if (throw_error)
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_JSON_OBJECT_KEY_VALUE),
+					 errmsg("duplicate JSON object key value")));
+
 		return false;	/* not unique keys */
+	}
 
 	return true;	/* ok */
 }

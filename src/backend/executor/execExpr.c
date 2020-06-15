@@ -2142,7 +2142,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				{
 					ExecInitExprRec(ctor->func, state, resv, resnull);
 				}
-				else if (ctor->type == JSCTOR_JSON_SERIALIZE)
+				else if ((ctor->type == JSCTOR_JSON_PARSE && !ctor->unique) ||
+						 ctor->type == JSCTOR_JSON_SERIALIZE)
 				{
 					/* Use the value of the first argument as a result */
 					ExecInitExprRec(linitial(args), state, resv, resnull);

@@ -1,3 +1,118 @@
+-- JSON()
+SELECT JSON();
+ERROR:  syntax error at or near ")"
+LINE 1: SELECT JSON();
+                    ^
+SELECT JSON(NULL);
+ json 
+------
+ 
+(1 row)
+
+SELECT JSON('{ "a" : 1 } ');
+     json     
+--------------
+ { "a" : 1 } 
+(1 row)
+
+SELECT JSON('{ "a" : 1 } ' FORMAT JSON);
+     json     
+--------------
+ { "a" : 1 } 
+(1 row)
+
+SELECT JSON('{ "a" : 1 } ' FORMAT JSON ENCODING UTF8);
+ERROR:  JSON ENCODING clause is only allowed for bytea input type
+LINE 1: SELECT JSON('{ "a" : 1 } ' FORMAT JSON ENCODING UTF8);
+                                   ^
+SELECT JSON('{ "a" : 1 } '::bytea FORMAT JSON ENCODING UTF8);
+     json     
+--------------
+ { "a" : 1 } 
+(1 row)
+
+SELECT pg_typeof(JSON('{ "a" : 1 } '));
+ pg_typeof 
+-----------
+ json
+(1 row)
+
+SELECT JSON('   1   '::json);
+  json   
+---------
+    1   
+(1 row)
+
+SELECT JSON('   1   '::jsonb);
+ json 
+------
+ 1
+(1 row)
+
+SELECT JSON('   1   '::json WITH UNIQUE KEYS);
+ERROR:  cannot use non-string types with WITH UNIQUE KEYS clause
+LINE 1: SELECT JSON('   1   '::json WITH UNIQUE KEYS);
+               ^
+SELECT JSON(123);
+ERROR:  cannot cast type integer to json
+LINE 1: SELECT JSON(123);
+                    ^
+SELECT JSON('{"a": 1, "a": 2}');
+       json       
+------------------
+ {"a": 1, "a": 2}
+(1 row)
+
+SELECT JSON('{"a": 1, "a": 2}' WITH UNIQUE KEYS);
+ERROR:  duplicate JSON object key value
+SELECT JSON('{"a": 1, "a": 2}' WITHOUT UNIQUE KEYS);
+       json       
+------------------
+ {"a": 1, "a": 2}
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON('123');
+         QUERY PLAN          
+-----------------------------
+ Result
+   Output: JSON('123'::json)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON('123' FORMAT JSON);
+         QUERY PLAN          
+-----------------------------
+ Result
+   Output: JSON('123'::json)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON('123'::bytea FORMAT JSON);
+                  QUERY PLAN                   
+-----------------------------------------------
+ Result
+   Output: JSON('\x313233'::bytea FORMAT JSON)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON('123'::bytea FORMAT JSON ENCODING UTF8);
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Result
+   Output: JSON('\x313233'::bytea FORMAT JSON ENCODING UTF8)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON('123' WITH UNIQUE KEYS);
+                  QUERY PLAN                  
+----------------------------------------------
+ Result
+   Output: JSON('123'::text WITH UNIQUE KEYS)
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON('123' WITHOUT UNIQUE KEYS);
+         QUERY PLAN          
+-----------------------------
+ Result
+   Output: JSON('123'::json)
+(2 rows)
+
 -- JSON_SCALAR()
 SELECT JSON_SCALAR();
 ERROR:  syntax error at or near ")"

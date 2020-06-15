@@ -1599,6 +1599,27 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 						res = to_json_worker(value, category, outfuncid);
 				}
 			}
+			else if (ctor->type == JSCTOR_JSON_PARSE)
+			{
+				if (op->d.json_ctor.arg_nulls[0])
+				{
+					res = (Datum) 0;
+					isnull = true;
+				}
+				else
+				{
+					Datum		value = op->d.json_ctor.arg_values[0];
+					text	   *js = DatumGetTextP(value);
+
+					if (is_jsonb)
+						res = jsonb_from_text(js, true);
+					else
+					{
+						(void) json_validate(js, true, true);
+						res = value;
+					}
+				}
+			}
 			else
 			{
 				res = (Datum) 0;
@@ -3954,7 +3975,7 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 		 * JSON text validation.
 		 */
 		if (res && (pred->unique_keys || exprtype == TEXTOID))
-			res = json_validate(json, pred->unique_keys);
+			res = json_validate(json, pred->unique_keys, false);
 	}
 	else if (exprtype == JSONBOID)
 	{

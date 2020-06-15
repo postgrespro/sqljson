@@ -418,6 +418,7 @@ extern void JsonbHashScalarValueExtended(const JsonbValue *scalarVal,
 										 uint64 *hash, uint64 seed);
 
 /* jsonb.c support functions */
+extern Datum jsonb_from_text(text *js, bool unique_keys);
 extern char *JsonbToCString(StringInfo out, JsonbContainer *in,
 							int estimated_len);
 extern char *JsonbToCStringIndent(StringInfo out, JsonbContainer *in,

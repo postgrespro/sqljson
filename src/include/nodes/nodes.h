@@ -201,6 +201,7 @@ typedef enum NodeTag
 	T_JsonFormat,
 	T_JsonReturning,
 	T_JsonValueExpr,
+	T_JsonParseExpr,
 	T_JsonScalarExpr,
 	T_JsonSerializeExpr,
 	T_JsonConstructorExpr,

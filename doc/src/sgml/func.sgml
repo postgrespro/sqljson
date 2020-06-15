@@ -16908,6 +16908,11 @@ $ ? (@ like_regex "^\\d+$")
   <itemizedlist>
     <listitem>
       <para>
+       <xref linkend="functions-jsonparse"/>
+      </para>
+    </listitem>
+    <listitem>
+      <para>
        <link linkend="functions-jsonscalar"><literal>JSON_SCALAR</literal></link>
       </para>
     </listitem>
@@ -16932,6 +16937,132 @@ $ ? (@ like_regex "^\\d+$")
       </para>
     </listitem>
   </itemizedlist>
+
+   <refentry id="functions-jsonparse">
+    <refnamediv>
+     <refname>JSON</refname>
+     <refpurpose>create a JSON from a text</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+<synopsis>
+JSON (
+  <replaceable class="parameter">expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
+  [ RETURNING <replaceable class="parameter">json_data_type</replaceable> ]
+)
+</synopsis>
+    </refsynopsisdiv>
+
+    <refsect1>
+     <title>Description</title>
+
+     <para>
+      <function>JSON</function> function generates a <acronym>JSON</acronym>
+      from a text data.
+     </para>
+    </refsect1>
+
+    <refsect1>
+     <title>Parameters</title>
+      <variablelist>
+       <varlistentry>
+        <term>
+         <literal><replaceable class="parameter">expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+        </term>
+        <listitem>
+         <para>
+          String expression that provides the <acronym>JSON</acronym> text data.
+          Accepted any character strings (<type>text</type>, <type>char</type>, etc.)
+          or binary strings (<type>bytea</type>) in UTF8 encoding.
+          For null input, <acronym>SQL</acronym> null value is returned.
+         </para>
+         <para>
+           The optional <literal>FORMAT</literal> clause is provided to conform
+           to the SQL/JSON standard.
+         </para>
+        </listitem>
+       </varlistentry>
+       <varlistentry>
+        <term>
+         <literal>[ { WITH | WITHOUT } UNIQUE [ KEYS ] ]</literal>
+        </term>
+        <listitem>
+        <para>
+         Defines whether duplicate keys are allowed:
+        </para>
+        <variablelist>
+         <varlistentry>
+          <term><literal>WITHOUT</literal></term>
+          <listitem>
+           <para>
+            Default. The constructed
+            <acronym>JSON</acronym> object can contain duplicate keys.
+           </para>
+          </listitem>
+         </varlistentry>
+         <varlistentry>
+          <term><literal>WITH</literal></term>
+           <listitem>
+            <para>
+             Duplicate keys are not allowed.
+             If the input data contains duplicate keys, an error is returned.
+            </para>
+           </listitem>
+         </varlistentry>
+        </variablelist>
+        <para>
+         Optionally, you can add the <literal>KEYS</literal> keyword for
+         semantic clarity.
+        </para>
+        </listitem>
+       </varlistentry>
+       <varlistentry>
+        <term>
+         <literal>RETURNING <replaceable class="parameter">json_data_type</replaceable></literal>
+        </term>
+        <listitem>
+        <para>
+         The output clause that specifies the type (<type>json</type> or
+         <type>jsonb</type>) of the generated <acronym>JSON</acronym>.
+         </para>
+       </listitem>
+      </varlistentry>
+     </variablelist>
+    </refsect1>
+
+    <refsect1>
+     <title>Notes</title>
+     <para>
+      Alternatively, you can construct <acronym>JSON</acronym> values simply
+      using <productname>PostgreSQL</productname>-specific casts to 
+      <type>json</type> and <type>jsonb</type> types.
+     </para>
+    </refsect1>
+    <refsect1>
+     <title>Examples</title>
+     <para>
+      Construct a JSON the provided strings:
+     </para>
+<screen>
+SELECT JSON('{ "a" : 123, "b": [ true, "foo" ], "a" : "bar" }');
+                       json                       
+--------------------------------------------------
+ { "a" : 123, "b": [ true, "foo" ], "a" : "bar" }
+(1 row)
+
+
+SELECT JSON('{"a": 123, "b": [true, "foo"], "a": "bar"}' RETURNING jsonb);
+               json               
+----------------------------------
+ {"a": "bar", "b": [true, "foo"]}
+(1 row)
+
+SELECT JSON('{"a": 123, "b": [true, "foo"], "a": "bar"}' WITH UNIQUE KEYS);
+ERROR:  duplicate JSON object key value
+</screen>
+    </refsect1>
+   </refentry>
 
   <sect4 id="functions-jsonscalar">
    <title><literal>JSON_SCALAR</literal></title>
