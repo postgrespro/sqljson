@@ -4346,28 +4346,25 @@ transformJsonArrayConstructor(ParseState *pstate, JsonArrayConstructor *ctor)
 								   ctor->location);
 }
 
-/*
- * Transform IS JSON predicate into
- * json[b]_is_valid(json, value_type [, check_key_uniqueness]) call.
- */
 static Node *
-transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
+transformJsonParseArg(ParseState *pstate, Node *jsexpr, JsonFormat *format,
+					  Oid *exprtype)
 {
-	Node	   *raw_expr = transformExprRecurse(pstate, pred->expr);
+	Node	   *raw_expr = transformExprRecurse(pstate, jsexpr);
 	Node	   *expr = raw_expr;
-	Oid			exprtype = exprType(expr);
+
+	*exprtype = exprType(expr);
 
 	/* prepare input document */
-	if (exprtype == BYTEAOID)
+	if (*exprtype == BYTEAOID)
 	{
 		JsonValueExpr *jve;
 
 		expr = makeCaseTestExpr(raw_expr);
-		expr = makeJsonByteaToTextConversion(expr, pred->format,
-											 exprLocation(expr));
-		exprtype = TEXTOID;
+		expr = makeJsonByteaToTextConversion(expr, format, exprLocation(expr));
+		*exprtype = TEXTOID;
 
-		jve = makeJsonValueExpr((Expr *) raw_expr, pred->format);
+		jve = makeJsonValueExpr((Expr *) raw_expr, format);
 
 		jve->formatted_expr = (Expr *) expr;
 		expr = (Node *) jve;
@@ -4377,23 +4374,37 @@ transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
 		char		typcategory;
 		bool		typispreferred;
 
-		get_type_category_preferred(exprtype, &typcategory, &typispreferred);
+		get_type_category_preferred(*exprtype, &typcategory, &typispreferred);
 
-		if (exprtype == UNKNOWNOID || typcategory == TYPCATEGORY_STRING)
+		if (*exprtype == UNKNOWNOID || typcategory == TYPCATEGORY_STRING)
 		{
-			expr = coerce_to_target_type(pstate, (Node *) expr, exprtype,
+			expr = coerce_to_target_type(pstate, (Node *) expr, *exprtype,
 										 TEXTOID, -1,
 										 COERCION_IMPLICIT,
 										 COERCE_IMPLICIT_CAST, -1);
-			exprtype = TEXTOID;
+			*exprtype = TEXTOID;
 		}
 
-		if (pred->format->encoding != JS_ENC_DEFAULT)
+		if (format->encoding != JS_ENC_DEFAULT)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 parser_errposition(pstate, pred->format->location),
+					 parser_errposition(pstate, format->location),
 					 errmsg("cannot use JSON FORMAT ENCODING clause for non-bytea input types")));
 	}
+
+	return expr;
+}
+
+/*
+ * Transform IS JSON predicate into
+ * json[b]_is_valid(json, value_type [, check_key_uniqueness]) call.
+ */
+static Node *
+transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
+{
+	Oid			exprtype;
+	Node	   *expr = transformJsonParseArg(pstate, pred->expr, pred->format,
+											 &exprtype);
 
 	/* make resulting expression */
 	if (exprtype != TEXTOID && exprtype != JSONOID && exprtype != JSONBOID)
@@ -4402,6 +4413,6 @@ transformJsonIsPredicate(ParseState *pstate, JsonIsPredicate *pred)
 				 errmsg("cannot use type %s in IS JSON predicate",
 						format_type_be(exprtype))));
 
-	return makeJsonIsPredicate((Node *) expr, NULL, pred->value_type,
+	return makeJsonIsPredicate(expr, NULL, pred->value_type,
 							   pred->unique_keys, pred->location);
 }
