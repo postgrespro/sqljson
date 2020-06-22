@@ -92,6 +92,7 @@ transformJsonTableColumn(JsonTableColumn *jtc, Node *contextItemExpr,
 	common->pathname = NULL;
 	common->expr = makeJsonValueExpr((Expr *) contextItemExpr, default_format);
 	common->passing = passingArgs;
+	common->use_tz = true; /* FIXME */
 
 	if (jtc->pathspec)
 		pathspec = jtc->pathspec;
