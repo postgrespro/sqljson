@@ -16942,7 +16942,7 @@ $ ? (@ like_regex "^\\d+$")
     <refsynopsisdiv>
 <synopsis>
 JSON_SCALAR (
-  <replaceable class="parameter">expression</replaceable>
+  <parameter>expression</parameter>
   [ RETURNING <replaceable class="parameter">json_data_type</replaceable> ]
 )
 </synopsis>
@@ -16962,7 +16962,7 @@ JSON_SCALAR (
       <variablelist>
        <varlistentry>
         <term>
-         <literal><replaceable class="parameter">expression</replaceable></literal>
+         <literal><parameter>expression</parameter></literal>
         </term>
         <listitem>
          <para>
