@@ -18129,8 +18129,8 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
        Defines the return value if no JSON value is found. The default is <literal>NULL</literal>.
        If you use <literal>EMPTY [ARRAY]</literal> or <literal>EMPTY OBJECT</literal>,
        an empty JSON array [] or object {} is returned, respectively.
-       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>,
-       the provided <replaceable>expression</replaceable> is evaluated and cast
+       If you use <literal>DEFAULT <replaceable class="parameter">expression</replaceable></literal>,
+       the provided <replaceable class="parameter">expression</replaceable> is evaluated and cast
        to the type specified in the <command>RETURNING</command> clause.
      </para>
      <para>
@@ -18148,8 +18148,8 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
        Defines the return value if an unhandled error occurs. The default is <literal>NULL</literal>.
        If you use <literal>EMPTY [ARRAY]</literal> or <literal>EMPTY OBJECT</literal>,
        an empty JSON array [] or object {} are returned, respectively.
-       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>,
-       the provided <replaceable>expression</replaceable> is evaluated and cast
+       If you use <literal>DEFAULT <replaceable class="parameter">expression</replaceable></literal>,
+       the provided <replaceable class="parameter">expression</replaceable> is evaluated and cast
        to the type specified in the <command>RETURNING</command> clause.
      </para>
      </listitem>
