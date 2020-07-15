@@ -17901,28 +17901,30 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
 
   <varlistentry>
     <term>
-     <literal>{ ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON EMPTY</literal>
+     <literal>{ ERROR | NULL | DEFAULT <replaceable class="parameter">expression</replaceable> } ON EMPTY</literal>
     </term>
     <listitem>
      <para>
-       Defines the return value if no JSON value is found. The default is <literal>NULL</literal>.
-       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>, the provided
-       <replaceable>expression</replaceable> is evaluated and cast to the type specified in the
-       <command>RETURNING</command> clause.
+       Defines the return value if no JSON value is found. The default is
+       <literal>NULL</literal>. If you use
+       <literal>DEFAULT <replaceable class="parameter">expression</replaceable></literal>,
+       the provided <replaceable class="parameter">expression</replaceable> is
+       evaluated and cast to the type specified in the <command>RETURNING</command> clause.
      </para>
      </listitem>
    </varlistentry>
 
      <varlistentry>
     <term>
-     <literal>{ ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON ERROR</literal>
+     <literal>{ ERROR | NULL | DEFAULT <replaceable class="parameter">expression</replaceable> } ON ERROR</literal>
     </term>
     <listitem>
      <para>
-       Defines the return value if an unhandled error occurs. The default is <literal>NULL</literal>.
-       If you use <literal>DEFAULT <replaceable>expression</replaceable></literal>, the provided
-       <replaceable>expression</replaceable> is evaluated and cast to the type specified in the
-       <command>RETURNING</command> clause.
+       Defines the return value if an unhandled error occurs. The default is
+       <literal>NULL</literal>. If you use
+       <literal>DEFAULT <replaceable class="parameter">expression</replaceable></literal>,
+       the provided <replaceable class="parameter">expression</replaceable> is
+       evaluated and cast to the type specified in the <command>RETURNING</command> clause.
      </para>
      </listitem>
    </varlistentry>
