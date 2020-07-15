@@ -16947,7 +16947,7 @@ $ ? (@ like_regex "^\\d+$")
     <refsynopsisdiv>
 <synopsis>
 JSON (
-  <replaceable class="parameter">expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+  <parameter>expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ]
   [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
   [ RETURNING <replaceable class="parameter">json_data_type</replaceable> ]
 )
@@ -16968,7 +16968,7 @@ JSON (
       <variablelist>
        <varlistentry>
         <term>
-         <literal><replaceable class="parameter">expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+         <literal><parameter>expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
         </term>
         <listitem>
          <para>
