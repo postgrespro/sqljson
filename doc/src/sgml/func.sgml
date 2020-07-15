@@ -16928,8 +16928,8 @@ $ ? (@ like_regex "^\\d+$")
     <refsynopsisdiv>
 <synopsis>
 JSON_OBJECT (
-  [ { <replaceable class="parameter">key_expression</replaceable> { VALUE | ':' }
-      <replaceable class="parameter">value_expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ] }[, ...] ]
+  [ { <parameter>key_expression</parameter> { VALUE | ':' }
+      <parameter>value_expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ] }[, ...] ]
   [ { NULL | ABSENT } ON NULL ]
   [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
   [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
@@ -16953,8 +16953,8 @@ JSON_OBJECT (
 
    <varlistentry>
     <term>
-     <literal><replaceable class="parameter">key_expression</replaceable> { VALUE | ':' }
-              <replaceable class="parameter">value_expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+     <literal><parameter>key_expression</parameter> { VALUE | ':' }
+              <parameter>value_expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
     </term>
     <listitem>
     <para>
@@ -16963,27 +16963,30 @@ JSON_OBJECT (
         <itemizedlist>
           <listitem>
             <para>
-              <replaceable class="parameter">key_expression</replaceable> is a scalar expression defining the
-              <acronym>JSON</acronym> key, which is implicitly converted
-              to the <type>text</type> type.
-              The provided expression cannot be <literal>NULL</literal> or belong to a type that has a cast to <type>json</type>.
+              <parameter>key_expression</parameter> is a scalar expression
+              defining the <acronym>JSON</acronym> key, which is implicitly
+              converted to the <type>text</type> type.
+              The provided expression cannot be <literal>NULL</literal> or
+              belong to a type that has a cast to <type>json</type>.
             </para>
           </listitem>
           <listitem>
             <para>
-              <replaceable class="parameter">value_expression</replaceable> is an expression
+              <parameter>value_expression</parameter> is an expression
               that provides the input for the <acronym>JSON</acronym> value.
             </para>
           </listitem>
           <listitem>
             <para>
-              The optional <literal>FORMAT</literal> clause is provided to conform to the SQL/JSON standard.
+              The optional <literal>FORMAT</literal> clause is provided to
+              conform to the SQL/JSON standard.
              </para>
            </listitem>
            </itemizedlist>
       <para>
-        You must use a colon or the <literal>VALUE</literal> keyword as a delimiter between
-        the key and the value. Multiple key/value pairs are separated by commas.
+        You must use a colon or the <literal>VALUE</literal> keyword as a
+        delimiter between the key and the value. Multiple key/value pairs are
+        separated by commas.
       </para>
     </listitem>
    </varlistentry>
@@ -17140,7 +17143,7 @@ WHERE f.did = 103;
 
     <refsynopsisdiv>
 <synopsis>JSON_OBJECTAGG (
-  [ { <replaceable class="parameter">key_expression</replaceable> { VALUE | ':' } <replaceable class="parameter">value_expression</replaceable> } ]
+  [ { <parameter>key_expression</parameter> { VALUE | ':' } <parameter>value_expression</parameter> } ]
   [ { NULL | ABSENT } ON NULL ]
   [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
   [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
@@ -17167,7 +17170,7 @@ WHERE f.did = 103;
   <variablelist>
    <varlistentry>
     <term>
-     <literal><replaceable class="parameter">key_expression</replaceable> { VALUE | ':' } <replaceable class="parameter">value_expression</replaceable></literal>
+     <literal><parameter>key_expression</parameter> { VALUE | ':' } <parameter>value_expression</parameter></literal>
     </term>
     <listitem>
 
@@ -17177,16 +17180,18 @@ WHERE f.did = 103;
         <itemizedlist>
           <listitem>
             <para>
-              <replaceable class="parameter">key_expression</replaceable> is a scalar expression defining the
-              <acronym>JSON</acronym> key, which is implicitly converted
-              to the <type>text</type> type.
-              The provided expression cannot be <literal>NULL</literal> or belong to a type that has a cast to <type>json</type>.
+              <parameter>key_expression</parameter> is a scalar expression
+              defining the <acronym>JSON</acronym> key, which is implicitly
+              converted to the <type>text</type> type.
+              The provided expression cannot be <literal>NULL</literal> or
+              belong to a type that has a cast to <type>json</type>.
             </para>
           </listitem>
           <listitem>
             <para>
-              <replaceable class="parameter">value_expression</replaceable> is an expression
-              that provides the input for the <acronym>JSON</acronym> value preceded by its type.
+              <parameter>value_expression</parameter> is an expression that
+              provides the input for the <acronym>JSON</acronym> value preceded
+              by its type.
               For <acronym>JSON</acronym> scalar types, you can omit the type.
             </para>
             <note>
@@ -17364,7 +17369,7 @@ Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : 
 
     <refsynopsisdiv>
 <synopsis>JSON_ARRAY (
-  [ { <replaceable class="parameter">value_expression</replaceable> [ FORMAT JSON ] } [, ...] ]
+  [ { <parameter>value_expression</parameter> [ FORMAT JSON ] } [, ...] ]
   [ { NULL | ABSENT } ON NULL ]
   [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
 )
@@ -17391,7 +17396,7 @@ Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : 
   <variablelist>
     <varlistentry>
       <term>
-        <literal><replaceable class="parameter">value_expression</replaceable></literal>
+        <literal><parameter>value_expression</parameter></literal>
       </term>
       <listitem>
 
@@ -17536,7 +17541,7 @@ AS film_titles;
 
     <refsynopsisdiv>
 <synopsis>JSON_ARRAYAGG (
-  [ <replaceable class="parameter">value_expression</replaceable> ]
+  [ <parameter>value_expression</parameter> ]
   [ ORDER BY <replaceable class="parameter">sort_expression</replaceable> ]
   [ { NULL | ABSENT } ON NULL ]
   [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
@@ -17560,14 +17565,15 @@ AS film_titles;
   <variablelist>
     <varlistentry>
       <term>
-        <literal><replaceable class="parameter">value_expression</replaceable></literal>
+        <literal><parameter>value_expression</parameter></literal>
       </term>
       <listitem>
 
         <para>
-          The input clause that provides the input data to be aggregated as a <acronym>JSON</acronym> array.
-          The <replaceable class="parameter">value_expression</replaceable>
-          can be a value or a query returning the values to be used as input in array construction.
+          The input clause that provides the input data to be aggregated as
+          a <acronym>JSON</acronym> array.
+          The <parameter>value_expression</parameter> can be a value or a query
+          returning the values to be used as input in array construction.
           You can provide multiple input values separated by commas.
         </para>
     </listitem>
