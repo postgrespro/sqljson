@@ -18478,7 +18478,7 @@ FROM
     <refsynopsisdiv>
 <synopsis>
 JSON_SERIALIZE (
-  <replaceable class="parameter">expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+  <parameter>expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ]
   [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ] ]
 )
 </synopsis>
@@ -18498,7 +18498,7 @@ JSON_SERIALIZE (
       <variablelist>
        <varlistentry>
         <term>
-         <literal><replaceable class="parameter">expression</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+         <literal><parameter>expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
         </term>
         <listitem>
          <para>
