@@ -18604,8 +18604,8 @@ JSON_TABLE (
 where <replaceable class="parameter">json_table_column</replaceable> is:
 </phrase>
     <replaceable>name</replaceable> <replaceable>type</replaceable> [ PATH <replaceable>json_path_specification</replaceable> ]
-        [ { ERROR | NULL | DEFAULT expression } ON EMPTY ]
-        [ { ERROR | NULL | DEFAULT expression } ON ERROR ]
+        [ { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON EMPTY ]
+        [ { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON ERROR ]
   | <replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
         [ PATH <replaceable>json_path_specification</replaceable> ]
         [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } }
