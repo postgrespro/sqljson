@@ -17712,9 +17712,9 @@ INSERT INTO my_films VALUES (
     <refsynopsisdiv>
 <synopsis>
 <replaceable class="parameter">expression</replaceable>
-  IS [ NOT ] JSON 
-  [ { VALUE | SCALAR | ARRAY | OBJECT } ]
-  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
+  IS <optional> NOT </optional> JSON 
+  <optional> { VALUE | SCALAR | ARRAY | OBJECT } </optional>
+  <optional> { WITH | WITHOUT } UNIQUE <optional> KEYS </optional> </optional>
 </synopsis>
     </refsynopsisdiv>
 
@@ -17797,7 +17797,7 @@ INSERT INTO my_films VALUES (
 
     <varlistentry>
     <term>
-     <literal>{ WITH | WITHOUT } UNIQUE [ KEYS ]</literal>
+     <literal>{ WITH | WITHOUT } UNIQUE <optional> KEYS </optional></literal>
     </term>
     <listitem>
      <para>Defines whether duplicate keys are allowed:
