@@ -18873,7 +18873,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
    <varlistentry>
     <term>
-     <literal>PLAN DEFAULT ( <replaceable>option</replaceable> [, ... ] )</literal>
+     <literal>PLAN DEFAULT ( <replaceable>option</replaceable> <optional>, ... </optional> )</literal>
     </term>
     <listitem>
      <para>
