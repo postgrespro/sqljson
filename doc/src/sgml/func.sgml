@@ -18597,27 +18597,27 @@ FROM
 
 <synopsis>
 JSON_TABLE (
- <replaceable class="parameter">json_api_common_syntax</replaceable>
- COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> [, ...] )
+  <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional> </optional>
+  COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> <optional>, ...</optional> )
 )
 <phrase>
 where <replaceable class="parameter">json_table_column</replaceable> is:
 </phrase>
-    <replaceable>name</replaceable> <replaceable>type</replaceable> [ PATH <replaceable>json_path_specification</replaceable> ]
-        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER ]
-        [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
-        [ { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON EMPTY ]
-        [ { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON ERROR ]
+    <replaceable>name</replaceable> <replaceable>type</replaceable> <optional> PATH <replaceable>json_path_specification</replaceable> </optional>
+        <optional> { WITHOUT | WITH { CONDITIONAL | <optional>UNCONDITIONAL</optional> } } <optional> ARRAY </optional> WRAPPER </optional>
+        <optional> { KEEP | OMIT } QUOTES <optional> ON SCALAR STRING </optional> </optional>
+        <optional> { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON EMPTY </optional>
+        <optional> { ERROR | NULL | DEFAULT <replaceable>expression</replaceable> } ON ERROR </optional>
   | <replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
-        [ PATH <replaceable>json_path_specification</replaceable> ]
-        [ { WITHOUT | WITH { CONDITIONAL | [UNCONDITIONAL] } } [ ARRAY ] WRAPPER ]
-        [ { KEEP | OMIT } QUOTES [ ON SCALAR STRING ] ]
-        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } | DEFAULT <replaceable>expression</replaceable> } ON EMPTY ]
-        [ { ERROR | NULL | EMPTY { ARRAY | OBJECT } | DEFAULT <replaceable>expression</replaceable> } ON ERROR ]
-  | <replaceable>name</replaceable> <replaceable>type</replaceable> EXISTS [ PATH <replaceable>json_path_specification</replaceable> ]
-        [ { ERROR | TRUE | FALSE | UNKNOWN } ON ERROR ]
-  | NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>path_name</replaceable> ]
-        COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )
+        <optional> PATH <replaceable>json_path_specification</replaceable> </optional>
+        <optional> { WITHOUT | WITH { CONDITIONAL | <optional>UNCONDITIONAL</optional> } } <optional> ARRAY </optional> WRAPPER </optional>
+        <optional> { KEEP | OMIT } QUOTES <optional> ON SCALAR STRING </optional> </optional>
+        <optional> { ERROR | NULL | EMPTY { ARRAY | OBJECT } | DEFAULT <replaceable>expression</replaceable> } ON EMPTY </optional>
+        <optional> { ERROR | NULL | EMPTY { ARRAY | OBJECT } | DEFAULT <replaceable>expression</replaceable> } ON ERROR </optional>
+  | <replaceable>name</replaceable> <replaceable>type</replaceable> EXISTS <optional> PATH <replaceable>json_path_specification</replaceable> </optional>
+        <optional> { ERROR | TRUE | FALSE | UNKNOWN } ON ERROR </optional>
+  | NESTED PATH <replaceable>json_path_specification</replaceable> <optional> AS <replaceable>path_name</replaceable> </optional>
+        COLUMNS ( <replaceable>json_table_column</replaceable> <optional>, ...</optional> )
   | <replaceable>name</replaceable> FOR ORDINALITY
 
 </synopsis>
@@ -18696,7 +18696,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
   <variablelist>
    <varlistentry>
     <term>
-     <literal><replaceable class="parameter">json_api_common_syntax</replaceable></literal>
+     <literal><replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> AS <replaceable>json_path_name</replaceable> </optional> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional></optional></literal>
     </term>
     <listitem>
 
@@ -18712,7 +18712,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
    <varlistentry>
     <term>
-     <literal>COLUMNS( { <replaceable class="parameter">json_table_column</replaceable> } [, ...] )</literal>
+     <literal>COLUMNS( <replaceable class="parameter">json_table_column</replaceable> <optional>, ...</optional> )</literal>
     </term>
     <listitem>
 
@@ -18728,7 +18728,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
    <varlistentry>
     <term>
      <literal><replaceable>name</replaceable> <replaceable>type</replaceable>
-          [ PATH <replaceable>json_path_specification</replaceable> ]</literal>
+          <optional> PATH <replaceable>json_path_specification</replaceable> </optional></literal>
     </term>
     <listitem>
 
@@ -18770,7 +18770,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
    <varlistentry>
     <term>
      <literal><replaceable>name</replaceable> <replaceable>type</replaceable> FORMAT <replaceable>json_representation</replaceable>
-          [ PATH <replaceable>json_path_specification</replaceable> ]</literal>
+          <optional> PATH <replaceable>json_path_specification</replaceable> </optional></literal>
     </term>
     <listitem>
 
@@ -18807,7 +18807,7 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
     <term>
      <literal>
        <replaceable>name</replaceable> <replaceable>type</replaceable>
-       EXISTS [ PATH <replaceable>json_path_specification</replaceable> ]
+       EXISTS <optional> PATH <replaceable>json_path_specification</replaceable> </optional>
      </literal>
     </term>
     <listitem>
@@ -18837,8 +18837,8 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
    <varlistentry>
     <term>
-     <literal>NESTED PATH <replaceable>json_path_specification</replaceable> [ AS <replaceable>json_path_name</replaceable> ]
-          COLUMNS ( <replaceable>json_table_column</replaceable> [, ...] )</literal>
+     <literal>NESTED PATH <replaceable>json_path_specification</replaceable> <optional> AS <replaceable>json_path_name</replaceable> </optional>
+          COLUMNS ( <replaceable>json_table_column</replaceable> <optional>, ...</optional> )</literal>
     </term>
     <listitem>
 
