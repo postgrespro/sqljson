@@ -16941,9 +16941,9 @@ $ ? (@ like_regex "^\\d+$")
 
     <refsynopsisdiv>
 <synopsis>
-JSON_SCALAR (
+<function>JSON_SCALAR</function> (
   <parameter>expression</parameter>
-  [ RETURNING <replaceable class="parameter">json_data_type</replaceable> ]
+  <optional> RETURNING <replaceable class="parameter">json_data_type</replaceable> </optional>
 )
 </synopsis>
     </refsynopsisdiv>
