@@ -16927,12 +16927,12 @@ $ ? (@ like_regex "^\\d+$")
 
     <refsynopsisdiv>
 <synopsis>
-JSON_OBJECT (
-  [ { <parameter>key_expression</parameter> { VALUE | ':' }
-      <parameter>value_expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ] }[, ...] ]
-  [ { NULL | ABSENT } ON NULL ]
-  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
-  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+<function>JSON_OBJECT</function> (
+  <optional> { <parameter>key_expression</parameter> { VALUE | ':' }
+      <parameter>value_expression</parameter> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> }<optional>, ...</optional> </optional>
+  <optional> { NULL | ABSENT } ON NULL </optional>
+  <optional> { WITH | WITHOUT } UNIQUE <optional> KEYS </optional> </optional>
+  <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 
 </synopsis>
@@ -16953,8 +16953,10 @@ JSON_OBJECT (
 
    <varlistentry>
     <term>
-     <literal><parameter>key_expression</parameter> { VALUE | ':' }
-              <parameter>value_expression</parameter> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+      <literal>
+       <parameter>key_expression</parameter> { VALUE | ':' }
+       <parameter>value_expression</parameter> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional>
+      </literal>
     </term>
     <listitem>
     <para>
@@ -17025,7 +17027,7 @@ JSON_OBJECT (
 
     <varlistentry>
     <term>
-     <literal>{ WITH | WITHOUT } UNIQUE [ KEYS ]</literal>
+     <literal>{ WITH | WITHOUT } UNIQUE <optional> KEYS </optional></literal>
     </term>
     <listitem>
      <para>Defines whether duplicate keys are allowed:
@@ -17059,7 +17061,7 @@ JSON_OBJECT (
 
   <varlistentry>
     <term>
-     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional></literal>
     </term>
     <listitem>
      <para>
@@ -17142,11 +17144,12 @@ WHERE f.did = 103;
     </refnamediv>
 
     <refsynopsisdiv>
-<synopsis>JSON_OBJECTAGG (
-  [ { <parameter>key_expression</parameter> { VALUE | ':' } <parameter>value_expression</parameter> } ]
-  [ { NULL | ABSENT } ON NULL ]
-  [ { WITH | WITHOUT } UNIQUE [ KEYS ] ]
-  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+<synopsis>
+<function>JSON_OBJECTAGG</function> (
+  <optional> { <parameter>key_expression</parameter> { VALUE | ':' } <parameter>value_expression</parameter> } </optional>
+  <optional> { NULL | ABSENT } ON NULL </optional>
+  <optional> { WITH | WITHOUT } UNIQUE <optional> KEYS </optional> </optional>
+  <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 
 </synopsis>
@@ -17244,7 +17247,7 @@ WHERE f.did = 103;
 
     <varlistentry>
     <term>
-     <literal>{ WITH | WITHOUT } UNIQUE [ KEYS ]</literal>
+     <literal>{ WITH | WITHOUT } UNIQUE <optional> KEYS </optional></literal>
     </term>
     <listitem>
      <para>Defines whether duplicate keys are allowed:
@@ -17278,7 +17281,7 @@ WHERE f.did = 103;
 
   <varlistentry>
     <term>
-     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional></literal>
     </term>
     <listitem>
      <para>
@@ -17368,15 +17371,16 @@ Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : 
     </refnamediv>
 
     <refsynopsisdiv>
-<synopsis>JSON_ARRAY (
-  [ { <parameter>value_expression</parameter> [ FORMAT JSON ] } [, ...] ]
-  [ { NULL | ABSENT } ON NULL ]
-  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+<synopsis>
+<function>JSON_ARRAY</function> (
+  <optional> { <parameter>value_expression</parameter> <optional> FORMAT JSON </optional> } <optional>, ...</optional> </optional>
+  <optional> { NULL | ABSENT } ON NULL </optional>
+  <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 </synopsis>
 <synopsis>JSON_ARRAY (
-  [ <replaceable class="parameter">query_expression</replaceable> ]
-  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+  <optional> <replaceable class="parameter">query_expression</replaceable> </optional>
+  <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 </synopsis>
     </refsynopsisdiv>
@@ -17468,7 +17472,7 @@ Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : 
 
    <varlistentry>
     <term>
-     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional></literal>
     </term>
     <listitem>
      <para>
@@ -17540,11 +17544,12 @@ AS film_titles;
     </refnamediv>
 
     <refsynopsisdiv>
-<synopsis>JSON_ARRAYAGG (
-  [ <parameter>value_expression</parameter> ]
-  [ ORDER BY <replaceable class="parameter">sort_expression</replaceable> ]
-  [ { NULL | ABSENT } ON NULL ]
-  [ RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]
+<synopsis>
+<function>JSON_ARRAYAGG</function> (
+  <optional> <parameter>value_expression</parameter> </optional>
+  <optional> ORDER BY <replaceable class="parameter">sort_expression</replaceable> </optional>
+  <optional> { NULL | ABSENT } ON NULL </optional>
+  <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 
 </synopsis>
@@ -17617,7 +17622,7 @@ AS film_titles;
 
    <varlistentry>
     <term>
-     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> [ FORMAT JSON [ ENCODING UTF8 ] ]</literal>
+     <literal>RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional></literal>
     </term>
     <listitem>
      <para>
