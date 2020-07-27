@@ -4962,7 +4962,7 @@ transformJsonParseExpr(ParseState *pstate, JsonParseExpr *jsexpr)
 										false, returning->typid);
 	}
 
-	return makeJsonCtorExpr(pstate, JSCTOR_JSON_PARSE, list_make1(arg), NULL,
+	return makeJsonConstructorExpr(pstate, JSCTOR_JSON_PARSE, list_make1(arg), NULL,
 							returning, jsexpr->unique_keys, false,
 							jsexpr->location);
 }

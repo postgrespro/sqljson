@@ -1601,14 +1601,14 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			}
 			else if (ctor->type == JSCTOR_JSON_PARSE)
 			{
-				if (op->d.json_ctor.arg_nulls[0])
+				if (op->d.json_constructor.arg_nulls[0])
 				{
 					res = (Datum) 0;
 					isnull = true;
 				}
 				else
 				{
-					Datum		value = op->d.json_ctor.arg_values[0];
+					Datum		value = op->d.json_constructor.arg_values[0];
 					text	   *js = DatumGetTextP(value);
 
 					if (is_jsonb)
