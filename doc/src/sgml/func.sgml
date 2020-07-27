@@ -16908,7 +16908,7 @@ $ ? (@ like_regex "^\\d+$")
   <itemizedlist>
     <listitem>
       <para>
-       <xref linkend="functions-jsonparse"/>
+       <link linkend="functions-jsonparse"><literal>JSON</literal></link>
       </para>
     </listitem>
     <listitem>
@@ -16938,13 +16938,9 @@ $ ? (@ like_regex "^\\d+$")
     </listitem>
   </itemizedlist>
 
-   <refentry id="functions-jsonparse">
-    <refnamediv>
-     <refname>JSON</refname>
-     <refpurpose>create a JSON from a text</refpurpose>
-    </refnamediv>
-
-    <refsynopsisdiv>
+  <sect4 id="functions-jsonparse">
+   <title><literal>JSON</literal></title>
+   <indexterm><primary>json</primary></indexterm>
 <synopsis>
 <function>JSON</function> (
   <parameter>expression</parameter> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional>
@@ -16952,18 +16948,17 @@ $ ? (@ like_regex "^\\d+$")
   <optional> RETURNING <replaceable class="parameter">json_data_type</replaceable> </optional>
 )
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON</function> function generates a <acronym>JSON</acronym>
       from a text data.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
       <variablelist>
        <varlistentry>
@@ -17029,17 +17024,17 @@ $ ? (@ like_regex "^\\d+$")
        </listitem>
       </varlistentry>
      </variablelist>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Notes</title>
      <para>
       Alternatively, you can construct <acronym>JSON</acronym> values simply
       using <productname>PostgreSQL</productname>-specific casts to 
       <type>json</type> and <type>jsonb</type> types.
      </para>
-    </refsect1>
-    <refsect1>
+    </sect5>
+    <sect5>
      <title>Examples</title>
      <para>
       Construct a JSON the provided strings:
@@ -17061,8 +17056,8 @@ SELECT JSON('{"a": 123, "b": [true, "foo"], "a": "bar"}' RETURNING jsonb);
 SELECT JSON('{"a": 123, "b": [true, "foo"], "a": "bar"}' WITH UNIQUE KEYS);
 ERROR:  duplicate JSON object key value
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
   <sect4 id="functions-jsonscalar">
    <title><literal>JSON_SCALAR</literal></title>
