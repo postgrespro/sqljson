@@ -4908,6 +4908,6 @@ transformJsonScalarExpr(ParseState *pstate, JsonScalarExpr *jsexpr)
 	if (exprType(arg) == UNKNOWNOID)
 		arg = coerce_to_specific_type(pstate, arg, TEXTOID, "JSON_SCALAR");
 
-	return makeJsonCtorExpr(pstate, JSCTOR_JSON_SCALAR, list_make1(arg), NULL,
+	return makeJsonConstructorExpr(pstate, JSCTOR_JSON_SCALAR, list_make1(arg), NULL,
 							returning, false, false, jsexpr->location);
 }

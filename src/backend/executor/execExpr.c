@@ -2180,14 +2180,14 @@ ExecInitExprRec(Expr *node, ExprState *state,
 						bool		is_jsonb =
 							ctor->returning->format->format == JS_FORMAT_JSONB;
 
-						scratch.d.json_ctor.arg_type_cache =
-							palloc(sizeof(*scratch.d.json_ctor.arg_type_cache) * nargs);
+						scratch.d.json_constructor.arg_type_cache =
+							palloc(sizeof(*scratch.d.json_constructor.arg_type_cache) * nargs);
 
 						for (int i = 0; i < nargs; i++)
 						{
 							int			category;
 							Oid			outfuncid;
-							Oid			typid = scratch.d.json_ctor.arg_types[i];
+							Oid			typid = scratch.d.json_constructor.arg_types[i];
 
 							if (is_jsonb)
 							{
@@ -2206,8 +2206,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 								category = (int) jscat;
 							}
 
-							scratch.d.json_ctor.arg_type_cache[i].outfuncid = outfuncid;
-							scratch.d.json_ctor.arg_type_cache[i].category = category;
+							scratch.d.json_constructor.arg_type_cache[i].outfuncid = outfuncid;
+							scratch.d.json_constructor.arg_type_cache[i].category = category;
 						}
 					}
 
