@@ -18464,36 +18464,32 @@ FROM
    <itemizedlist>
     <listitem>
       <para>
-       <xref linkend="functions-jsonserialize"/>
+       <link linkend="functions-jsonserialize"><literal>JSON_SERIALIZE</literal></link>
       </para>
     </listitem>
    </itemizedlist>
 
-   <refentry id="functions-jsonserialize">
-    <refnamediv>
-     <refname>JSON_SERIALIZE</refname>
-     <refpurpose>serialize a JSON data as a string</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonserialize">
+    <title><literal>JSON_SERIALAIZE</literal></title>
+    <indexterm><primary>json_serialize</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 JSON_SERIALIZE (
   <parameter>expression</parameter> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional>
   <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON_SERIALIZE</function> function transforms a SQL/JSON value
       into a character or binary string.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
       <variablelist>
        <varlistentry>
@@ -18527,17 +18523,17 @@ JSON_SERIALIZE (
        </listitem>
       </varlistentry>
      </variablelist>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Notes</title>
      <para>
       Alternatively, you can construct <acronym>JSON</acronym> values simply
       using <productname>PostgreSQL</productname>-specific casts to 
       <type>json</type> and <type>jsonb</type> types.
      </para>
-    </refsect1>
-    <refsect1>
+    </sect5>
+    <sect5>
      <title>Examples</title>
      <para>
       Construct a JSON the provided strings:
@@ -18556,8 +18552,8 @@ SELECT JSON_SERIALIZE('{"foo": "bar", "baz": [1, 2, 3]}' RETURNING bytea);
 (1 row)
 
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
   </sect3>
  
