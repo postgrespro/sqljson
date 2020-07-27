@@ -17676,17 +17676,17 @@ FROM films AS f;
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsonexists"/>
+       <link linkend="functions-jsonexists"><literal>JSON_EXISTS</literal></link>
       </para>
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsonvalue"/>
+       <link linkend="functions-jsonvalue"><literal>JSON_VALUE</literal></link>
       </para>
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsonquery"/>
+       <link linkend="functions-jsonquery"><literal>JSON_QUERY</literal></link>
       </para>
     </listitem>
   </itemizedlist>
@@ -17718,13 +17718,10 @@ INSERT INTO my_films VALUES (
 </programlisting>
      </para>
 
-   <refentry id="functions-jsonexists">
-    <refnamediv>
-     <refname>JSON_EXISTS</refname>
-     <refpurpose>check whether a JSON path expression can return any SQL/JSON items</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonexists">
+    <title><literal>JSON_EXISTS</literal></title>
+    <indexterm><primary>json_exists</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_EXISTS</function> (
   <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional></optional>
@@ -17732,18 +17729,17 @@ INSERT INTO my_films VALUES (
   <optional> { TRUE | FALSE | UNKNOWN | ERROR } ON ERROR </optional>
 )
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON_EXISTS</function> function checks whether the provided
       <acronym>JSON</acronym> path expression can return any <acronym>SQL/JSON</acronym> items.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
   <variablelist>
    <varlistentry>
@@ -17784,9 +17780,9 @@ INSERT INTO my_films VALUES (
    </varlistentry>
 
    </variablelist>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
 
   <para>
@@ -17831,17 +17827,13 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
 (1 row)
 </screen>
 
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
-   <refentry id="functions-jsonvalue">
-    <refnamediv>
-     <refname>JSON_VALUE</refname>
-     <refpurpose>extract a value from JSON data and convert
-     it to an <acronym>SQL</acronym> scalar</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonvalue">
+    <title><literal>JSON_VALUE</literal></title>
+    <indexterm><primary>json_value</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_VALUE</function> (
   <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional></optional>
@@ -17850,9 +17842,8 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
   <optional> { ERROR | NULL | DEFAULT <replaceable class="parameter">expression</replaceable> } ON ERROR </optional>
 )
   </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
   <para>
@@ -17862,9 +17853,9 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
    <acronym>SQL/JSON</acronym> item, an error occurs. To extract
    an <acronym>SQL/JSON</acronym> array or object, use <xref linkend="functions-jsonquery"/>.
   </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
 
   <variablelist>
@@ -17932,9 +17923,9 @@ SELECT JSON_EXISTS(jsonb '{"a": [1,2,3]}', 'strict $.a[5]');
    </varlistentry>
 
    </variablelist>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
 
      <para>
@@ -17993,17 +17984,13 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
 1
 </screen>
 
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
-   <refentry id="functions-jsonquery">
-    <refnamediv>
-     <refname>JSON_QUERY</refname>
-     <refpurpose>extract an SQL/JSON array or object from JSON data
-     and return a JSON string</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonquery">
+    <title><literal>JSON_QUERY</literal></title>
+    <indexterm><primary>json_query</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_QUERY</function> (
   <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional></optional>
@@ -18014,9 +18001,8 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
   <optional> { ERROR | NULL | EMPTY { <optional> ARRAY </optional> | OBJECT } | DEFAULT <replaceable class="parameter">expression</replaceable> } ON ERROR </optional>
 )
   </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
   <para>
@@ -18026,9 +18012,9 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
    items, you must wrap the result using the <literal>WITH WRAPPER</literal> clause.
    To extract a single <acronym>SQL/JSON</acronym> value, you can use <xref linkend="functions-jsonvalue"/>.
   </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
 
    <variablelist>
@@ -18159,9 +18145,9 @@ SELECT JSON_VALUE(jsonb '[1,2]', 'strict $[*]' DEFAULT 1 ON ERROR);
    </varlistentry>
 
    </variablelist>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
 
      <para>
@@ -18224,8 +18210,8 @@ SELECT JSON_QUERY(jsonb '"aaa"', '$' RETURNING text OMIT QUOTES);
  aaa
 (1 row)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
    <sect4 id="functions-isjson-predicate">
     <title><literal>IS JSON</literal></title>
