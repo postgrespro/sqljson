@@ -4923,7 +4923,7 @@ transformJsonFuncExpr(ParseState *pstate, JsonFuncExpr *func)
 }
 
 static JsonReturning *
-transformJsonCtorRet(ParseState *pstate, JsonOutput *output, const char *fname)
+transformJsonConstructorRet(ParseState *pstate, JsonOutput *output, const char *fname)
 {
 	JsonReturning *returning;
 
@@ -4961,7 +4961,7 @@ transformJsonCtorRet(ParseState *pstate, JsonOutput *output, const char *fname)
 static Node *
 transformJsonParseExpr(ParseState *pstate, JsonParseExpr *jsexpr)
 {
-	JsonReturning *returning = transformJsonCtorRet(pstate, jsexpr->output,
+	JsonReturning *returning = transformJsonConstructorRet(pstate, jsexpr->output,
 													"JSON()");
 	Node	   *arg;
 
@@ -5005,7 +5005,7 @@ static Node *
 transformJsonScalarExpr(ParseState *pstate, JsonScalarExpr *jsexpr)
 {
 	Node	   *arg = transformExprRecurse(pstate, (Node *) jsexpr->expr);
-	JsonReturning *returning = transformJsonCtorRet(pstate, jsexpr->output,
+	JsonReturning *returning = transformJsonConstructorRet(pstate, jsexpr->output,
 													"JSON_SCALAR()");
 
 	if (exprType(arg) == UNKNOWNOID)
