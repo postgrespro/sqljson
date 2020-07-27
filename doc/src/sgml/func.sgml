@@ -17671,7 +17671,7 @@ FROM films AS f;
   <itemizedlist>
     <listitem>
       <para>
-       <xref linkend="functions-isjson-predicate"/>
+       <link linkend="functions-isjson-predicate"><literal>IS JSON</literal></link>
       </para>
     </listitem>
   </itemizedlist>
@@ -17703,22 +17703,18 @@ INSERT INTO my_films VALUES (
 </programlisting>
      </para>
 
-   <refentry id="functions-isjson-predicate">
-    <refnamediv>
-     <refname>IS JSON</refname>
-     <refpurpose>test whether the provided value is valid JSON data</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-isjson-predicate">
+    <title><literal>IS JSON</literal></title>
+    <indexterm><primary>is_json</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <replaceable class="parameter">expression</replaceable>
   IS <optional> NOT </optional> JSON 
   <optional> { VALUE | SCALAR | ARRAY | OBJECT } </optional>
   <optional> { WITH | WITHOUT } UNIQUE <optional> KEYS </optional> </optional>
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
   <para>
@@ -17740,9 +17736,9 @@ INSERT INTO my_films VALUES (
     </listitem>
    </itemizedlist>
   </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
 
 <variablelist>
@@ -17821,9 +17817,9 @@ INSERT INTO my_films VALUES (
   </varlistentry>
    </variablelist>
 
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
 
      <para>
@@ -17850,8 +17846,8 @@ FROM
  abc        | f       | t           | f         | f         | f
 (5 rows)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
 
   </sect3>
