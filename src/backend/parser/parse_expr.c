@@ -4938,6 +4938,6 @@ transformJsonSerializeExpr(ParseState *pstate, JsonSerializeExpr *expr)
 		returning->typmod = -1;
 	}
 
-	return makeJsonCtorExpr(pstate, JSCTOR_JSON_SERIALIZE, list_make1(arg),
+	return makeJsonConstructorExpr(pstate, JSCTOR_JSON_SERIALIZE, list_make1(arg),
 							NULL, returning, false, false, expr->location);
 }
