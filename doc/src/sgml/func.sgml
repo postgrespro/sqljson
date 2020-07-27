@@ -16899,33 +16899,30 @@ $ ? (@ like_regex "^\\d+$")
   <itemizedlist>
     <listitem>
       <para>
-       <xref linkend="functions-jsonobject"/>
+       <link linkend="functions-jsonobject"><literal>JSON_OBJECT</literal></link>
       </para>
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsonobjectagg"/>
+       <link linkend="functions-jsonobjectagg"><literal>JSON_OBJECTAGG</literal></link>
       </para>
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsonarray"/>
+       <link linkend="functions-jsonarray"><literal>JSON_ARRAY</literal></link>
       </para>
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsonarrayagg"/>
+       <link linkend="functions-jsonarrayagg"><literal>JSON_ARRAYAGG</literal></link>
       </para>
     </listitem>
   </itemizedlist>
 
-   <refentry id="functions-jsonobject">
-    <refnamediv>
-     <refname>JSON_OBJECT</refname>
-     <refpurpose>create a JSON object</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonobject">
+    <title><literal>JSON_OBJECT</literal></title>
+    <indexterm><primary>json_object</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_OBJECT</function> (
   <optional> { <parameter>key_expression</parameter> { VALUE | ':' }
@@ -16934,20 +16931,18 @@ $ ? (@ like_regex "^\\d+$")
   <optional> { WITH | WITHOUT } UNIQUE <optional> KEYS </optional> </optional>
   <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
-
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON_OBJECT</function> function generates a <acronym>JSON</acronym>
       object from <acronym>SQL</acronym> or <acronym>JSON</acronym> data.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
   <variablelist>
 
@@ -17072,18 +17067,18 @@ $ ? (@ like_regex "^\\d+$")
    </varlistentry>
 
    </variablelist>
-    </refsect1>
+    </sect5>
 
- <refsect1>
+ <sect5>
   <title>Notes</title>
   <para>Alternatively, you can construct <acronym>JSON</acronym> objects by using
   <productname>PostgreSQL</productname>-specific <function>json_build_object()</function>/
   <function>jsonb_build_object()</function> functions.
   See <xref linkend="functions-json-creation-table"/> for details.
   </para>
- </refsect1>
+ </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
   <para>
    Construct a JSON object from the provided key/value pairs of various types:
@@ -17134,16 +17129,13 @@ WHERE f.did = 103;
 {"code" : "P_303", "title" : "48 Hrs", "did" : 103}
 (3 rows)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
-   <refentry id="functions-jsonobjectagg">
-    <refnamediv>
-     <refname>JSON_OBJECTAGG</refname>
-     <refpurpose>create a JSON object as an aggregate of the provided data</refpurpose>
-    </refnamediv>
-
-    <refsynopsisdiv>
+   <sect4 id="functions-jsonobjectagg">
+   <title><literal>JSON_OBJECTAGG</literal></title>
+   <indexterm><primary>json_objectagg</primary></indexterm>
+   
 <synopsis>
 <function>JSON_OBJECTAGG</function> (
   <optional> { <parameter>key_expression</parameter> { VALUE | ':' } <parameter>value_expression</parameter> } </optional>
@@ -17153,9 +17145,8 @@ WHERE f.did = 103;
 )
 
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
@@ -17165,9 +17156,9 @@ WHERE f.did = 103;
       or an <command>ORDER BY</command> clause, this function returns a separate JSON object
       for each table row.
     </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
 
   <variablelist>
@@ -17292,18 +17283,18 @@ WHERE f.did = 103;
    </varlistentry>
 
   </variablelist>
-    </refsect1>
+    </sect5>
 
- <refsect1>
+ <sect5>
   <title>Notes</title>
   <para>Alternatively, you can create <acronym>JSON</acronym> objects by using
   <productname>PostgreSQL</productname>-specific <function>json_object_agg()</function>/
   <function>jsonb_object_agg()</function> aggregate functions.
   See <xref linkend="functions-aggregate"/> for details.
   </para>
- </refsect1>
+ </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
 
   <para>
@@ -17361,16 +17352,13 @@ Drama        | { "The Third Man" : "01:44:00", "Becket" : "02:28:00", "War and P
 Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : "01:54:00", "Absence of Malice" : "01:55:00" }
 (5 rows)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
-   <refentry id="functions-jsonarray">
-    <refnamediv>
-     <refname>JSON_ARRAY</refname>
-     <refpurpose>create a JSON array</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonarray">
+    <title><literal>JSON_ARRAY</literal></title>
+    <indexterm><primary>json_array</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_ARRAY</function> (
   <optional> { <parameter>value_expression</parameter> <optional> FORMAT JSON </optional> } <optional>, ...</optional> </optional>
@@ -17383,18 +17371,17 @@ Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : 
   <optional> RETURNING <replaceable class="parameter">data_type</replaceable> <optional> FORMAT JSON <optional> ENCODING UTF8 </optional> </optional> </optional>
 )
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON_ARRAY</function> function constructs a <acronym>JSON</acronym> array from
       the provided <acronym>SQL</acronym> or <acronym>JSON</acronym> data.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
 
   <variablelist>
@@ -17483,18 +17470,18 @@ Action       | { "Vertigo" : "02:08:00", "48 Hrs" : "01:37:00", "Taxi Driver" : 
    </varlistentry>
 
 </variablelist>
-    </refsect1>
+    </sect5>
 
- <refsect1>
+ <sect5>
   <title>Notes</title>
   <para>Alternatively, you can create <acronym>JSON</acronym> arrays by using
   <productname>PostgreSQL</productname>-specific <function>json_build_array()</function>/
   <function>jsonb_build_array()</function> functions.
   See <xref linkend="functions-json"/> for details.
   </para>
- </refsect1>
+ </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
   <para>
     From the <structname>films</structname> table, select some data
@@ -17534,16 +17521,13 @@ AS film_titles;
 ["Vertigo", "Becket", "48 Hrs"]
 (1 row)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
-   <refentry id="functions-jsonarrayagg">
-    <refnamediv>
-     <refname>JSON_ARRAYAGG</refname>
-     <refpurpose>aggregate a JSON array</refpurpose>
-    </refnamediv>
+   <sect4 id="functions-jsonarrayagg">
+    <title><literal>JSON_ARRAYAGG</literal></title>
+    <indexterm><primary>json_arrayagg</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_ARRAYAGG</function> (
   <optional> <parameter>value_expression</parameter> </optional>
@@ -17553,18 +17537,17 @@ AS film_titles;
 )
 
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON_ARRAYAGG</function> function aggregates the provided <acronym>SQL</acronym>
       or <acronym>JSON</acronym> data into a <acronym>JSON</acronym> array.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
 
   <variablelist>
@@ -17633,18 +17616,18 @@ AS film_titles;
    </varlistentry>
 
 </variablelist>
-    </refsect1>
+    </sect5>
 
-<refsect1>
+<sect5>
   <title>Notes</title>
   <para>Alternatively, you can create <acronym>JSON</acronym> arrays by using
   <productname>PostgreSQL</productname>-specific <function>json_agg()</function>/
   <function>jsonb_agg()</function> functions.
   See <xref linkend="functions-aggregate"/> for details.
   </para>
- </refsect1>
+ </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
      <para>
        Construct an array of film titles sorted in alphabetical order:
@@ -17660,8 +17643,8 @@ FROM films AS f;
 ["48 Hrs", "Absence of Malice", "Bananas", "Becket", "Bed Knobs and Broomsticks", "Das Boot", "Storia di una donna", "Taxi Driver", "The African Queen", "The King and I", "There's a Girl in my Soup", "The Third Man", "Une Femme est une Femme", "Vertigo", "War and Peace", "West Side Story", "Yojimbo"]
 (1 row)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
   </sect3>
  
   <sect3 id="sqljson-common-clauses">
