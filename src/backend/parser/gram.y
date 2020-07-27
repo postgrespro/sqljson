@@ -606,9 +606,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 					json_output_clause_opt
 					json_value_constructor
 					json_object_constructor
+					json_object_constructor_args
 					json_object_constructor_args_opt
 					json_object_args
-					json_object_ctor_args_opt
 					json_object_func_args
 					json_array_constructor
 					json_name_and_value
@@ -13740,7 +13740,9 @@ func_expr: func_application within_group_clause filter_clause over_clause
 				}
 			| json_aggregate_func filter_clause over_clause
 				{
-					JsonAggCtor *n = (JsonAggCtor *) $1;
+					JsonAggConstructor *n = IsA($1, JsonObjectAgg) ?
+						((JsonObjectAgg *) $1)->constructor :
+						((JsonArrayAgg *) $1)->constructor;
 					n->agg_filter = $2;
 					n->over = $3;
 					$$ = (Node *) $1;
@@ -14754,7 +14756,7 @@ json_object_constructor:
 		;
 
 json_object_args:
-			json_object_ctor_args_opt
+			json_object_constructor_args
 			| json_object_func_args
 		;
 
@@ -14766,10 +14768,10 @@ json_object_func_args:
 				}
 		;
 
-json_object_ctor_args_opt:
+json_object_constructor_args:
 			json_object_constructor_args_opt json_output_clause_opt
 				{
-					JsonObjectCtor *n = (JsonObjectCtor *) $1;
+					JsonObjectConstructor *n = (JsonObjectConstructor *) $1;
 					n->output = (JsonOutput *) $2;
 					n->location = @1;
 					$$ = (Node *) n;
@@ -14781,7 +14783,7 @@ json_object_constructor_args_opt:
 			json_object_constructor_null_clause_opt
 			json_key_uniqueness_constraint_opt
 				{
-					JsonObjectCtor *n = makeNode(JsonObjectCtor);
+					JsonObjectConstructor *n = makeNode(JsonObjectConstructor);
 					n->exprs = $1;
 					n->absent_on_null = $2;
 					n->unique = $3;
@@ -14789,7 +14791,7 @@ json_object_constructor_args_opt:
 				}
 			| /* EMPTY */
 				{
-					JsonObjectCtor *n = makeNode(JsonObjectCtor);
+					JsonObjectConstructor *n = makeNode(JsonObjectConstructor);
 					n->exprs = NULL;
 					n->absent_on_null = false;
 					n->unique = false;
@@ -14830,7 +14832,7 @@ json_array_constructor:
 				json_output_clause_opt
 			')'
 				{
-					JsonArrayCtor *n = makeNode(JsonArrayCtor);
+					JsonArrayConstructor *n = makeNode(JsonArrayConstructor);
 					n->exprs = $3;
 					n->absent_on_null = $4;
 					n->output = (JsonOutput *) $5;
@@ -14844,7 +14846,7 @@ json_array_constructor:
 				json_output_clause_opt
 			')'
 				{
-					JsonArrayQueryCtor *n = makeNode(JsonArrayQueryCtor);
+					JsonArrayQueryConstructor *n = makeNode(JsonArrayQueryConstructor);
 					n->query = $3;
 					n->format = makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 					/* n->format = $4; */
@@ -14857,7 +14859,7 @@ json_array_constructor:
 				json_output_clause_opt
 			')'
 				{
-					JsonArrayCtor *n = makeNode(JsonArrayCtor);
+					JsonArrayConstructor *n = makeNode(JsonArrayConstructor);
 					n->exprs = NIL;
 					n->absent_on_null = true;
 					n->output = (JsonOutput *) $3;
@@ -14894,9 +14896,10 @@ json_object_aggregate_constructor:
 					n->arg = (JsonKeyValue *) $3;
 					n->absent_on_null = $4;
 					n->unique = $5;
-					n->ctor.output = (JsonOutput *) $6;
-					n->ctor.agg_order = NULL;
-					n->ctor.location = @1;
+					n->constructor = makeNode(JsonAggConstructor);
+					n->constructor->output = (JsonOutput *) $6;
+					n->constructor->agg_order = NULL;
+					n->constructor->location = @1;
 					$$ = (Node *) n;
 				}
 		;
@@ -14911,10 +14914,11 @@ json_array_aggregate_constructor:
 				{
 					JsonArrayAgg *n = makeNode(JsonArrayAgg);
 					n->arg = (JsonValueExpr *) $3;
-					n->ctor.agg_order = $4;
 					n->absent_on_null = $5;
-					n->ctor.output = (JsonOutput *) $6;
-					n->ctor.location = @1;
+					n->constructor = makeNode(JsonAggConstructor);
+					n->constructor->agg_order = $4;
+					n->constructor->output = (JsonOutput *) $6;
+					n->constructor->location = @1;
 					$$ = (Node *) n;
 				}
 		;

@@ -667,9 +667,9 @@ contain_mutable_functions_walker(Node *node, void *context)
 								context))
 		return true;
 
-	if (IsA(node, JsonCtorExpr))
+	if (IsA(node, JsonConstructorExpr))
 	{
-		JsonCtorExpr *ctor = (JsonCtorExpr *) node;
+		JsonConstructorExpr *ctor = (JsonConstructorExpr *) node;
 		ListCell   *lc;
 		bool		is_jsonb =
 			ctor->returning->format->format == JS_FORMAT_JSONB;

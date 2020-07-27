@@ -1389,12 +1389,12 @@ _readJsonValueExpr(void)
 }
 
 /*
- * _readJsonCtorExpr
+ * _readJsonConstructorExpr
  */
-static JsonCtorExpr *
-_readJsonCtorExpr(void)
+static JsonConstructorExpr *
+_readJsonConstructorExpr(void)
 {
-	READ_LOCALS(JsonCtorExpr);
+	READ_LOCALS(JsonConstructorExpr);
 
 	READ_NODE_FIELD(args);
 	READ_NODE_FIELD(func);
@@ -2952,7 +2952,7 @@ parseNodeString(void)
 	else if (MATCH("JSONVALUEEXPR", 13))
 		return_value = _readJsonValueExpr();
 	else if (MATCH("JSONCTOREXPR", 12))
-		return_value = _readJsonCtorExpr();
+		return_value = _readJsonConstructorExpr();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

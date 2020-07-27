@@ -2295,12 +2295,12 @@ _copyJsonValueExpr(const JsonValueExpr *from)
 }
 
 /*
- * _copyJsonCtorExpr
+ * _copyJsonConstructorExpr
  */
-static JsonCtorExpr *
-_copyJsonCtorExpr(const JsonCtorExpr *from)
+static JsonConstructorExpr *
+_copyJsonConstructorExpr(const JsonConstructorExpr *from)
 {
-	JsonCtorExpr *newnode = makeNode(JsonCtorExpr);
+	JsonConstructorExpr *newnode = makeNode(JsonConstructorExpr);
 
 	COPY_SCALAR_FIELD(type);
 	COPY_NODE_FIELD(args);
@@ -2329,17 +2329,34 @@ _copyJsonKeyValue(const JsonKeyValue *from)
 }
 
 /*
- * _copyJsonObjectCtor
+ * _copyJsonObjectConstructor
  */
-static JsonObjectCtor *
-_copyJsonObjectCtor(const JsonObjectCtor *from)
+static JsonObjectConstructor *
+_copyJsonObjectConstructor(const JsonObjectConstructor *from)
 {
-	JsonObjectCtor *newnode = makeNode(JsonObjectCtor);
+	JsonObjectConstructor *newnode = makeNode(JsonObjectConstructor);
 
 	COPY_NODE_FIELD(exprs);
 	COPY_NODE_FIELD(output);
 	COPY_SCALAR_FIELD(absent_on_null);
 	COPY_SCALAR_FIELD(unique);
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+/*
+ * _copyJsonAggConstructor
+ */
+static JsonAggConstructor *
+_copyJsonAggConstructor(const JsonAggConstructor *from)
+{
+	JsonAggConstructor *newnode = makeNode(JsonAggConstructor);
+
+	COPY_NODE_FIELD(output);
+	COPY_NODE_FIELD(agg_filter);
+	COPY_NODE_FIELD(agg_order);
+	COPY_NODE_FIELD(over);
 	COPY_LOCATION_FIELD(location);
 
 	return newnode;
@@ -2353,11 +2370,7 @@ _copyJsonObjectAgg(const JsonObjectAgg *from)
 {
 	JsonObjectAgg *newnode = makeNode(JsonObjectAgg);
 
-	COPY_NODE_FIELD(ctor.output);
-	COPY_NODE_FIELD(ctor.agg_filter);
-	COPY_NODE_FIELD(ctor.agg_order);
-	COPY_NODE_FIELD(ctor.over);
-	COPY_LOCATION_FIELD(ctor.location);
+	COPY_NODE_FIELD(constructor);
 	COPY_NODE_FIELD(arg);
 	COPY_SCALAR_FIELD(absent_on_null);
 	COPY_SCALAR_FIELD(unique);
@@ -2380,12 +2393,12 @@ _copyJsonOutput(const JsonOutput *from)
 }
 
 /*
- * _copyJsonArrayCtor
+ * _copyJsonArrayConstructor
  */
-static JsonArrayCtor *
-_copyJsonArrayCtor(const JsonArrayCtor *from)
+static JsonArrayConstructor *
+_copyJsonArrayConstructor(const JsonArrayConstructor *from)
 {
-	JsonArrayCtor *newnode = makeNode(JsonArrayCtor);
+	JsonArrayConstructor *newnode = makeNode(JsonArrayConstructor);
 
 	COPY_NODE_FIELD(exprs);
 	COPY_NODE_FIELD(output);
@@ -2403,11 +2416,7 @@ _copyJsonArrayAgg(const JsonArrayAgg *from)
 {
 	JsonArrayAgg *newnode = makeNode(JsonArrayAgg);
 
-	COPY_NODE_FIELD(ctor.output);
-	COPY_NODE_FIELD(ctor.agg_filter);
-	COPY_NODE_FIELD(ctor.agg_order);
-	COPY_NODE_FIELD(ctor.over);
-	COPY_LOCATION_FIELD(ctor.location);
+	COPY_NODE_FIELD(constructor);
 	COPY_NODE_FIELD(arg);
 	COPY_SCALAR_FIELD(absent_on_null);
 
@@ -2415,12 +2424,12 @@ _copyJsonArrayAgg(const JsonArrayAgg *from)
 }
 
 /*
- * _copyJsonArrayQueryCtor
+ * _copyJsonArrayQueryConstructor
  */
-static JsonArrayQueryCtor *
-_copyJsonArrayQueryCtor(const JsonArrayQueryCtor *from)
+static JsonArrayQueryConstructor *
+_copyJsonArrayQueryConstructor(const JsonArrayQueryConstructor *from)
 {
-	JsonArrayQueryCtor *newnode = makeNode(JsonArrayQueryCtor);
+	JsonArrayQueryConstructor *newnode = makeNode(JsonArrayQueryConstructor);
 
 	COPY_NODE_FIELD(query);
 	COPY_NODE_FIELD(output);
@@ -5340,11 +5349,14 @@ copyObjectImpl(const void *from)
 		case T_JsonKeyValue:
 			retval = _copyJsonKeyValue(from);
 			break;
-		case T_JsonCtorExpr:
-			retval = _copyJsonCtorExpr(from);
+		case T_JsonConstructorExpr:
+			retval = _copyJsonConstructorExpr(from);
 			break;
-		case T_JsonObjectCtor:
-			retval = _copyJsonObjectCtor(from);
+		case T_JsonObjectConstructor:
+			retval = _copyJsonObjectConstructor(from);
+			break;
+		case T_JsonAggConstructor:
+			retval = _copyJsonAggConstructor(from);
 			break;
 		case T_JsonObjectAgg:
 			retval = _copyJsonObjectAgg(from);
@@ -5352,11 +5364,11 @@ copyObjectImpl(const void *from)
 		case T_JsonOutput:
 			retval = _copyJsonOutput(from);
 			break;
-		case T_JsonArrayCtor:
-			retval = _copyJsonArrayCtor(from);
+		case T_JsonArrayConstructor:
+			retval = _copyJsonArrayConstructor(from);
 			break;
-		case T_JsonArrayQueryCtor:
-			retval = _copyJsonArrayQueryCtor(from);
+		case T_JsonArrayQueryConstructor:
+			retval = _copyJsonArrayQueryConstructor(from);
 			break;
 		case T_JsonArrayAgg:
 			retval = _copyJsonArrayAgg(from);

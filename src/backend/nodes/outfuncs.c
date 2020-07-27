@@ -1740,7 +1740,7 @@ _outJsonValueExpr(StringInfo str, const JsonValueExpr *node)
 }
 
 static void
-_outJsonCtorExpr(StringInfo str, const JsonCtorExpr *node)
+_outJsonConstructorExpr(StringInfo str, const JsonConstructorExpr *node)
 {
 	WRITE_NODE_TYPE("JSONCTOREXPR");
 
@@ -4391,8 +4391,8 @@ outNode(StringInfo str, const void *obj)
 			case T_JsonValueExpr:
 				_outJsonValueExpr(str, obj);
 				break;
-			case T_JsonCtorExpr:
-				_outJsonCtorExpr(str, obj);
+			case T_JsonConstructorExpr:
+				_outJsonConstructorExpr(str, obj);
 				break;
 
 			default:

@@ -3112,9 +3112,9 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) expr->format);
 			}
 			break;
-		case T_JsonCtorExpr:
+		case T_JsonConstructorExpr:
 			{
-				JsonCtorExpr *ctor = (JsonCtorExpr *) node;
+				JsonConstructorExpr *ctor = (JsonConstructorExpr *) node;
 
 				JumbleExpr(jstate, (Node *) ctor->func);
 				JumbleExpr(jstate, (Node *) ctor->coercion);

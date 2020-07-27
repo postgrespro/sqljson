@@ -1931,11 +1931,11 @@ FigureColnameInternal(Node *node, char **name)
 		case T_XmlSerialize:
 			*name = "xmlserialize";
 			return 2;
-		case T_JsonObjectCtor:
+		case T_JsonObjectConstructor:
 			*name = "json_object";
 			return 2;
-		case T_JsonArrayCtor:
-		case T_JsonArrayQueryCtor:
+		case T_JsonArrayConstructor:
+		case T_JsonArrayQueryConstructor:
 			*name = "json_array";
 			return 2;
 		case T_JsonObjectAgg:

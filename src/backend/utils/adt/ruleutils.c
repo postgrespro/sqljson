@@ -448,10 +448,12 @@ static void get_coercion_expr(Node *arg, deparse_context *context,
 							  Node *parentNode);
 static void get_const_expr(Const *constval, deparse_context *context,
 						   int showtype);
-static void get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
-							   bool showimplicit);
-static void get_json_agg_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
-								   const char *funcname, bool is_json_objectagg);
+static void get_json_constructor(JsonConstructorExpr *ctor,
+								 deparse_context *context, bool showimplicit);
+static void get_json_agg_constructor(JsonConstructorExpr *ctor,
+									 deparse_context *context,
+									 const char *funcname,
+									 bool is_json_objectagg);
 static void get_const_collation(Const *constval, deparse_context *context);
 static void simple_quote_literal(StringInfo buf, const char *val);
 static void get_sublink_expr(SubLink *sublink, deparse_context *context);
@@ -5825,7 +5827,7 @@ get_rule_sortgroupclause(Index ref, List *tlist, bool force_colno,
 								  || IsA(expr, FuncExpr)
 								  || IsA(expr, Aggref)
 								  || IsA(expr, WindowFunc)
-								  || IsA(expr, JsonCtorExpr));
+								  || IsA(expr, JsonConstructorExpr));
 
 		if (need_paren)
 			appendStringInfoChar(context->buf, '(');
@@ -7622,7 +7624,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_Aggref:
 		case T_WindowFunc:
 		case T_FuncExpr:
-		case T_JsonCtorExpr:
+		case T_JsonConstructorExpr:
 			/* function-like: name(..) or name[..] */
 			return true;
 
@@ -9128,8 +9130,8 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
-		case T_JsonCtorExpr:
-			get_json_ctor_expr((JsonCtorExpr *) node, context, false);
+		case T_JsonConstructorExpr:
+			get_json_constructor((JsonConstructorExpr *) node, context, false);
 			break;
 
 		case T_List:
@@ -9384,7 +9386,7 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 }
 
 static void
-get_json_ctor_options(JsonCtorExpr *ctor, StringInfo buf)
+get_json_constructor_options(JsonConstructorExpr *ctor, StringInfo buf)
 {
 	if (ctor->absent_on_null)
 	{
@@ -9406,7 +9408,8 @@ get_json_ctor_options(JsonCtorExpr *ctor, StringInfo buf)
 }
 
 static void
-get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplicit)
+get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
+					 bool showimplicit)
 {
 	StringInfo	buf = context->buf;
 	const char *funcname;
@@ -9422,11 +9425,11 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 			funcname = "JSON_ARRAY";
 			break;
 		case JSCTOR_JSON_OBJECTAGG:
-			return get_json_agg_ctor_expr(ctor, context, "JSON_OBJECTAGG", true);
+			return get_json_agg_constructor(ctor, context, "JSON_OBJECTAGG", true);
 		case JSCTOR_JSON_ARRAYAGG:
-			return get_json_agg_ctor_expr(ctor, context, "JSON_ARRAYAGG", false);
+			return get_json_agg_constructor(ctor, context, "JSON_ARRAYAGG", false);
 		default:
-			elog(ERROR, "invalid JsonCtorExprType %d", ctor->type);
+			elog(ERROR, "invalid JsonConstructorExprType %d", ctor->type);
 	}
 
 	appendStringInfo(buf, "%s(", funcname);
@@ -9447,7 +9450,7 @@ get_json_ctor_expr(JsonCtorExpr *ctor, deparse_context *context, bool showimplic
 		nargs++;
 	}
 
-	get_json_ctor_options(ctor, buf);
+	get_json_constructor_options(ctor, buf);
 
 	appendStringInfo(buf, ")");
 }
@@ -9701,16 +9704,16 @@ get_windowfunc_expr(WindowFunc *wfunc, deparse_context *context)
 }
 
 /*
- * get_json_agg_ctor_expr		- Parse back an aggregate JsonCtorExpr node
+ * get_json_agg_constructor - Parse back an aggregate JsonConstructorExpr node
  */
 static void
-get_json_agg_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
-					   const char *funcname, bool is_json_objectagg)
+get_json_agg_constructor(JsonConstructorExpr *ctor, deparse_context *context,
+						 const char *funcname, bool is_json_objectagg)
 {
 	StringInfoData options;
 
 	initStringInfo(&options);
-	get_json_ctor_options(ctor, &options);
+	get_json_constructor_options(ctor, &options);
 
 	if (IsA(ctor->func, Aggref))
 		return get_agg_expr_helper((Aggref *) ctor->func, context,
@@ -9718,9 +9721,10 @@ get_json_agg_ctor_expr(JsonCtorExpr *ctor, deparse_context *context,
 								   funcname, options.data, is_json_objectagg);
 	else if (IsA(ctor->func, WindowFunc))
 		return get_windowfunc_expr_helper((WindowFunc *) ctor->func, context,
-										  funcname, options.data, is_json_objectagg);
+										  funcname, options.data,
+										  is_json_objectagg);
 	else
-		elog(ERROR, "invalid JsonCtorExpr underlying node type: %d",
+		elog(ERROR, "invalid JsonConstructorExpr underlying node type: %d",
 			 nodeTag(ctor->func));
 }
 

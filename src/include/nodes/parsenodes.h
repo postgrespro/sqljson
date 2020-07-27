@@ -1512,10 +1512,10 @@ typedef struct JsonKeyValue
 } JsonKeyValue;
 
 /*
- * JsonObjectCtor -
+ * JsonObjectConstructor -
  *		untransformed representation of JSON_OBJECT() constructor
  */
-typedef struct JsonObjectCtor
+typedef struct JsonObjectConstructor
 {
 	NodeTag		type;
 	List	   *exprs;			/* list of JsonKeyValue pairs */
@@ -1523,26 +1523,26 @@ typedef struct JsonObjectCtor
 	bool		absent_on_null;	/* skip NULL values? */
 	bool		unique;			/* check key uniqueness? */
 	int			location;		/* token location, or -1 if unknown */
-} JsonObjectCtor;
+} JsonObjectConstructor;
 
 /*
- * JsonArrayCtor -
+ * JsonArrayConstructor -
  *		untransformed representation of JSON_ARRAY(element,...) constructor
  */
-typedef struct JsonArrayCtor
+typedef struct JsonArrayConstructor
 {
 	NodeTag		type;
 	List	   *exprs;			/* list of JsonValueExpr elements */
 	JsonOutput *output;			/* RETURNING clause, if specified  */
 	bool		absent_on_null;	/* skip NULL elements? */
 	int			location;		/* token location, or -1 if unknown */
-} JsonArrayCtor;
+} JsonArrayConstructor;
 
 /*
- * JsonArrayQueryCtor -
+ * JsonArrayQueryConstructor -
  *		untransformed representation of JSON_ARRAY(subquery) constructor
  */
-typedef struct JsonArrayQueryCtor
+typedef struct JsonArrayQueryConstructor
 {
 	NodeTag		type;
 	Node	   *query;			/* subquery */
@@ -1550,14 +1550,14 @@ typedef struct JsonArrayQueryCtor
 	JsonFormat *format;			/* FORMAT clause for subquery, if specified */
 	bool		absent_on_null;	/* skip NULL elements? */
 	int			location;		/* token location, or -1 if unknown */
-} JsonArrayQueryCtor;
+} JsonArrayQueryConstructor;
 
 /*
- * JsonAggCtor -
+ * JsonAggConstructor -
  *		common fields of untransformed representation of
  *		JSON_ARRAYAGG() and JSON_OBJECTAGG()
  */
-typedef struct JsonAggCtor
+typedef struct JsonAggConstructor
 {
 	NodeTag		type;
 	JsonOutput *output;			/* RETURNING clause, if any */
@@ -1565,7 +1565,7 @@ typedef struct JsonAggCtor
 	List	   *agg_order;		/* ORDER BY clause, if any */
 	struct WindowDef *over;		/* OVER clause, if any */
 	int			location;		/* token location, or -1 if unknown */
-} JsonAggCtor;
+} JsonAggConstructor;
 
 /*
  * JsonObjectAgg -
@@ -1573,7 +1573,8 @@ typedef struct JsonAggCtor
  */
 typedef struct JsonObjectAgg
 {
-	JsonAggCtor	ctor;			/* common fields */
+	NodeTag		type;
+	JsonAggConstructor *constructor; /* common fields */
 	JsonKeyValue *arg;			/* object key-value pair */
 	bool		absent_on_null;	/* skip NULL values? */
 	bool		unique;			/* check key uniqueness? */
@@ -1585,7 +1586,8 @@ typedef struct JsonObjectAgg
  */
 typedef struct JsonArrayAgg
 {
-	JsonAggCtor	ctor;			/* common fields */
+	NodeTag		type;
+	JsonAggConstructor *constructor; /* common fields */
 	JsonValueExpr *arg;			/* array element expression */
 	bool		absent_on_null;	/* skip NULL elements? */
 } JsonArrayAgg;

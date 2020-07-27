@@ -123,10 +123,12 @@ static Node *transformWholeRowRef(ParseState *pstate,
 static Node *transformIndirection(ParseState *pstate, A_Indirection *ind);
 static Node *transformTypeCast(ParseState *pstate, TypeCast *tc);
 static Node *transformCollateClause(ParseState *pstate, CollateClause *c);
-static Node *transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor);
-static Node *transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor);
-static Node *transformJsonArrayQueryCtor(ParseState *pstate,
-										 JsonArrayQueryCtor *ctor);
+static Node *transformJsonObjectConstructor(ParseState *pstate,
+											JsonObjectConstructor *ctor);
+static Node *transformJsonArrayConstructor(ParseState *pstate,
+										   JsonArrayConstructor *ctor);
+static Node *transformJsonArrayQueryConstructor(ParseState *pstate,
+												JsonArrayQueryConstructor *ctor);
 static Node *transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg);
 static Node *transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg);
 static Node *make_row_comparison_op(ParseState *pstate, List *opname,
@@ -377,16 +379,16 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 				break;
 			}
 
-		case T_JsonObjectCtor:
-			result = transformJsonObjectCtor(pstate, (JsonObjectCtor *) expr);
+		case T_JsonObjectConstructor:
+			result = transformJsonObjectConstructor(pstate, (JsonObjectConstructor *) expr);
 			break;
 
-		case T_JsonArrayCtor:
-			result = transformJsonArrayCtor(pstate, (JsonArrayCtor *) expr);
+		case T_JsonArrayConstructor:
+			result = transformJsonArrayConstructor(pstate, (JsonArrayConstructor *) expr);
 			break;
 
-		case T_JsonArrayQueryCtor:
-			result = transformJsonArrayQueryCtor(pstate, (JsonArrayQueryCtor *) expr);
+		case T_JsonArrayQueryConstructor:
+			result = transformJsonArrayQueryConstructor(pstate, (JsonArrayQueryConstructor *) expr);
 			break;
 
 		case T_JsonObjectAgg:
@@ -3873,7 +3875,8 @@ transformJsonOutput(ParseState *pstate, const JsonOutput *output,
  * Derive RETURNING type, if not specified, from argument types.
  */
 static JsonReturning *
-transformJsonCtorOutput(ParseState *pstate, JsonOutput *output, List *args)
+transformJsonConstructorOutput(ParseState *pstate, JsonOutput *output,
+							   List *args)
 {
 	JsonReturning *returning = transformJsonOutput(pstate, output, true);
 
@@ -3975,13 +3978,13 @@ coerceJsonFuncExpr(ParseState *pstate, Node *expr,
 }
 
 static Node *
-makeJsonCtorExpr(ParseState *pstate, JsonCtorType type, List *args, Expr *fexpr,
-				 JsonReturning *returning, bool unique, bool absent_on_null,
-				 int location)
+makeJsonConstructorExpr(ParseState *pstate, JsonConstructorType type,
+						List *args, Expr *fexpr, JsonReturning *returning,
+						bool unique, bool absent_on_null, int location)
 {
+	JsonConstructorExpr *jsctor = makeNode(JsonConstructorExpr);
 	Node	   *placeholder;
 	Node	   *coercion;
-	JsonCtorExpr *jsctor = makeNode(JsonCtorExpr);
 	Oid			intermediate_typid =
 		returning->format->format == JS_FORMAT_JSONB ? JSONBOID : JSONOID;
 
@@ -4024,7 +4027,7 @@ makeJsonCtorExpr(ParseState *pstate, JsonCtorType type, List *args, Expr *fexpr,
  * Then function call result is coerced to the target type.
  */
 static Node *
-transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
+transformJsonObjectConstructor(ParseState *pstate, JsonObjectConstructor *ctor)
 {
 	JsonReturning *returning;
 	List	   *args = NIL;
@@ -4047,11 +4050,11 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
 		}
 	}
 
-	returning = transformJsonCtorOutput(pstate, ctor->output, args);
+	returning = transformJsonConstructorOutput(pstate, ctor->output, args);
 
-	return makeJsonCtorExpr(pstate, JSCTOR_JSON_OBJECT, args, NULL,
-							returning, ctor->unique, ctor->absent_on_null,
-							ctor->location);
+	return makeJsonConstructorExpr(pstate, JSCTOR_JSON_OBJECT, args, NULL,
+								   returning, ctor->unique,
+								   ctor->absent_on_null, ctor->location);
 }
 
 /*
@@ -4059,7 +4062,8 @@ transformJsonObjectCtor(ParseState *pstate, JsonObjectCtor *ctor)
  *  (SELECT  JSON_ARRAYAGG(a  [FORMAT] [RETURNING] [ON NULL]) FROM (query) q(a))
  */
 static Node *
-transformJsonArrayQueryCtor(ParseState *pstate, JsonArrayQueryCtor *ctor)
+transformJsonArrayQueryConstructor(ParseState *pstate,
+								   JsonArrayQueryConstructor *ctor)
 {
 	SubLink	   *sublink = makeNode(SubLink);
 	SelectStmt *select = makeNode(SelectStmt);
@@ -4089,10 +4093,11 @@ transformJsonArrayQueryCtor(ParseState *pstate, JsonArrayQueryCtor *ctor)
 	colref->location = ctor->location;
 
 	agg->arg = makeJsonValueExpr((Expr *) colref, ctor->format);
-	agg->ctor.agg_order = NIL;
-	agg->ctor.output = ctor->output;
 	agg->absent_on_null = ctor->absent_on_null;
-	agg->ctor.location = ctor->location;
+	agg->constructor = makeNode(JsonAggConstructor);
+	agg->constructor->agg_order = NIL;
+	agg->constructor->output = ctor->output;
+	agg->constructor->location = ctor->location;
 
 	target->name = NULL;
 	target->indirection = NIL;
@@ -4123,10 +4128,11 @@ transformJsonArrayQueryCtor(ParseState *pstate, JsonArrayQueryCtor *ctor)
  * Common code for JSON_OBJECTAGG and JSON_ARRAYAGG transformation.
  */
 static Node *
-transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
-					 JsonReturning *returning, List *args, const char *aggfn,
-					 Oid aggtype, JsonCtorType ctor_type,
-					 bool unique, bool absent_on_null)
+transformJsonAggConstructor(ParseState *pstate, JsonAggConstructor *agg_ctor,
+							JsonReturning *returning, List *args,
+							const char *aggfn, Oid aggtype,
+							JsonConstructorType ctor_type,
+							bool unique, bool absent_on_null)
 {
 	Oid			aggfnoid;
 	Node	   *node;
@@ -4191,8 +4197,9 @@ transformJsonAggCtor(ParseState *pstate, JsonAggCtor *agg_ctor,
 		node = (Node *) aggref;
 	}
 
-	return makeJsonCtorExpr(pstate, ctor_type, NIL, (Expr *) node, returning,
-							unique, absent_on_null, agg_ctor->location);
+	return makeJsonConstructorExpr(pstate, ctor_type, NIL, (Expr *) node,
+								   returning, unique, absent_on_null,
+								   agg_ctor->location);
 }
 
 /*
@@ -4217,7 +4224,8 @@ transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 	val = transformJsonValueExpr(pstate, agg->arg->value, JS_FORMAT_DEFAULT);
 	args = list_make2(key, val);
 
-	returning = transformJsonCtorOutput(pstate, agg->ctor.output, args);
+	returning = transformJsonConstructorOutput(pstate, agg->constructor->output,
+											   args);
 
 	if (returning->format->format == JS_FORMAT_JSONB)
 	{
@@ -4250,9 +4258,10 @@ transformJsonObjectAgg(ParseState *pstate, JsonObjectAgg *agg)
 		aggtype = JSONOID;
 	}
 
-	return transformJsonAggCtor(pstate, &agg->ctor, returning, args, aggfnname,
-								aggtype, JSCTOR_JSON_OBJECTAGG,
-								agg->unique, agg->absent_on_null);
+	return transformJsonAggConstructor(pstate, agg->constructor, returning,
+									   args, aggfnname, aggtype,
+									   JSCTOR_JSON_OBJECTAGG,
+									   agg->unique, agg->absent_on_null);
 }
 
 /*
@@ -4272,8 +4281,8 @@ transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
 
 	arg = transformJsonValueExpr(pstate, agg->arg, JS_FORMAT_DEFAULT);
 
-	returning = transformJsonCtorOutput(pstate, agg->ctor.output,
-										list_make1(arg));
+	returning = transformJsonConstructorOutput(pstate, agg->constructor->output,
+											   list_make1(arg));
 
 	if (returning->format->format == JS_FORMAT_JSONB)
 	{
@@ -4288,9 +4297,10 @@ transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
 		aggtype = JSONOID;
 	}
 
-	return transformJsonAggCtor(pstate, &agg->ctor, returning, list_make1(arg),
-								aggfnname, aggtype, JSCTOR_JSON_ARRAYAGG,
-								false, agg->absent_on_null);
+	return transformJsonAggConstructor(pstate, agg->constructor, returning,
+									   list_make1(arg), aggfnname, aggtype,
+									   JSCTOR_JSON_ARRAYAGG,
+									   false, agg->absent_on_null);
 }
 
 /*
@@ -4303,7 +4313,7 @@ transformJsonArrayAgg(ParseState *pstate, JsonArrayAgg *agg)
  * Then function call result is coerced to the target type.
  */
 static Node *
-transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor)
+transformJsonArrayConstructor(ParseState *pstate, JsonArrayConstructor *ctor)
 {
 	JsonReturning *returning;
 	List	   *args = NIL;
@@ -4324,8 +4334,9 @@ transformJsonArrayCtor(ParseState *pstate, JsonArrayCtor *ctor)
 		}
 	}
 
-	returning = transformJsonCtorOutput(pstate, ctor->output, args);
+	returning = transformJsonConstructorOutput(pstate, ctor->output, args);
 
-	return makeJsonCtorExpr(pstate, JSCTOR_JSON_ARRAY, args, NULL, returning,
-							false, ctor->absent_on_null, ctor->location);
+	return makeJsonConstructorExpr(pstate, JSCTOR_JSON_ARRAY, args, NULL,
+								   returning, false, ctor->absent_on_null,
+								   ctor->location);
 }

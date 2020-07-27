@@ -849,7 +849,7 @@ _equalJsonValueExpr(const JsonValueExpr *a, const JsonValueExpr *b)
 }
 
 static bool
-_equalJsonCtorExpr(const JsonCtorExpr *a, const JsonCtorExpr *b)
+_equalJsonConstructorExpr(const JsonConstructorExpr *a, const JsonConstructorExpr *b)
 {
 	COMPARE_SCALAR_FIELD(type);
 	COMPARE_NODE_FIELD(args);
@@ -3264,8 +3264,8 @@ equal(const void *a, const void *b)
 		case T_JsonValueExpr:
 			retval = _equalJsonValueExpr(a, b);
 			break;
-		case T_JsonCtorExpr:
-			retval = _equalJsonCtorExpr(a, b);
+		case T_JsonConstructorExpr:
+			retval = _equalJsonConstructorExpr(a, b);
 			break;
 
 			/*
