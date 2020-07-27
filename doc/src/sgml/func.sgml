@@ -16908,7 +16908,7 @@ $ ? (@ like_regex "^\\d+$")
   <itemizedlist>
     <listitem>
       <para>
-       <xref linkend="functions-jsonscalar"/>
+       <link linkend="functions-jsonscalar"><literal>JSON_SCALAR</literal></link>
       </para>
     </listitem>
     <listitem>
@@ -16933,31 +16933,27 @@ $ ? (@ like_regex "^\\d+$")
     </listitem>
   </itemizedlist>
 
-   <refentry id="functions-jsonscalar">
-    <refnamediv>
-     <refname>JSON_SCALAR</refname>
-     <refpurpose>create a JSON scalar</refpurpose>
-    </refnamediv>
+  <sect4 id="functions-jsonscalar">
+   <title><literal>JSON_SCALAR</literal></title>
+   <indexterm><primary>json_scalar</primary></indexterm>
 
-    <refsynopsisdiv>
 <synopsis>
 <function>JSON_SCALAR</function> (
   <parameter>expression</parameter>
   <optional> RETURNING <replaceable class="parameter">json_data_type</replaceable> </optional>
 )
 </synopsis>
-    </refsynopsisdiv>
 
-    <refsect1>
+    <sect5>
      <title>Description</title>
 
      <para>
       <function>JSON_SCALAR</function> function generates a scalar
       <acronym>JSON</acronym> from a <acronym>SQL</acronym> data.
      </para>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Parameters</title>
       <variablelist>
        <varlistentry>
@@ -16991,9 +16987,9 @@ $ ? (@ like_regex "^\\d+$")
        </listitem>
       </varlistentry>
      </variablelist>
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Notes</title>
      <para>
       Alternatively, you can construct <acronym>JSON</acronym> objects by
@@ -17001,8 +16997,8 @@ $ ? (@ like_regex "^\\d+$")
       <function>to_json()</function>/<function>to_jsonb()</function> functions.
       See <xref linkend="functions-json-creation-table"/> for details.
      </para>
-    </refsect1>
-    <refsect1>
+    </sect5>
+    <sect5>
      <title>Examples</title>
      <para>
       Construct a JSON from the provided values various types:
@@ -17026,8 +17022,8 @@ SELECT JSON_SCALAR(true);
  true
 (1 row)
 </screen>
-    </refsect1>
-   </refentry>
+    </sect5>
+   </sect4>
 
    <sect4 id="functions-jsonobject">
     <title><literal>JSON_OBJECT</literal></title>
