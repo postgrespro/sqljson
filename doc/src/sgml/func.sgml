@@ -17914,7 +17914,7 @@ FROM films AS f;
     </listitem>
     <listitem>
       <para>
-       <xref linkend="functions-jsontable"/>
+       <link linkend="functions-jsontable"><literal>JSON_TABLE</literal></link>
       </para>
     </listitem>
   </itemizedlist>
@@ -18587,13 +18587,9 @@ FROM
     </sect5>
    </sect4>
 
-   <refentry id="functions-jsontable">
-    <refnamediv>
-     <refname>JSON_TABLE</refname>
-     <refpurpose>display JSON data as an SQL relation</refpurpose>
-    </refnamediv>
-
-    <refsynopsisdiv>
+   <sect4 id="functions-jsontable">
+    <title><literal>JSON_TABLE</literal></title>
+    <indexterm><primary>json_table</primary></indexterm>
 
 <synopsis>
 JSON_TABLE (
@@ -18621,8 +18617,8 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
   | <replaceable>name</replaceable> FOR ORDINALITY
 
 </synopsis>
-    </refsynopsisdiv>
-    <refsect1>
+
+    <sect5>
      <title>Description</title>
 
      <para>
@@ -18689,8 +18685,8 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
       into both child and parrent columns for all missing values.
      </para>
 
-    </refsect1>
-    <refsect1>
+    </sect5>
+    <sect5>
      <title>Parameters</title>
 
   <variablelist>
@@ -18884,9 +18880,9 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
   </variablelist>
 
-    </refsect1>
+    </sect5>
 
-    <refsect1>
+    <sect5>
      <title>Examples</title>
 
      <para>
@@ -18914,8 +18910,8 @@ SELECT jt.* FROM
 </screen>
      </para>
 
-   </refsect1>
-  </refentry>
+   </sect5>
+  </sect4>
 
   </sect3>
 
