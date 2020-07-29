@@ -863,6 +863,96 @@ _equalJsonConstructorExpr(const JsonConstructorExpr *a, const JsonConstructorExp
 	return true;
 }
 
+static bool
+_equalJsonKeyValue(const JsonKeyValue *a, const JsonKeyValue *b)
+{
+	COMPARE_NODE_FIELD(key);
+	COMPARE_NODE_FIELD(value);
+
+	return true;
+}
+
+static bool
+_equalJsonObjectConstructor(const JsonObjectConstructor *a,
+							const JsonObjectConstructor *b)
+{
+	COMPARE_NODE_FIELD(exprs);
+	COMPARE_NODE_FIELD(output);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+	COMPARE_SCALAR_FIELD(unique);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+static bool
+_equalJsonAggConstructor(const JsonAggConstructor *a,
+						 const JsonAggConstructor *b)
+{
+	COMPARE_NODE_FIELD(output);
+	COMPARE_NODE_FIELD(agg_filter);
+	COMPARE_NODE_FIELD(agg_order);
+	COMPARE_NODE_FIELD(over);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+static bool
+_equalJsonObjectAgg(const JsonObjectAgg *a, const JsonObjectAgg *b)
+{
+	COMPARE_NODE_FIELD(constructor);
+	COMPARE_NODE_FIELD(arg);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+	COMPARE_SCALAR_FIELD(unique);
+
+	return true;
+}
+
+static bool
+_equalJsonOutput(const JsonOutput *a, const JsonOutput *b)
+{
+	COMPARE_NODE_FIELD(typeName);
+	COMPARE_NODE_FIELD(returning);
+
+	return true;
+}
+
+static bool
+_equalJsonArrayConstructor(const JsonArrayConstructor *a,
+						   const JsonArrayConstructor *b)
+{
+	COMPARE_NODE_FIELD(exprs);
+	COMPARE_NODE_FIELD(output);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+static bool
+_equalJsonArrayAgg(const JsonArrayAgg *a, const JsonArrayAgg *b)
+{
+	COMPARE_NODE_FIELD(constructor);
+	COMPARE_NODE_FIELD(arg);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+
+	return true;
+}
+
+static bool
+_equalJsonArrayQueryConstructor(const JsonArrayQueryConstructor *a,
+								const JsonArrayQueryConstructor *b)
+{
+	COMPARE_NODE_FIELD(query);
+	COMPARE_NODE_FIELD(output);
+	COMPARE_NODE_FIELD(format);
+	COMPARE_SCALAR_FIELD(absent_on_null);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
 /*
  * Stuff from pathnodes.h
  */
@@ -3814,6 +3904,30 @@ equal(const void *a, const void *b)
 			break;
 		case T_PartitionCmd:
 			retval = _equalPartitionCmd(a, b);
+			break;
+		case T_JsonKeyValue:
+			retval = _equalJsonKeyValue(a, b);
+			break;
+		case T_JsonObjectConstructor:
+			retval = _equalJsonObjectConstructor(a, b);
+			break;
+		case T_JsonAggConstructor:
+			retval = _equalJsonAggConstructor(a, b);
+			break;
+		case T_JsonObjectAgg:
+			retval = _equalJsonObjectAgg(a, b);
+			break;
+		case T_JsonOutput:
+			retval = _equalJsonOutput(a, b);
+			break;
+		case T_JsonArrayConstructor:
+			retval = _equalJsonArrayConstructor(a, b);
+			break;
+		case T_JsonArrayQueryConstructor:
+			retval = _equalJsonArrayQueryConstructor(a, b);
+			break;
+		case T_JsonArrayAgg:
+			retval = _equalJsonArrayAgg(a, b);
 			break;
 
 		default:
